@@ -104,9 +104,23 @@ node scripts/i18n-check.mjs
 ```bash
 npm run typecheck
 npm run lint
+npm run i18n:check
 npm run build
 npm run build:static
 ```
+
+End-to-end tests drive real tools (merge, split, OCR, protect and unlock, Office print preview, workflows and more) in Chromium, Firefox and WebKit against the static build:
+
+```bash
+npm run build:static
+npm run serve:static &
+npx playwright-core install chromium firefox webkit
+npm run test:e2e
+```
+
+Pass browser names to run only some (`npm run test:e2e -- webkit`), and set `CHROME_PATH` to use an installed Chrome. The OCR test downloads the English language data from jsDelivr.
+
+GitHub Actions (`.github/workflows/ci.yml`) runs all of this on every push to `main` and every pull request, with one end-to-end job per browser.
 
 ## Licence
 

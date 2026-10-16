@@ -13,7 +13,10 @@
     "start": "next start",
     "lint": "eslint",
     "postinstall": "node scripts/vendor.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "i18n:check": "node scripts/i18n-check.mjs",
+    "serve:static": "node scripts/serve-static.mjs out 3202",
+    "test:e2e": "node tests/e2e.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
