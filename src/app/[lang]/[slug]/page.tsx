@@ -10,6 +10,7 @@ import { hasLocale, LOCALE_CODES } from "@/lib/i18n/locales";
 import { CATEGORIES, LIMITS, TOOLS, toolBySlug, type Tool } from "@/lib/tools";
 import { LEGAL, LEGAL_UPDATED } from "@/lib/legal";
 import { BRAND } from "@/lib/brand";
+import { REPO_URL, STATIC } from "@/lib/mode";
 
 const INFO = ["features", "faq", "security", "about", "guide", "privacy", "terms", "cookies"] as const;
 type Info = (typeof INFO)[number];
@@ -127,13 +128,14 @@ function InfoPage({ slug, t, lang }: { slug: Info; t: Dict; lang: string }) {
   if (slug === "faq") {
     return wrap(t["faq.title"], (
       <div className="divide-y divide-line rounded-2xl border border-line bg-surface">
-        {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+        {/* The static build has no server and no accounts (questions 1 and 3). */}
+        {(STATIC ? [1, 2, 4, 5, 6, 7, 8] : [1, 2, 3, 4, 5, 6, 7, 8]).map((n) => (
           <details key={n} className="group p-5 [&_summary::-webkit-details-marker]:hidden">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[16px] font-semibold">
               {k(`faq.q${n}`)}
               <span className="text-muted transition-transform group-open:rotate-45" aria-hidden>+</span>
             </summary>
-            <p className="mt-3 text-[15px] text-ink-2">{k(`faq.a${n}`, { mb: LIMITS.mb })}</p>
+            <p className="mt-3 text-[15px] text-ink-2">{k(STATIC && n === 1 ? "faq.a1Local" : `faq.a${n}`, { mb: LIMITS.mb })}</p>
           </details>
         ))}
       </div>
@@ -142,7 +144,8 @@ function InfoPage({ slug, t, lang }: { slug: Info; t: Dict; lang: string }) {
   if (slug === "security") {
     return wrap(t["sec.title"], (
       <div className="space-y-8">
-        {[1, 2, 3, 4].map((n) => (
+        {/* Server processing and accounts only exist on a server. */}
+        {(STATIC ? [1, 4] : [1, 2, 3, 4]).map((n) => (
           <section key={n}>
             <h2 className="text-[18px] font-semibold">{k(`sec.h${n}`)}</h2>
             <p className="mt-2 text-[16px] leading-relaxed text-ink-2">{k(`sec.b${n}`)}</p>
@@ -155,7 +158,8 @@ function InfoPage({ slug, t, lang }: { slug: Info; t: Dict; lang: string }) {
     return wrap(t["about.title"], (
       <div className="space-y-4 text-[17px] leading-relaxed text-ink-2">
         {[1, 2, 3].map((n) => <p key={n}>{k(`about.b${n}`, { brand: BRAND.name })}</p>)}
-        <Link href={`/${lang}/contact`} className="btn btn-quiet mt-4">{t["foot.contact"]}</Link>
+        {!STATIC && <Link href={`/${lang}/contact`} className="btn btn-quiet mt-4">{t["foot.contact"]}</Link>}
+        {STATIC && REPO_URL && <a href={`${REPO_URL}/issues`} className="btn btn-quiet mt-4">{t["foot.contact"]}</a>}
       </div>
     ));
   }

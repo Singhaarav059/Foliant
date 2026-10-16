@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { STATIC } from "@/lib/mode";
 
 export type User = { id: number; email: string; name: string };
 type Ctx = { user: User | null; ready: boolean; refresh: () => Promise<void>; setUser: (u: User | null) => void };
@@ -8,9 +9,10 @@ type Ctx = { user: User | null; ready: boolean; refresh: () => Promise<void>; se
 const UserContext = createContext<Ctx>({ user: null, ready: false, refresh: async () => {}, setUser: () => {} });
 
 // Pages stay static; the signed-in state is fetched once on the client.
+// The static build has no accounts, so it is never signed in.
 export function UserProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(STATIC);
   const refresh = useCallback(async () => {
     try {
       const res = await fetch("/api/auth/me", { cache: "no-store" });
@@ -22,6 +24,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
   useEffect(() => {
+    if (STATIC) return;
     let live = true;
     fetch("/api/auth/me", { cache: "no-store" })
       .then((r) => r.json())

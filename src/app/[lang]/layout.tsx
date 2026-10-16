@@ -27,6 +27,7 @@ export async function generateMetadata({ params }: LayoutProps<"/[lang]">): Prom
     description: t["home.subtitle"],
     applicationName: BRAND.name,
     icons: { icon: "/icon.svg", apple: "/icon-maskable.svg" },
+    manifest: "/manifest.webmanifest",
     alternates: { languages: Object.fromEntries(LOCALE_CODES.map((l) => [l, `/${l}`])) },
   };
 }

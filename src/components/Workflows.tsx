@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowDown, Loader2, Play, Plus, Save, Trash2, X } from "lucide-react";
+import { ArrowDown, Download, Loader2, Play, Plus, Save, Trash2, Upload, X } from "lucide-react";
 import { useI18n } from "./I18n";
 import { useUser, postJson } from "./User";
 import { ToolIcon } from "./ToolIcon";
@@ -10,6 +10,8 @@ import { Dropzone } from "./workspace/Dropzone";
 import { Results } from "./workspace/Results";
 import { defaultOptions, TOOLS, toolById, type ToolId } from "@/lib/tools";
 import type { Output } from "@/lib/pdf/common";
+import { BRAND } from "@/lib/brand";
+import { STATIC } from "@/lib/mode";
 
 type Step = { tool: ToolId; options: Record<string, unknown> };
 type Saved = { id: number | string; name: string; steps: Step[] };
@@ -31,6 +33,13 @@ function writeLocal(list: Saved[]) {
     /* storage blocked: workflow still runs this session */
   }
 }
+// Imported files are untrusted: keep only steps that name a chainable tool.
+const isWorkflow = (w: unknown): w is { name: string; steps: Step[] } => {
+  const x = w as { name?: unknown; steps?: unknown };
+  return typeof x?.name === "string" && Array.isArray(x.steps) && x.steps.length > 0 &&
+    x.steps.every((s: { tool?: unknown; options?: unknown }) =>
+      CHAINABLE.some((c) => c.id === s?.tool) && typeof s.options === "object" && s.options !== null && !Array.isArray(s.options));
+};
 const stripSecrets = (steps: Step[]) =>
   steps.map((s) => ({ tool: s.tool, options: Object.fromEntries(Object.entries(s.options).filter(([k, v]) => !/password/i.test(k) && !(v instanceof File))) }));
 
@@ -78,6 +87,36 @@ export function Workflows() {
   const remove = async (id: Saved["id"]) => {
     if (user) await postJson(`/api/workflows/${id}`, undefined, "DELETE");
     else writeLocal(readLocal().filter((w) => w.id !== id));
+    await load();
+  };
+
+  const exportAll = () => {
+    const data = { app: BRAND.name, version: 1, workflows: saved.map(({ name, steps }) => ({ name, steps })) };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${BRAND.name.toLowerCase()}-workflows.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  };
+
+  const importFile = async (file: File) => {
+    setError(null);
+    let list: { name: string; steps: Step[] }[] = [];
+    try {
+      const data = JSON.parse(await file.text());
+      list = (Array.isArray(data?.workflows) ? data.workflows : []).filter(isWorkflow)
+        .map((w: { name: string; steps: Step[] }) => ({ name: w.name.slice(0, 80), steps: stripSecrets(w.steps) }));
+    } catch {
+      /* not JSON */
+    }
+    if (!list.length) return setError(t("wf.importBad"));
+    try {
+      if (user) for (const w of list) await postJson("/api/workflows", w);
+      else writeLocal([...list.map((w) => ({ id: crypto.randomUUID(), ...w })), ...readLocal()]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
     await load();
   };
 
@@ -188,7 +227,7 @@ export function Workflows() {
 
         <aside className="card h-max p-5">
           <h2 className="mb-3 text-[17px] font-semibold">{t("wf.title")}</h2>
-          {!user && <p className="mb-3 text-[13px] text-muted">{t("wf.savedLocally")}</p>}
+          {!user && <p className="mb-3 text-[13px] text-muted">{STATIC ? t("wf.savedHere") : t("wf.savedLocally")}</p>}
           {saved.length === 0 ? <p className="text-[15px] text-muted">{t("wf.empty")}</p> : (
             <ul className="space-y-2">
               {saved.map((w) => (
@@ -202,6 +241,16 @@ export function Workflows() {
               ))}
             </ul>
           )}
+          <div className="mt-4 flex gap-2 border-t border-line pt-4">
+            <button className="btn btn-quiet btn-sm flex-1" disabled={!saved.length} onClick={exportAll}>
+              <Download size={15} /> {t("wf.export")}
+            </button>
+            <label className="btn btn-quiet btn-sm flex-1 cursor-pointer">
+              <Upload size={15} /> {t("wf.import")}
+              <input type="file" accept=".json,application/json" className="sr-only"
+                onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void importFile(f); }} />
+            </label>
+          </div>
         </aside>
       </div>
     </div>

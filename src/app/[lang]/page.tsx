@@ -5,6 +5,7 @@ import { ToolGrid } from "@/components/ToolGrid";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { hasLocale } from "@/lib/i18n/locales";
 import { TOOLS, categoryColor } from "@/lib/tools";
+import { STATIC } from "@/lib/mode";
 
 export default async function Home({ params }: PageProps<"/[lang]">) {
   const { lang } = await params;
@@ -48,7 +49,7 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
         <h2 className="mb-8 text-center text-[1.75rem] font-bold tracking-[-0.025em]">{t["home.whyTitle"]}</h2>
         <div className="grid gap-4 md:grid-cols-3">
           {([
-            [ShieldCheck, "#12a37f", "home.why1Title", "home.why1Body"],
+            [ShieldCheck, "#12a37f", "home.why1Title", STATIC ? "home.why1BodyLocal" : "home.why1Body"],
             [Zap, "#e2662b", "home.why2Title", "home.why2Body"],
             [MonitorSmartphone, "#7b4fe0", "home.why3Title", "home.why3Body"],
           ] as const).map(([Icon, color, title, body]) => (

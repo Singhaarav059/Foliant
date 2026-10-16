@@ -6,6 +6,7 @@ import { Download } from "lucide-react";
 import { Logo } from "./Logo";
 import { useI18n } from "./I18n";
 import { BRAND } from "@/lib/brand";
+import { REPO_URL, STATIC } from "@/lib/mode";
 
 const noop = () => () => {};
 
@@ -33,9 +34,14 @@ export function Footer() {
     } else setHint(true);
   };
 
+  // The static build has no contact form; feedback goes to the repository.
+  const contact = STATIC ? (REPO_URL ? `${REPO_URL}/issues` : null) : "/contact";
+  const company: [string, string][] = [[t("foot.about"), "/about"], [t("foot.security"), "/security"]];
+  if (contact) company.push([t("foot.contact"), contact]);
+  if (REPO_URL) company.push([t("foot.source"), REPO_URL]);
   const cols: { title: string; links: [string, string][] }[] = [
     { title: t("foot.product"), links: [[t("nav.allTools"), "/"], [t("nav.workflows"), "/workflows"], [t("foot.features"), "/features"]] },
-    { title: t("foot.company"), links: [[t("foot.about"), "/about"], [t("foot.security"), "/security"], [t("foot.contact"), "/contact"]] },
+    { title: t("foot.company"), links: company },
     { title: t("foot.help"), links: [[t("foot.faq"), "/faq"], [t("foot.guide"), "/guide"]] },
     { title: t("foot.legal"), links: [[t("foot.privacy"), "/privacy"], [t("foot.terms"), "/terms"], [t("foot.cookies"), "/cookies"]] },
   ];
@@ -57,7 +63,11 @@ export function Footer() {
             <ul className="space-y-2">
               {c.links.map(([label, path]) => (
                 <li key={path}>
-                  <Link href={href(path)} className="text-[15px] text-muted hover:text-ink">{label}</Link>
+                  {path.startsWith("http") ? (
+                    <a href={path} className="text-[15px] text-muted hover:text-ink">{label}</a>
+                  ) : (
+                    <Link href={href(path)} className="text-[15px] text-muted hover:text-ink">{label}</Link>
+                  )}
                 </li>
               ))}
             </ul>

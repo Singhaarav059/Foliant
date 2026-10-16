@@ -1,6 +1,8 @@
 // Every tool, declared once. Pages, the grid, option panels, workflows and
 // processing all read from here.
 
+import { STATIC } from "./mode";
+
 export type CategoryId =
   | "organize"
   | "optimize"
@@ -74,7 +76,7 @@ export const OCR_LANGS = [
   "swe", "tha", "tur", "ukr", "vie", "swa",
 ];
 
-export const TOOLS: Tool[] = [
+const ALL: Tool[] = [
   // ── Organise
   {
     id: "merge", slug: "merge-pdf", category: "organize", icon: "Combine", mode: "files",
@@ -286,6 +288,25 @@ export const TOOLS: Tool[] = [
     runtime: "browser", accept: PDF, multiple: true, minFiles: 2, options: [],
   },
 ];
+
+// Without a server, Office and HTML files are laid out in the browser and
+// saved through its print dialog, so those tools take fewer formats and options.
+const IN_BROWSER: Partial<Record<ToolId, Partial<Tool>>> = {
+  wordToPdf: { accept: ["docx"] },
+  pptToPdf: { accept: ["pptx"] },
+  excelToPdf: { accept: ["xlsx", "csv"] },
+  htmlToPdf: {
+    mode: "files",
+    options: [
+      { key: "pageSize", type: "select", choices: ["a4", "letter"], default: "a4" },
+      { key: "orientation", type: "select", choices: ["portrait", "landscape"], default: "portrait" },
+    ],
+  },
+};
+
+export const TOOLS: Tool[] = STATIC
+  ? ALL.map((t) => (t.runtime === "server" ? { ...t, ...IN_BROWSER[t.id], runtime: "browser" } : t))
+  : ALL;
 
 export const toolBySlug = (slug: string) => TOOLS.find((t) => t.slug === slug);
 export const toolById = (id: ToolId) => TOOLS.find((t) => t.id === id)!;

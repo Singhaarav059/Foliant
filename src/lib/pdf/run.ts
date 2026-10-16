@@ -2,6 +2,7 @@
 
 import type { ToolId } from "../tools";
 import { baseName, type Output, type Progress } from "./common";
+import { STATIC } from "@/lib/mode";
 
 type Opts = Record<string, unknown>;
 const s = (v: unknown) => String(v ?? "");
@@ -114,6 +115,10 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
     case "wordToPdf":
     case "pptToPdf":
     case "excelToPdf": {
+      if (STATIC) {
+        const { printable } = await import("@/lib/office/print");
+        return each(files, progress, async (f) => [await printable(f, { orientation: s(o.orientation || "auto") })]);
+      }
       return each(files, progress, async (f, p) => {
         const form = new FormData();
         form.append("file", f);
@@ -123,6 +128,10 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
       });
     }
     case "htmlToPdf": {
+      if (STATIC) {
+        const { printable } = await import("@/lib/office/print");
+        return [await printable(files[0], { pageSize: s(o.pageSize), orientation: s(o.orientation) })];
+      }
       const form = new FormData();
       if (files[0]) form.append("file", files[0]);
       else form.append("url", s(o.url));

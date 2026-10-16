@@ -6,7 +6,8 @@ import { titleFrom } from "@/lib/i18n/meta";
 
 export const generateMetadata = titleFrom("contact.title");
 
-export default async function Contact({ params }: PageProps<"/[lang]/contact">) {
+// Typed by hand: static builds leave this page out, so its generated PageProps type is missing.
+export default async function Contact({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
   if (!hasLocale(lang)) notFound();
   const t = await getDictionary(lang);

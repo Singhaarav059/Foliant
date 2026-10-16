@@ -10,6 +10,7 @@ import { useI18n } from "./I18n";
 import { useUser, postJson } from "./User";
 import { CATEGORIES, TOOLS } from "@/lib/tools";
 import { LOCALES, type Locale } from "@/lib/i18n/locales";
+import { STATIC } from "@/lib/mode";
 
 function useDismiss(open: boolean, close: () => void) {
   const ref = useRef<HTMLDivElement>(null);
@@ -137,7 +138,7 @@ export function Header() {
             )}
           </div>
 
-          {ready && !user && (
+          {!STATIC && ready && !user && (
             <>
               <Link href={href("/login")} className="btn btn-sm hidden bg-transparent text-ink-2 hover:bg-surface-2 hover:text-ink sm:inline-flex">
                 {t("nav.login")}
@@ -190,7 +191,7 @@ export function Header() {
             </button>
           </div>
           <div className="flex-1 overflow-auto px-4 pb-10 pt-4">
-            <div className="mb-5 flex gap-2">
+            {!STATIC && <div className="mb-5 flex gap-2">
               {user ? (
                 <>
                   <Link href={href("/account")} className="btn btn-quiet flex-1">{t("nav.account")}</Link>
@@ -202,7 +203,7 @@ export function Header() {
                   <Link href={href("/register")} className="btn btn-primary flex-1">{t("nav.signup")}</Link>
                 </>
               )}
-            </div>
+            </div>}
             <div className="mb-6 flex gap-2">
               <Link href={href("/workflows")} className="btn btn-quiet btn-sm flex-1">{t("nav.workflows")}</Link>
             </div>

@@ -13,6 +13,7 @@ import { Editor } from "./Editor";
 import { Scanner } from "./Scanner";
 import { CompareView } from "./CompareView";
 import { Results } from "./Results";
+import { PrintResults } from "./PrintResults";
 import { clearHandoff, peekHandoff } from "@/lib/handoff";
 import { fileExt, type Output, type Progress } from "@/lib/pdf/common";
 import { pageCount } from "@/lib/pdf/thumbs";
@@ -40,7 +41,6 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   const [caps, setCaps] = useState<Caps | null>(null);
   const run = useRef(0);
   const color = categoryColor(tool.category);
-  const limits = LIMITS;
   const files = useMemo(() => items.map((i) => i.file), [items]);
 
   useEffect(() => {
@@ -58,22 +58,22 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
         setError({ text: t("ws.wrongType", { name: f.name }) });
         continue;
       }
-      if (f.size > limits.mb * 1024 * 1024) {
-        setError({ text: t("ws.tooBig", { name: f.name, mb: limits.mb }) });
+      if (f.size > LIMITS.mb * 1024 * 1024) {
+        setError({ text: t("ws.tooBig", { name: f.name, mb: LIMITS.mb }) });
         continue;
       }
       ok.push(f);
     }
     if (!ok.length) return;
     const next = tool.multiple ? [...items, ...ok.map((file) => ({ id: uid(), file }))] : [{ id: uid(), file: ok[0] }];
-    const maxFiles = tool.mode === "compare" ? 2 : limits.files;
+    const maxFiles = tool.mode === "compare" ? 2 : LIMITS.files;
     if (next.length > maxFiles) {
       setError({ text: t("ws.tooMany", { n: maxFiles }) });
       next.length = maxFiles;
     }
     setItems(next);
     setStage("work");
-  }, [items, limits, t, tool]);
+  }, [items, t, tool]);
 
   useEffect(() => clearHandoff(), []);
 
@@ -191,7 +191,11 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   const unavailable = needsChrome ? t("ws.needsChrome") : null;
 
   // ── Render
-  if (stage === "done") return <Results tool={tool} outputs={outputs} onReset={reset} />;
+  if (stage === "done") {
+    return outputs[0]?.print
+      ? <PrintResults outputs={outputs} onReset={reset} />
+      : <Results tool={tool} outputs={outputs} onReset={reset} />;
+  }
 
   const errorBox = error && (
     <div role="alert" className="rise mx-auto mb-5 flex max-w-[760px] items-start gap-3 rounded-2xl border border-[color-mix(in_oklab,var(--danger)_35%,transparent)] bg-[color-mix(in_oklab,var(--danger)_7%,var(--surface))] p-4 text-[15px]">
