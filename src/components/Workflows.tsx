@@ -161,7 +161,7 @@ export function Workflows() {
       <p className="mt-2 max-w-[620px] text-[16px] text-muted">{t("wf.subtitle")}</p>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_340px]">
-        <section className="card p-5 sm:p-6">
+        <section className="card min-w-0 p-5 sm:p-6">
           <h2 className="mb-4 text-[17px] font-semibold">{t("wf.new")}</h2>
           <input className="field mb-5" placeholder={t("wf.name")} aria-label={t("wf.name")} value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
 
@@ -225,7 +225,7 @@ export function Workflows() {
           {status && <p className="mt-3 text-[14px] text-muted" aria-live="polite">{status}</p>}
         </section>
 
-        <aside className="card h-max p-5">
+        <aside className="card h-max min-w-0 p-5">
           <h2 className="mb-3 text-[17px] font-semibold">{t("wf.title")}</h2>
           {!user && <p className="mb-3 text-[13px] text-muted">{STATIC ? t("wf.savedHere") : t("wf.savedLocally")}</p>}
           {saved.length === 0 ? <p className="text-[15px] text-muted">{t("wf.empty")}</p> : (
@@ -241,11 +241,11 @@ export function Workflows() {
               ))}
             </ul>
           )}
-          <div className="mt-4 flex gap-2 border-t border-line pt-4">
-            <button className="btn btn-quiet btn-sm flex-1" disabled={!saved.length} onClick={exportAll}>
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
+            <button className="btn btn-quiet btn-sm grow" disabled={!saved.length} onClick={exportAll}>
               <Download size={15} /> {t("wf.export")}
             </button>
-            <label className="btn btn-quiet btn-sm flex-1 cursor-pointer">
+            <label className="btn btn-quiet btn-sm grow cursor-pointer">
               <Upload size={15} /> {t("wf.import")}
               <input type="file" accept=".json,application/json" className="sr-only"
                 onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void importFile(f); }} />

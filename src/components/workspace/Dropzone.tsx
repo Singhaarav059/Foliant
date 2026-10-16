@@ -76,14 +76,14 @@ export function Dropzone({ tool, onFiles, compact = false }: { tool: Tool; onFil
 
   return (
     <div
-      className="relative mx-auto flex max-w-[760px] flex-col items-center rounded-[22px] border-2 border-dashed px-6 py-14 text-center transition-colors sm:py-20"
+      className="relative mx-auto flex max-w-[760px] flex-col items-center rounded-[22px] border-2 border-dashed px-4 py-14 sm:px-6 text-center transition-colors sm:py-20"
       style={{
         borderColor: over ? color : "var(--line-strong)",
         background: over ? `color-mix(in oklab, ${color} 7%, var(--surface))` : "var(--surface)",
       }}
     >
       {picker}
-      <button className="btn btn-lg btn-primary" style={{ background: color }} onClick={() => input.current?.click()}>
+      <button className="btn btn-lg btn-primary max-w-full whitespace-normal" style={{ background: color }} onClick={() => input.current?.click()}>
         <Upload size={20} /> {tool.multiple ? t("ws.select") : t("ws.selectOne")}
       </button>
       <p className="mt-3 text-[15px] text-muted">{over ? t("ws.dropActive") : tool.multiple ? t("ws.drop") : t("ws.dropOne")}</p>

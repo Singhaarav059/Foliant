@@ -25,14 +25,14 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
       <ToolGrid />
 
       <section className="mt-20 grid items-center gap-8 rounded-[28px] border border-line bg-surface p-6 sm:p-10 lg:grid-cols-2">
-        <div>
+        <div className="min-w-0">
           <h2 className="text-balance text-[1.75rem] font-bold leading-tight tracking-[-0.025em]">{t["home.workflowsTitle"]}</h2>
           <p className="mt-3 max-w-[460px] text-[16px] text-muted">{t["home.workflowsBody"]}</p>
-          <Link href={`/${lang}/workflows`} className="btn btn-primary mt-6">
+          <Link href={`/${lang}/workflows`} className="btn btn-primary mt-6 max-w-full whitespace-normal">
             {t["home.workflowsCta"]} <ArrowRight size={17} className="rtl:rotate-180" />
           </Link>
         </div>
-        <ol className="flex flex-wrap items-center gap-2" aria-label={t["nav.workflows"]}>
+        <ol className="flex min-w-0 flex-wrap items-center gap-2" aria-label={t["nav.workflows"]}>
           {chain.map((tool, i) => (
             <li key={tool.id} className="flex items-center gap-2">
               <span className="rounded-full border px-3.5 py-2 text-[15px] font-medium"
