@@ -1,0 +1,30 @@
+"use client";
+
+import { createContext, useCallback, useContext } from "react";
+import { format, type Dict, type DictKey } from "@/lib/i18n/dictionary";
+import type { Locale } from "@/lib/i18n/locales";
+
+type Ctx = { locale: Locale; dict: Dict };
+const I18nContext = createContext<Ctx | null>(null);
+
+export function I18nProvider({ locale, dict, children }: Ctx & { children: React.ReactNode }) {
+  return <I18nContext.Provider value={{ locale, dict }}>{children}</I18nContext.Provider>;
+}
+
+export function useI18n() {
+  const ctx = useContext(I18nContext);
+  if (!ctx) throw new Error("useI18n outside I18nProvider");
+  const { locale, dict } = ctx;
+  const t = useCallback(
+    (key: DictKey | string, vars?: Record<string, string | number>) =>
+      format((dict as Record<string, string>)[key] ?? key, vars),
+    [dict],
+  );
+  // A key that may not exist (option choices like OCR language codes) falls back to its raw value.
+  const tOr = useCallback(
+    (key: string, fallback: string) => (dict as Record<string, string>)[key] ?? fallback,
+    [dict],
+  );
+  const href = useCallback((path: string) => `/${locale}${path === "/" ? "" : path}`, [locale]);
+  return { t, tOr, locale, href };
+}

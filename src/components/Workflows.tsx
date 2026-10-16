@@ -1,0 +1,209 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { ArrowDown, Loader2, Play, Plus, Save, Trash2, X } from "lucide-react";
+import { useI18n } from "./I18n";
+import { useUser, postJson } from "./User";
+import { ToolIcon } from "./ToolIcon";
+import { Options } from "./workspace/Options";
+import { Dropzone } from "./workspace/Dropzone";
+import { Results } from "./workspace/Results";
+import { defaultOptions, TOOLS, toolById, type ToolId } from "@/lib/tools";
+import type { Output } from "@/lib/pdf/common";
+
+type Step = { tool: ToolId; options: Record<string, unknown> };
+type Saved = { id: number | string; name: string; steps: Step[] };
+
+const CHAINABLE = TOOLS.filter((t) => t.chainable);
+const LOCAL_KEY = "workflows";
+
+function readLocal(): Saved[] {
+  try {
+    return JSON.parse(localStorage.getItem(LOCAL_KEY) ?? "[]");
+  } catch {
+    return [];
+  }
+}
+function writeLocal(list: Saved[]) {
+  try {
+    localStorage.setItem(LOCAL_KEY, JSON.stringify(list));
+  } catch {
+    /* storage blocked: workflow still runs this session */
+  }
+}
+const stripSecrets = (steps: Step[]) =>
+  steps.map((s) => ({ tool: s.tool, options: Object.fromEntries(Object.entries(s.options).filter(([k, v]) => !/password/i.test(k) && !(v instanceof File))) }));
+
+export function Workflows() {
+  const { t, tOr } = useI18n();
+  const { user, ready } = useUser();
+  const [saved, setSaved] = useState<Saved[]>([]);
+  const [name, setName] = useState("");
+  const [steps, setSteps] = useState<Step[]>([]);
+  const [files, setFiles] = useState<File[]>([]);
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [outputs, setOutputs] = useState<Output[] | null>(null);
+
+  const load = useCallback(async () => {
+    if (user) {
+      const d = await fetch("/api/workflows").then((r) => r.json()).catch(() => ({ workflows: [] }));
+      setSaved(d.workflows ?? []);
+    } else setSaved(readLocal());
+  }, [user]);
+
+  useEffect(() => {
+    if (!ready) return;
+    let live = true;
+    const pending = user
+      ? fetch("/api/workflows").then((r) => r.json()).then((d) => (d.workflows ?? []) as Saved[]).catch(() => [] as Saved[])
+      : Promise.resolve(readLocal());
+    pending.then((list) => live && setSaved(list));
+    return () => {
+      live = false;
+    };
+  }, [ready, user]);
+
+  const addStep = (id: ToolId) => setSteps((s) => [...s, { tool: id, options: defaultOptions(toolById(id)) }]);
+
+  const save = async () => {
+    if (!steps.length) return setError(t("wf.needSteps"));
+    const wfName = name.trim() || steps.map((s) => t(`tool.${s.tool}.name`)).join(" → ");
+    if (user) await postJson("/api/workflows", { name: wfName, steps: stripSecrets(steps) });
+    else writeLocal([{ id: crypto.randomUUID(), name: wfName, steps: stripSecrets(steps) }, ...readLocal()]);
+    setName("");
+    await load();
+  };
+
+  const remove = async (id: Saved["id"]) => {
+    if (user) await postJson(`/api/workflows/${id}`, undefined, "DELETE");
+    else writeLocal(readLocal().filter((w) => w.id !== id));
+    await load();
+  };
+
+  const runAll = async () => {
+    setError(null);
+    if (!steps.length) return setError(t("wf.needSteps"));
+    if (!files.length) return setError(t("ws.needMore", { n: 1 }));
+    const protect = steps.find((s) => s.tool === "protect");
+    if (protect && !String(protect.options.password ?? "")) return setError(t("ws.passwordEmpty"));
+    if (protect && protect.options.password !== protect.options.confirmPassword) return setError(t("ws.passwordMismatch"));
+    const { runTool } = await import("@/lib/pdf/run");
+    let current = files;
+    let out: Output[] = [];
+    try {
+      for (let i = 0; i < steps.length; i++) {
+        const s = steps[i];
+        setStatus(t("wf.running", { n: i + 1, total: steps.length, tool: t(`tool.${s.tool}.name`) }));
+        out = await runTool(s.tool, current, s.options, undefined, { page: tOr("ws.page", "Page {n}"), pageOf: tOr("ws.processingPage", "Page {n} of {total}"), nOf: tOr("fmt.nOfTotal", "{n} of {total}") });
+        current = out.map((o) => new File([o.blob], o.name, { type: "application/pdf" }));
+      }
+      setOutputs(out);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStatus(null);
+    }
+  };
+
+  if (outputs) {
+    return (
+      <div className="px-4 pt-12">
+        <Results tool={toolById(steps[steps.length - 1].tool)} outputs={outputs} onReset={() => { setOutputs(null); setFiles([]); }} />
+      </div>
+    );
+  }
+
+  const pdfTool = toolById("merge");
+
+  return (
+    <div className="mx-auto max-w-[1100px] px-4 pb-10 pt-12 sm:px-6">
+      <h1 className="text-[2rem] font-bold tracking-[-0.03em]">{t("wf.title")}</h1>
+      <p className="mt-2 max-w-[620px] text-[16px] text-muted">{t("wf.subtitle")}</p>
+
+      <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_340px]">
+        <section className="card p-5 sm:p-6">
+          <h2 className="mb-4 text-[17px] font-semibold">{t("wf.new")}</h2>
+          <input className="field mb-5" placeholder={t("wf.name")} aria-label={t("wf.name")} value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
+
+          <ol className="space-y-2">
+            {steps.map((s, i) => {
+              const tool = toolById(s.tool);
+              return (
+                <li key={i}>
+                  {i > 0 && <ArrowDown size={16} className="mx-auto my-1 text-muted" aria-hidden />}
+                  <details className="rounded-2xl border border-line bg-bg" open={tool.options.length > 0 && i === steps.length - 1}>
+                    <summary className="flex cursor-pointer list-none items-center gap-3 p-3">
+                      <span className="tabular text-[13px] text-muted">{i + 1}</span>
+                      <ToolIcon tool={tool} size={32} />
+                      <span className="flex-1 font-medium">{t(`tool.${tool.id}.name`)}</span>
+                      <button className="icon-btn" aria-label={t("ws.remove")} onClick={(e) => { e.preventDefault(); setSteps((list) => list.filter((_, k) => k !== i)); }}>
+                        <X size={16} />
+                      </button>
+                    </summary>
+                    {tool.options.length > 0 && (
+                      <div className="border-t border-line p-4">
+                        <Options defs={tool.options} values={s.options}
+                          onChange={(k, v) => setSteps((list) => list.map((x, j) => (j === i ? { ...x, options: { ...x.options, [k]: v } } : x)))} />
+                      </div>
+                    )}
+                  </details>
+                </li>
+              );
+            })}
+          </ol>
+
+          <div className="mt-4">
+            <p className="mb-2 text-[13px] font-semibold text-muted">{t("wf.addStep")}</p>
+            <div className="flex flex-wrap gap-2">
+              {CHAINABLE.map((tool) => (
+                <button key={tool.id} className="flex items-center gap-2 rounded-full border border-line bg-surface py-1 ps-1 pe-3 text-[14px] hover:border-line-strong"
+                  disabled={tool.id === "merge" && steps.length > 0} onClick={() => addStep(tool.id)}>
+                  <ToolIcon tool={tool} size={24} /> {t(`tool.${tool.id}.name`)} <Plus size={14} className="text-muted" />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-8 border-t border-line pt-6">
+            {files.length === 0 ? (
+              <Dropzone tool={{ ...pdfTool, multiple: true }} onFiles={(f) => setFiles(f.filter((x) => /\.pdf$/i.test(x.name)))} />
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                {files.map((f) => <span key={f.name + f.size} className="rounded-full bg-surface-2 px-3 py-1 text-[14px]">{f.name}</span>)}
+                <button className="icon-btn" aria-label={t("ws.remove")} onClick={() => setFiles([])}><X size={16} /></button>
+              </div>
+            )}
+          </div>
+
+          {error && <p role="alert" className="mt-4 text-[15px] text-danger">{error}</p>}
+          <div className="mt-6 flex flex-wrap gap-2">
+            <button className="btn btn-primary" disabled={!!status} onClick={runAll}>
+              {status ? <Loader2 size={17} className="animate-spin" /> : <Play size={17} />} {t("wf.run")}
+            </button>
+            <button className="btn btn-quiet" onClick={save}><Save size={17} /> {t("wf.save")}</button>
+          </div>
+          {status && <p className="mt-3 text-[14px] text-muted" aria-live="polite">{status}</p>}
+        </section>
+
+        <aside className="card h-max p-5">
+          <h2 className="mb-3 text-[17px] font-semibold">{t("wf.title")}</h2>
+          {!user && <p className="mb-3 text-[13px] text-muted">{t("wf.savedLocally")}</p>}
+          {saved.length === 0 ? <p className="text-[15px] text-muted">{t("wf.empty")}</p> : (
+            <ul className="space-y-2">
+              {saved.map((w) => (
+                <li key={w.id} className="flex items-center gap-2 rounded-xl border border-line p-2.5">
+                  <button className="min-w-0 flex-1 text-start" onClick={() => { setSteps(w.steps.map((s) => ({ tool: s.tool, options: { ...defaultOptions(toolById(s.tool)), ...s.options } }))); setName(w.name); }}>
+                    <p className="truncate text-[15px] font-medium">{w.name}</p>
+                    <p className="truncate text-[13px] text-muted">{w.steps.map((s) => t(`tool.${s.tool}.name`)).join(" → ")}</p>
+                  </button>
+                  <button className="icon-btn hover:text-danger" aria-label={t("wf.delete")} onClick={() => remove(w.id)}><Trash2 size={16} /></button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </aside>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,139 @@
+"use client";
+
+import { PDFDocument, PDFName } from "pdf-lib";
+import { baseName, bytesOf, canvasToBlob, closePdf, openPdf, pdfBlob, renderPage, type Output, type Progress } from "./common";
+import { runQpdf, QpdfError } from "./qpdf";
+import { pageText, type PageText } from "./text";
+import { addInvisibleText } from "./textlayer";
+import { runsToWords } from "./convert";
+import type { FracRect } from "./edit";
+
+export class WrongPasswordError extends Error {
+  code = "wrong_password";
+}
+
+function randomPassword() {
+  return Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(36).padStart(2, "0")).join("");
+}
+
+export async function protect(
+  file: File,
+  o: { password: string; allowPrint: boolean; allowCopy: boolean; allowModify: boolean },
+): Promise<Output[]> {
+  // A separate random owner password means the permissions can't be lifted with the open password.
+  const owner = randomPassword();
+  const { output } = await runQpdf(await bytesOf(file), (i, out) => [
+    "--encrypt", o.password, owner, "256",
+    `--print=${o.allowPrint ? "full" : "none"}`,
+    `--extract=${o.allowCopy ? "y" : "n"}`,
+    `--modify=${o.allowModify ? "all" : "none"}`,
+    "--",
+    i, out,
+  ]);
+  return [{ name: `${baseName(file.name)}-protected.pdf`, blob: pdfBlob(output) }];
+}
+
+export async function unlock(file: File, o: { password: string }): Promise<Output[]> {
+  // qpdf reports a bad password only on stderr, so check it with pdf.js first.
+  try {
+    await closePdf(await openPdf(await file.arrayBuffer(), o.password));
+  } catch (e) {
+    if ((e as { name?: string }).name === "PasswordException") throw new WrongPasswordError(file.name);
+  }
+  try {
+    const { output } = await runQpdf(await bytesOf(file), (i, out) => [`--password=${o.password}`, "--decrypt", i, out]);
+    return [{ name: `${baseName(file.name)}-unlocked.pdf`, blob: pdfBlob(output) }];
+  } catch (e) {
+    if (e instanceof QpdfError && e.wrongPassword) throw new WrongPasswordError(file.name);
+    throw e;
+  }
+}
+
+// Text matches → boxes in visual fractions, for the redaction editor.
+export function findMatches(pages: PageText[], pattern: RegExp): { page: number; rect: FracRect }[] {
+  const out: { page: number; rect: FracRect }[] = [];
+  pages.forEach((p, pi) => {
+    for (const line of p.lines) {
+      // Match against each run separately so boxes follow real glyph positions.
+      for (const run of line.runs) {
+        const re = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g");
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(run.text))) {
+          if (!m[0]) {
+            re.lastIndex++;
+            continue;
+          }
+          const per = run.w / Math.max(1, run.text.length);
+          const exact = run.xs && run.xs.length === run.text.length + 1;
+          const x = exact ? run.xs![m.index] : run.x + per * m.index;
+          const w = exact ? run.xs![m.index + m[0].length] - x : per * m[0].length;
+          const pad = run.size * 0.12;
+          out.push({
+            page: pi,
+            rect: {
+              x: (x - pad) / p.width,
+              y: (run.y - pad) / p.height,
+              w: (w + pad * 2) / p.width,
+              h: (run.size * 1.2 + pad * 2) / p.height,
+            },
+          });
+        }
+      }
+    }
+  });
+  return out;
+}
+
+const overlaps = (a: FracRect, b: FracRect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+// Pages with marks are re-rendered as images with the boxes burned in; text
+// outside the boxes is restored as an invisible layer so the page stays searchable.
+export async function redact(file: File, marks: { page: number; rect: FracRect }[], o: { redactDpi: string }, progress?: Progress): Promise<Output[]> {
+  const bytes = await bytesOf(file);
+  const src = await PDFDocument.load(bytes, { updateMetadata: false });
+  const view = await openPdf(bytes);
+  const out = await PDFDocument.create();
+  const byPage = new Map<number, FracRect[]>();
+  for (const m of marks) byPage.set(m.page, [...(byPage.get(m.page) ?? []), m.rect]);
+  const scale = Number(o.redactDpi) / 72;
+  for (let i = 0; i < src.getPageCount(); i++) {
+    const boxes = byPage.get(i);
+    if (!boxes?.length) {
+      const [copied] = await out.copyPages(src, [i]);
+      out.addPage(copied);
+    } else {
+      const page = await view.getPage(i + 1);
+      const v = page.getViewport({ scale: 1 });
+      const canvas = await renderPage(page, scale);
+      const ctx = canvas.getContext("2d")!;
+      ctx.fillStyle = "#000";
+      for (const b of boxes) ctx.fillRect(b.x * canvas.width, b.y * canvas.height, b.w * canvas.width, b.h * canvas.height);
+      const jpg = await out.embedJpg(await bytesOf(await canvasToBlob(canvas, "image/jpeg", 0.9)));
+      const p = out.addPage([v.width, v.height]);
+      p.drawImage(jpg, { x: 0, y: 0, width: v.width, height: v.height });
+      const text = await pageText(page);
+      // Word by word, so text beside a redaction stays searchable.
+      const words = text.items.flatMap((r) => {
+        if (!r.xs || r.xs.length !== r.text.length + 1) return [r];
+        const out: typeof text.items = [];
+        for (const m of r.text.matchAll(/\S+/g)) {
+          const x0 = r.xs[m.index], x1 = r.xs[m.index + m[0].length];
+          out.push({ ...r, text: m[0], x: x0, w: x1 - x0, xs: undefined });
+        }
+        return out;
+      });
+      const keep = words.filter((r) => !boxes.some((b) => overlaps(b, { x: r.x / v.width, y: r.y / v.height, w: r.w / v.width, h: r.h / v.height })));
+      addInvisibleText(out, p, runsToWords(keep, v.height));
+      canvas.width = canvas.height = 0;
+      page.cleanup();
+    }
+    progress?.(i + 1, src.getPageCount());
+  }
+  await closePdf(view);
+  // Nothing from the original's metadata survives.
+  out.setProducer("Foliant");
+  out.setCreator("Foliant");
+  out.setTitle(baseName(file.name));
+  out.catalog.delete(PDFName.of("Metadata"));
+  return [{ name: `${baseName(file.name)}-redacted.pdf`, blob: pdfBlob(await out.save({ useObjectStreams: true })) }];
+}

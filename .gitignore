@@ -39,3 +39,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# copied from node_modules on install (scripts/vendor.mjs)
+public/vendor/
+
+# local database and generated session secret
+/data/
+
+# local tooling
+/.claude/

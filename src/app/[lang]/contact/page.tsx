@@ -1,0 +1,20 @@
+import { notFound } from "next/navigation";
+import { ContactForm } from "@/components/ContactForm";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { hasLocale } from "@/lib/i18n/locales";
+import { titleFrom } from "@/lib/i18n/meta";
+
+export const generateMetadata = titleFrom("contact.title");
+
+export default async function Contact({ params }: PageProps<"/[lang]/contact">) {
+  const { lang } = await params;
+  if (!hasLocale(lang)) notFound();
+  const t = await getDictionary(lang);
+  return (
+    <div className="mx-auto max-w-[620px] px-4 pb-10 pt-14">
+      <h1 className="text-[2rem] font-bold tracking-[-0.03em]">{t["contact.title"]}</h1>
+      <p className="mb-8 mt-2 text-[16px] text-muted">{t["contact.body"]}</p>
+      <ContactForm />
+    </div>
+  );
+}
