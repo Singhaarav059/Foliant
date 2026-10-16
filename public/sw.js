@@ -1,11 +1,15 @@
 // Offline support: pages are network-first with a cached fallback; build
-// assets, the PDF worker and qpdf.wasm are cache-first (their URLs are versioned
-// or change only on install). API calls are never cached.
-const CACHE = "foliant-v1";
+// assets and /vendor files are cache-first (both have content-hashed URLs).
+// API calls are never cached. Registered as /sw.js?v=<vendor version>, so a
+// new version installs as a new worker with its own cache, and activating it
+// deletes the old one.
+const VERSION = new URL(location.href).searchParams.get("v") ?? "dev";
+const VENDOR = `/vendor/${VERSION}/`;
+const CACHE = `foliant-${VERSION}`;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(["/vendor/pdf.worker.min.mjs", "/vendor/qpdf.wasm", "/icon.svg"])).then(() => self.skipWaiting()),
+    caches.open(CACHE).then((c) => c.addAll([`${VENDOR}pdf.worker.min.mjs`, `${VENDOR}qpdf.wasm`, "/icon.svg"])).then(() => self.skipWaiting()),
   );
 });
 
@@ -19,6 +23,8 @@ self.addEventListener("fetch", (event) => {
   const req = event.request;
   const url = new URL(req.url);
   if (req.method !== "GET" || url.origin !== location.origin || url.pathname.startsWith("/api/")) return;
+  // OCR language files are large and tesseract.js keeps its own IndexedDB copy.
+  if (url.pathname.startsWith("/vendor/") && url.pathname.includes("/tessdata/")) return;
 
   const assets = url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/vendor/") || url.pathname.endsWith(".svg");
   if (assets) {

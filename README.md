@@ -35,7 +35,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000. `npm install` also copies the PDF.js worker and the qpdf WebAssembly file into `public/vendor`.
+Open http://localhost:3000. `npm install` also copies everything the browser loads at runtime into `public/vendor` (see `scripts/vendor.mjs`): the PDF.js worker and its font and image-decoder data, qpdf, the Tesseract OCR engine with all 26 language files, and Noto fonts for text the tools add to PDFs. The site never loads anything from another domain, and the static build is about 100 MB of that, mostly OCR data.
 
 ## Deploying the static build
 
@@ -71,7 +71,7 @@ For the most faithful Office conversions, install LibreOffice and the fonts your
 ## Privacy notes
 
 - On-device tools never send files anywhere. Server tools (server build only) delete files as soon as the result is returned.
-- OCR downloads its engine and language data from the jsDelivr CDN on first use. Your files are not sent.
+- Everything, including OCR and fonts, is served from your own site. Nothing is loaded from a CDN.
 - No analytics, ads or tracking cookies.
 
 The privacy policy, terms and cookie pages in `src/lib/legal.ts` are drafts. Fill in who runs your site and have them reviewed before going live.

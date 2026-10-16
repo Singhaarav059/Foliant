@@ -6,6 +6,7 @@ import {
 } from "pdf-lib";
 import { baseName, hexToRgb, isWinAnsi, normaliseImage, pageSet, pdfBlob, textToPng, type Output } from "./common";
 import { loadPdf } from "./organize";
+import { fontCovering, layoutText, type LaidOut } from "./fonts";
 
 // ── Visual ↔ user space
 // Users place things on the page as they see it. A page may carry /Rotate and
@@ -43,7 +44,15 @@ async function save(doc: PDFDocument) {
   return pdfBlob(await doc.save({ useObjectStreams: true }));
 }
 
-// ── Text helper: Helvetica when it can encode the text, an image of it otherwise.
+// ── Text helpers. Helvetica when it can encode the text, bundled Noto fonts
+// for other scripts, and an image of the text as a last resort (no bundled
+// glyph, or the fonts couldn't be fetched).
+async function textLine(doc: PDFDocument, font: PDFFont, text: string, size: number, bold = false): Promise<LaidOut | null> {
+  if (isWinAnsi(text)) return { width: font.widthOfTextAtSize(text, size), runs: [{ font, text, x: 0 }] };
+  if (text.includes("\n")) return null;
+  return layoutText(doc, text, size, bold).catch(() => null);
+}
+
 async function drawLabel(
   doc: PDFDocument, page: PDFPage, font: PDFFont, text: string,
   o: { vx: number; vy: number; size: number; color: string; anchor: "left" | "center" | "right"; opacity?: number; angle?: number; bold?: boolean },
@@ -52,14 +61,16 @@ async function drawLabel(
   const f = visualFrame(page);
   const c = hexToRgb(o.color);
   const extra = o.angle ?? 0;
-  if (isWinAnsi(text)) {
-    const width = font.widthOfTextAtSize(text, o.size);
-    const dx = o.anchor === "center" ? -width / 2 : o.anchor === "right" ? -width : 0;
+  const line = await textLine(doc, font, text, o.size, o.bold);
+  if (line) {
+    const dx = o.anchor === "center" ? -line.width / 2 : o.anchor === "right" ? -line.width : 0;
     // Offset along the rotated baseline so rotated labels stay anchored.
     const a = (extra * Math.PI) / 180;
-    const [x, y] = f.map(o.vx + dx * Math.cos(a), o.vy + dx * Math.sin(a));
-    page.drawText(text, { x, y, size: o.size, font, color: rgb(c.r, c.g, c.b), opacity: o.opacity ?? 1, rotate: degrees(f.rot + extra) });
-    return { width, height: o.size };
+    for (const run of line.runs) {
+      const [x, y] = f.map(o.vx + (dx + run.x) * Math.cos(a), o.vy + (dx + run.x) * Math.sin(a));
+      page.drawText(run.text, { x, y, size: o.size, font: run.font, color: rgb(c.r, c.g, c.b), opacity: o.opacity ?? 1, rotate: degrees(f.rot + extra) });
+    }
+    return { width: line.width, height: o.size };
   }
   const img = await textToPng(text, o.size, o.color, `${o.bold ? 700 : 500} {s}px system-ui, sans-serif`);
   const png = await doc.embedPng(img.png);
@@ -149,13 +160,15 @@ export async function watermark(
   const a = (angle * Math.PI) / 180;
 
   let image: Awaited<ReturnType<PDFDocument["embedPng"]>> | null = null;
+  let line: LaidOut | null = null;
   let textImg: { png: Uint8Array; width: number; height: number } | null = null;
   if (o.markType === "image") {
     if (!o.markImage) throw new Error("Choose an image for the watermark");
     const img = await normaliseImage(o.markImage);
     image = img.kind === "png" ? await doc.embedPng(img.bytes) : await doc.embedJpg(img.bytes);
-  } else if (!isWinAnsi(o.markText)) {
-    textImg = await textToPng(o.markText, o.fontSize, o.color, "700 {s}px system-ui, sans-serif");
+  } else {
+    line = await textLine(doc, font, o.markText, o.fontSize, true);
+    if (!line) textImg = await textToPng(o.markText, o.fontSize, o.color, "700 {s}px system-ui, sans-serif");
   }
   const textImage = textImg ? await doc.embedPng(textImg.png) : null;
 
@@ -174,7 +187,7 @@ export async function watermark(
       mw = textImg.width;
       mh = textImg.height;
     } else {
-      mw = font.widthOfTextAtSize(o.markText, o.fontSize);
+      mw = line!.width;
       mh = font.heightAtSize(o.fontSize) * 0.72;
     }
 
@@ -188,7 +201,10 @@ export async function watermark(
       else if (textImage) page.drawImage(textImage, { x, y, width: mw, height: mh, opacity, rotate });
       else {
         const c = hexToRgb(o.color);
-        page.drawText(o.markText, { x, y, size: o.fontSize, font, color: rgb(c.r, c.g, c.b), opacity, rotate });
+        for (const run of line!.runs) {
+          const [rx, ry] = f.map(ox + run.x * Math.cos(a), oy + run.x * Math.sin(a));
+          page.drawText(run.text, { x: rx, y: ry, size: o.fontSize, font: run.font, color: rgb(c.r, c.g, c.b), opacity, rotate });
+        }
       }
     };
 
@@ -413,6 +429,23 @@ export async function fillForm(
     }
   }
   await applyItems(doc, newItems);
+  // Helvetica can only draw Western European text. Give each field that shows
+  // anything else a bundled font that covers all of it.
+  for (const field of form.getFields()) {
+    const shown = field instanceof PDFTextField ? [field.getText() ?? ""]
+      : field instanceof PDFDropdown ? field.getSelected()
+      : field instanceof PDFOptionList ? field.getOptions()
+      : [];
+    const text = shown.join(" ");
+    if (isWinAnsi(text) || !field.needsAppearancesUpdate()) continue;
+    const covering = await fontCovering(doc, text).catch(() => null);
+    if (!covering) continue;
+    try {
+      (field as PDFTextField | PDFDropdown | PDFOptionList).updateAppearances(covering);
+    } catch {
+      // Left dirty; handled by the fallback below.
+    }
+  }
   try {
     form.updateFieldAppearances(font);
   } catch {

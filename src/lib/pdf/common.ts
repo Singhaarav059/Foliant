@@ -1,6 +1,7 @@
 "use client";
 
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
+import { VENDOR } from "../vendor";
 
 // `print`: the blob is HTML to save through the browser's print dialog (static build).
 export type Output = { name: string; blob: Blob; note?: string; print?: boolean };
@@ -11,7 +12,7 @@ let pdfjsPromise: Promise<typeof import("pdfjs-dist")> | null = null;
 export function pdfjs() {
   pdfjsPromise ??= import("pdfjs-dist").then((lib) => {
     // Copied to /vendor by scripts/vendor.mjs so the worker version always matches.
-    lib.GlobalWorkerOptions.workerSrc = "/vendor/pdf.worker.min.mjs";
+    lib.GlobalWorkerOptions.workerSrc = `${VENDOR}pdf.worker.min.mjs`;
     return lib;
   });
   return pdfjsPromise;
@@ -21,7 +22,15 @@ export async function openPdf(data: ArrayBuffer | Uint8Array, password?: string)
   const lib = await pdfjs();
   // pdf.js transfers the buffer to its worker, so hand it a copy.
   const bytes = data instanceof Uint8Array ? data.slice() : new Uint8Array(data.slice(0));
-  return lib.getDocument({ data: bytes, password }).promise;
+  return lib.getDocument({
+    data: bytes,
+    password,
+    // Copied by scripts/vendor.mjs.
+    cMapUrl: `${VENDOR}pdfjs/cmaps/`,
+    standardFontDataUrl: `${VENDOR}pdfjs/standard_fonts/`,
+    wasmUrl: `${VENDOR}pdfjs/wasm/`,
+    iccUrl: `${VENDOR}pdfjs/iccs/`,
+  }).promise;
 }
 
 // Frees the worker-side copy of a document.

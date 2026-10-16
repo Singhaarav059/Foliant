@@ -2,6 +2,7 @@
 
 // qpdf compiled to WebAssembly. A fresh module per run: Emscripten's main()
 // tears the runtime down on exit, so instances aren't reusable.
+import { VENDOR } from "../vendor";
 
 type QpdfModule = {
   FS: { writeFile(p: string, d: Uint8Array): void; readFile(p: string): Uint8Array; unlink(p: string): void };
@@ -14,7 +15,7 @@ export async function runQpdf(input: Uint8Array, args: (inPath: string, outPath:
   ) => Promise<QpdfModule>;
   const errors: string[] = [];
   const qpdf = await createModule({
-    locateFile: () => "/vendor/qpdf.wasm",
+    locateFile: () => `${VENDOR}qpdf.wasm`,
     noInitialRun: true,
     print: () => {},
     printErr: (line: string) => errors.push(line),

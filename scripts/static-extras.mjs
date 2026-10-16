@@ -15,6 +15,8 @@ const rules = [
   ["/*", security.map((h) => `${h.key}: ${h.value}`)],
   ["/sw.js", ["Cache-Control: no-cache"]],
   ["/_next/static/*", ["Cache-Control: public, max-age=31536000, immutable"]],
+  // Content-hashed by scripts/vendor.mjs.
+  ["/vendor/*", ["Cache-Control: public, max-age=31536000, immutable"]],
 ];
 writeFileSync(join(out, "_headers"), rules.map(([path, lines]) => [path, ...lines.map((l) => `  ${l}`)].join("\n")).join("\n\n") + "\n");
 copyFileSync(join(out, "index.html"), join(out, "404.html"));

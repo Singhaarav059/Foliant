@@ -42,6 +42,7 @@ next-env.d.ts
 
 # copied from node_modules on install (scripts/vendor.mjs)
 public/vendor/
+src/lib/vendor.ts
 
 # local database and generated session secret
 /data/

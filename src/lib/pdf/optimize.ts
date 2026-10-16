@@ -4,6 +4,7 @@ import { PDFDocument, PDFName, PDFRawStream, PDFNumber, PDFRef, PDFArray, PDFDic
 import { baseName, bytesOf, canvasToBlob, closePdf, openPdf, pdfBlob, renderPage, type Output, type Progress } from "./common";
 import { loadPdf } from "./organize";
 import { runQpdf } from "./qpdf";
+import { VENDOR, VENDOR_VERSION } from "../vendor";
 import { addInvisibleText, viewportBoxToWord, type Word } from "./textlayer";
 
 // ── Compress: re-encode images at a sensible resolution and quality, pack objects.
@@ -183,7 +184,19 @@ export async function ocr(file: File, o: { ocrLang: string; dpi: string }, progr
   const src = await openPdf(bytes);
   const doc = await PDFDocument.load(bytes, { updateMetadata: false });
   const pages = doc.getPages();
-  const worker = await createWorker(o.ocrLang);
+  // Engine and language data are served from /vendor (scripts/vendor.mjs),
+  // never from the tesseract.js CDN defaults. Absolute URLs: the worker
+  // resolves them against its own script URL.
+  const vendor = new URL(VENDOR, location.origin).href;
+  const worker = await createWorker(o.ocrLang, undefined, {
+    workerPath: `${vendor}tesseract/worker.min.js`,
+    workerBlobURL: false,
+    corePath: `${vendor}tesseract/`,
+    langPath: `${vendor}tessdata`,
+    // tesseract.js caches language data in IndexedDB by this path; a new
+    // vendor version mustn't reuse data cached for an old one.
+    cachePath: `tessdata-${VENDOR_VERSION}`,
+  });
   const scale = Number(o.dpi) / 72;
   let recognised = 0;
   try {

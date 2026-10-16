@@ -38,6 +38,13 @@ for (const name of engines) {
     continue;
   }
   const ctx = await browser.newContext({ acceptDownloads: true, locale: "en-US", viewport: { width: 1280, height: 900 } });
+  // Everything the site needs is served from its own origin. Block and record
+  // anything else, so a tool that still reaches for a CDN fails its test.
+  const foreign = new Set();
+  await ctx.route((url) => url.origin !== new URL(base).origin && !url.protocol.startsWith("blob") && !url.protocol.startsWith("data"), (route) => {
+    foreign.add(new URL(route.request().url()).host);
+    return route.abort();
+  });
   const page = await ctx.newPage();
 
   const test = async (label, fn) => {
@@ -152,7 +159,6 @@ for (const name of engines) {
     return "decrypted";
   });
 
-  // Downloads the OCR engine and English data from jsDelivr on first use.
   await test("OCR", async () => {
     await open("/en/ocr-pdf");
     await pick(["scanned.pdf"]);
@@ -163,6 +169,35 @@ for (const name of engines) {
     if (!/invoice 4471/i.test(text)) throw new Error(`text was "${text.slice(0, 60)}"`);
     return `"${text.trim().slice(0, 40)}"`;
   });
+
+  await test("every OCR language is bundled", async () => {
+    const langs = readFileSync(join(fixtures, "../../src/lib/tools.ts"), "utf8").match(/OCR_LANGS = \[([^\]]+)\]/)[1].match(/[a-z_]+/g);
+    const vendor = readFileSync(join(fixtures, "../../src/lib/vendor.ts"), "utf8").match(/VENDOR = "([^"]+)"/)[1];
+    const missing = await page.evaluate(async ([ls, vendor]) => {
+      const res = await Promise.all(ls.map((l) => fetch(`${vendor}tessdata/${l}.traineddata.gz`, { method: "HEAD" }).then((r) => (r.ok ? null : l))));
+      return res.filter(Boolean);
+    }, [langs, vendor]);
+    if (missing.length) throw new Error(`missing: ${missing.join(", ")}`);
+    return `${langs.length} languages`;
+  });
+
+  // Non-Latin watermarks are embedded as real, extractable text in bundled fonts.
+  for (const [lang, mark] of [["Hindi", "गोपनीय"], ["Chinese", "机密文件"], ["Japanese", "社外秘です"], ["Russian", "Секретно"], ["Thai", "ความลับ"], ["Arabic", "سري"]]) {
+    await test(`${lang} watermark is text`, async () => {
+      await open("/en/add-watermark");
+      await pick(["report.pdf"]);
+      await page.getByLabel("Text", { exact: true }).fill(mark);
+      const path = await run("Add watermark");
+      const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+      const doc = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(path)) }).promise;
+      const text = (await (await doc.getPage(1)).getTextContent()).items.map((x) => x.str).join("");
+      const chars = [...mark].filter((c) => /\p{L}/u.test(c));
+      // Arabic is stored in its joined presentation forms, so only count letters.
+      const found = lang === "Arabic" ? /[\u0600-\u06ff\ufe70-\ufeff]/.test(text) : chars.every((c) => text.includes(c));
+      if (!found) throw new Error(`text layer was "${text.slice(-40)}"`);
+      return "selectable text";
+    });
+  }
 
   await test("rotate shows page thumbnails", async () => {
     await open("/en/rotate-pdf");
@@ -202,12 +237,16 @@ for (const name of engines) {
 
   await test("offline service worker", async () => {
     await open("/en");
-    const state = await page.evaluate(async () => {
+    const vendor = readFileSync(join(fixtures, "../../src/lib/vendor.ts"), "utf8").match(/VENDOR_VERSION = "([^"]+)"/)[1];
+    const { state, script, cachesNow } = await page.evaluate(async () => {
       const reg = await Promise.race([navigator.serviceWorker.ready, new Promise((r) => setTimeout(() => r(null), 10000))]);
-      return reg?.active?.state ?? "not ready";
+      return { state: reg?.active?.state ?? "not ready", script: reg?.active?.scriptURL ?? "", cachesNow: await caches.keys() };
     });
     if (state !== "activated") throw new Error(state);
-    return state;
+    // A new vendor version must mean a new worker and cache, or new pages
+    // could run against an old pdf.js worker or qpdf.wasm.
+    if (!script.endsWith(`?v=${vendor}`) || cachesNow.join() !== `foliant-${vendor}`) throw new Error(`${script} ${cachesNow.join()}`);
+    return `activated, cache foliant-${vendor}`;
   });
 
   // Firefox has no mobile emulation.
@@ -239,6 +278,11 @@ for (const name of engines) {
     await p.waitForTimeout(4000);
     await c.close();
     if (errors.length) throw new Error(errors.join(" ; "));
+    return "none";
+  });
+
+  await test("no third-party requests", async () => {
+    if (foreign.size) throw new Error([...foreign].join(", "));
     return "none";
   });
 

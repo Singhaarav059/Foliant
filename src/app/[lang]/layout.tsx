@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
-import { Geist, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "../globals.css";
 import { I18nProvider } from "@/components/I18n";
 import { UserProvider } from "@/components/User";
@@ -11,8 +11,9 @@ import { getDictionary } from "@/lib/i18n/dictionary";
 import { hasLocale, isRtl, LOCALE_CODES } from "@/lib/i18n/locales";
 import { BRAND } from "@/lib/brand";
 
-const sans = Geist({ variable: "--font-geist-sans", subsets: ["latin", "latin-ext", "cyrillic"] });
-const mono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+// Committed in src/app/fonts, so builds never reach out to a font CDN.
+const sans = localFont({ src: "../fonts/Geist-Variable.woff2", variable: "--font-geist-sans", weight: "100 900" });
+const mono = localFont({ src: "../fonts/GeistMono-Variable.woff2", variable: "--font-geist-mono", weight: "100 900" });
 
 export function generateStaticParams() {
   return LOCALE_CODES.map((lang) => ({ lang }));
