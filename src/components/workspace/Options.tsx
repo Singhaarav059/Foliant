@@ -68,7 +68,7 @@ export function Options({
                 <select id={id} className="field" value={String(value)} onChange={(e) => onChange(d.key, e.target.value)}>
                   {d.choices.map((c) => (
                     <option key={c} value={c}>
-                      {d.key === "ocrLang" ? OCR_NAMES[c] ?? c : d.key === "rotation" ? `${c}°` : tOr(`choice.${d.key}.${c}`, c)}
+                      {d.key === "ocrLang" ? OCR_NAMES[c] ?? c : d.key === "rotation" || d.key === "angle" ? `${c}°` : tOr(`choice.${d.key}.${c}`, c)}
                     </option>
                   ))}
                 </select>

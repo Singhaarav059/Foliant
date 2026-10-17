@@ -17,9 +17,9 @@ export type PageItem = { key: string; file: number; page: number; rotate: number
 const FILE_TINTS = ["#cf4a24", "#3d6b8f", "#5a8a5c", "#b08a2e", "#7a5c8f", "#3f8a86", "#8f5a4a"];
 
 function PageCard({
-  item, files, index, mode, selected, onToggle, onRotate, onDelete, onDuplicate, onBlank, multiFile,
+  item, files, index, mode, turn, selected, onToggle, onRotate, onDelete, onDuplicate, onBlank, multiFile,
 }: {
-  item: PageItem; files: File[]; index: number; mode: ToolId; selected: boolean; multiFile: boolean;
+  item: PageItem; files: File[]; index: number; mode: ToolId; turn: number; selected: boolean; multiFile: boolean;
   onToggle: () => void; onRotate: (d: number) => void; onDelete: () => void; onDuplicate: () => void; onBlank: () => void;
 }) {
   const { t } = useI18n();
@@ -28,13 +28,15 @@ function PageCard({
   const selectable = mode === "extract" || mode === "remove";
   const marked = selectable && selected;
   const tint = FILE_TINTS[item.file % FILE_TINTS.length];
+  const rotate = (item.rotate + turn) % 360;
+  // Only a draggable card is a button: dnd-kit's aria-disabled would otherwise disable the arrows inside it.
+  const drag = sortable ? { ...attributes, ...listeners } : {};
   return (
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 10 : undefined }}
       className={`group relative flex flex-col items-center rounded-xl p-2 ${sortable ? "cursor-grab touch-none active:cursor-grabbing" : ""}`}
-      {...attributes}
-      {...listeners}
+      {...drag}
     >
       <button
         type="button"
@@ -45,9 +47,9 @@ function PageCard({
         className={`relative grid h-[180px] w-[136px] place-items-center rounded-lg transition-[box-shadow] ${selectable ? "cursor-pointer" : "cursor-[inherit]"} ${marked ? (mode === "remove" ? "shadow-[0_0_0_3px_var(--danger)]" : "shadow-[0_0_0_3px_var(--accent)]") : "hover:shadow-[0_0_0_2px_var(--line-strong)]"} ${isDragging ? "shadow-card" : ""}`}
       >
         {item.blank ? (
-          <div className="h-[170px] w-[120px] bg-white shadow-[0_0_0_1px_var(--line)]" style={{ transform: `rotate(${item.rotate}deg)` }} />
+          <div className="h-[170px] w-[120px] bg-white shadow-[0_0_0_1px_var(--line)]" style={{ transform: `rotate(${rotate}deg)` }} />
         ) : (
-          <PdfThumb file={files[item.file]} page={item.page} width={120} rotate={item.rotate} />
+          <PdfThumb file={files[item.file]} page={item.page} width={120} rotate={rotate} />
         )}
         {marked && mode === "remove" && <span className="absolute inset-0 rounded-lg bg-[color-mix(in_oklab,var(--danger)_18%,transparent)]" />}
         {marked && (
@@ -80,10 +82,11 @@ function PageCard({
   );
 }
 
+// `turn` is added to every page on top of its own rotation (Rotate's "Rotate all by").
 export function PageBoard({
-  mode, files, pages, setPages, selected, setSelected, toolbar,
+  mode, files, pages, setPages, selected, setSelected, toolbar, turn = 0,
 }: {
-  mode: ToolId; files: File[]; pages: PageItem[]; setPages: React.Dispatch<React.SetStateAction<PageItem[]>>;
+  mode: ToolId; files: File[]; pages: PageItem[]; setPages: React.Dispatch<React.SetStateAction<PageItem[]>>; turn?: number;
   selected: Set<string>; setSelected: React.Dispatch<React.SetStateAction<Set<string>>>; toolbar?: React.ReactNode;
 }) {
   const { t } = useI18n();
@@ -154,6 +157,7 @@ export function PageBoard({
                 index={i}
                 files={files}
                 mode={mode}
+                turn={turn}
                 multiFile={files.length > 1}
                 selected={selected.has(p.key)}
                 onToggle={() =>

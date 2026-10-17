@@ -17,6 +17,7 @@
     "i18n:check": "node scripts/i18n-check.mjs",
     "serve:static": "node scripts/serve-static.mjs out 3202",
     "test:e2e": "node tests/e2e.mjs",
+    "test:e2e:rotate": "node tests/e2e/rotate.mjs",
     "test:tables": "node tests/tables.mjs",
     "test:layout": "node tests/layout.mjs",
     "test:compress": "node tests/compress.mjs",

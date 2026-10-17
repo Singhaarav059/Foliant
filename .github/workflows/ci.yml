@@ -54,6 +54,9 @@ jobs:
           echo "Server did not start" && exit 1
       - name: Run tests
         run: npm run test:e2e -- ${{ matrix.browser }}
+      - name: Rotate
+        if: success() || failure()
+        run: npm run test:e2e:rotate -- ${{ matrix.browser }}
 
   pdf:
     name: PDF engine tests
