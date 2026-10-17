@@ -56,10 +56,15 @@ for (const name of engines) {
     }
     results.at(-1).ms = Date.now() - t0;
   };
-  // Pages are static HTML; wait until React has hydrated before using them.
+  // Pages are static HTML; wait until React has hydrated before using them,
+  // including the file input: a file set before React listens is lost.
   const open = async (path) => {
     await page.goto(base + path, { waitUntil: "load" });
-    await page.waitForFunction(() => [...document.querySelectorAll("button")].some((b) => Object.keys(b).some((k) => k.startsWith("__reactProps"))), null, { timeout: 20000 });
+    await page.waitForFunction(() => {
+      const live = (el) => Object.keys(el).some((k) => k.startsWith("__reactProps"));
+      const input = document.querySelector("input[type=file]");
+      return (!input || live(input)) && [...document.querySelectorAll("button")].some(live);
+    }, null, { timeout: 20000 });
   };
   const pick = (files) => page.locator("input[type=file]").first().setInputFiles(files.map((f) => (f.startsWith("/") ? f : join(fixtures, f))));
   const save = async (dl) => {
