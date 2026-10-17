@@ -14,9 +14,12 @@ export const pdfiumWasm = {
 
 let loading: Promise<Pdfium> | null = null;
 
+// The glue code; also loaded ahead of use by src/lib/offline.ts.
+export const preparePdfium = () => import("@embedpdf/pdfium");
+
 export function pdfium() {
   loading ??= (async () => {
-    const { init } = await import("@embedpdf/pdfium");
+    const { init } = await preparePdfium();
     const m = await init({ wasmBinary: await pdfiumWasm.load() });
     m.PDFiumExt_Init();
     return m;

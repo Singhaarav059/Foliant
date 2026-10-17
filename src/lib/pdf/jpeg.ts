@@ -13,16 +13,21 @@ export const wasm = {
 let encoder: Promise<typeof import("@jsquash/jpeg/encode.js").default> | null = null;
 let decoder: Promise<typeof import("@jsquash/jpeg/decode.js").default> | null = null;
 
+// One place each glue module is imported from, so warming it up (see
+// prepareJpeg) loads the same chunks a real run does.
+const encodeModule = () => import("@jsquash/jpeg/encode.js");
+const decodeModule = () => import("@jsquash/jpeg/decode.js");
+
 const getEncoder = () =>
   (encoder ??= (async () => {
-    const mod = await import("@jsquash/jpeg/encode.js");
+    const mod = await encodeModule();
     await mod.init(await wasm.load("mozjpeg_enc.wasm"));
     return mod.default;
   })());
 
 const getDecoder = () =>
   (decoder ??= (async () => {
-    const mod = await import("@jsquash/jpeg/decode.js");
+    const mod = await decodeModule();
     await mod.init(await wasm.load("mozjpeg_dec.wasm"));
     return mod.default;
   })());
@@ -61,3 +66,6 @@ export function jpegComponents(b: Uint8Array): number {
   }
   return 0;
 }
+
+// Loads the encoder and decoder code without starting them (src/lib/offline.ts).
+export const prepareJpeg = () => Promise.all([encodeModule(), decodeModule()]);

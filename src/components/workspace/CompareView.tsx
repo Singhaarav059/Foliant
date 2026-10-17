@@ -6,6 +6,9 @@ import { useI18n } from "../I18n";
 import { PdfThumb } from "../PdfThumb";
 import type { PageDiff } from "@/lib/pdf/compare";
 
+// Loads the comparison code ahead of use (src/lib/offline.ts).
+export const prepareCompare = () => import("@/lib/pdf/compare");
+
 export function CompareView({ a, b }: { a: File; b: File }) {
   const { t } = useI18n();
   const [view, setView] = useState<"text" | "visual" | "side">("text");

@@ -2,11 +2,11 @@
 
 import { PDFDocument, PDFName, PDFRawStream, PDFNumber, PDFRef, PDFArray, PDFDict, PDFHexString, decodePDFRawStream, type PDFObject } from "pdf-lib";
 import { zlibSync } from "fflate";
-import { baseName, bytesOf, canvasToBlob, closePdf, openPdf, pdfBlob, renderPage, type Output, type Progress } from "./common";
+import { baseName, bytesOf, canvasToBlob, closePdf, openPdf, pdfBlob, pdfjs, renderPage, type Output, type Progress } from "./common";
 import { loadPdf } from "./organize";
-import { runQpdf } from "./qpdf";
+import { prepareQpdf, runQpdf } from "./qpdf";
 import { PdfError } from "./errors";
-import { decodeJpeg, encodeJpeg, jpegComponents } from "./jpeg";
+import { decodeJpeg, encodeJpeg, jpegComponents, prepareJpeg } from "./jpeg";
 import { asGray, palette, predictPng, resample, unpredictPng, type Pixels } from "./pixels";
 import { placements } from "./placements";
 
@@ -264,3 +264,6 @@ export async function repair(file: File): Promise<Output[]> {
 
 // ── OCR (in ./ocr.ts)
 export { ocr } from "./ocr";
+
+// Loads the code compress and repair load as they run (src/lib/offline.ts).
+export const prepare = () => Promise.all([pdfjs(), prepareJpeg(), prepareQpdf()]);

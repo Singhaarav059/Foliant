@@ -157,6 +157,43 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
   }
 }
 
+// Loads the code runTool(id) loads, without running anything, for
+// src/lib/offline.ts. The imports are written here, like runTool's, so they
+// fetch the same chunks a real run does. OCR and Office conversion fetch
+// tens of megabytes on first use and are left to that first use.
+export async function prepare(id: ToolId): Promise<unknown> {
+  switch (id) {
+    case "merge":
+    case "split":
+    case "rotate":
+      return import("./organize");
+    case "compress":
+    case "repair":
+      return (await import("./optimize")).prepare();
+    case "jpgToPdf":
+    case "scan":
+      return import("./convert");
+    case "pdfToJpg":
+    case "pdfToMarkdown":
+    case "pdfToPdfa":
+      return (await import("./convert")).prepare("pdf");
+    case "pdfToWord":
+      return (await import("./convert")).prepare("word");
+    case "pdfToExcel":
+      return (await import("./convert")).prepare("excel");
+    case "pdfToPpt":
+      return (await import("./convert")).prepare("ppt");
+    case "pageNumbers":
+    case "watermark":
+      return import("./edit");
+    case "protect":
+    case "unlock":
+      return (await import("./security")).prepare();
+    default:
+      return null;
+  }
+}
+
 function hostName(url: string) {
   try {
     return new URL(url).hostname.replace(/^www\./, "");

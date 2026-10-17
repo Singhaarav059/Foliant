@@ -2,7 +2,7 @@
 
 import { PDFDict, PDFDocument, PDFName, PDFRawStream, PDFNumber, PDFHexString, PDFString, decodePDFRawStream } from "pdf-lib";
 import {
-  baseName, bytesOf, canvasToBlob, normaliseImage, closePdf, openPdf, pdfBlob, renderPage, loadImage,
+  baseName, bytesOf, canvasToBlob, normaliseImage, closePdf, openPdf, pdfBlob, pdfjs, renderPage, loadImage,
   type Output, type Progress,
 } from "./common";
 import { pageText, blocks, bodySizeOf, spans, dropChars, type Line, type Run, type Span } from "./text";
@@ -13,6 +13,7 @@ import { srgbProfile } from "./icc";
 import { withoutText } from "./strip";
 import { loadPdf } from "./organize";
 import { PdfError } from "./errors";
+import { prepareDocx } from "./word";
 
 const SIZES = { a4: [595.28, 841.89], letter: [612, 792] } as const;
 const MARGINS = { none: 0, small: 20, large: 50 } as const;
@@ -555,3 +556,11 @@ function makePdfA(doc: PDFDocument, title: string) {
   ctx.trailerInfo.ID = ctx.obj([PDFHexString.of(id), PDFHexString.of(id)]);
 }
 
+
+// Loads the code a conversion loads as it runs (src/lib/offline.ts).
+export function prepare(kind: "word" | "excel" | "ppt" | "pdf") {
+  return Promise.all([
+    pdfjs(),
+    kind === "word" ? prepareDocx() : kind === "excel" ? import("exceljs") : kind === "ppt" ? import("pptxgenjs") : null,
+  ]);
+}

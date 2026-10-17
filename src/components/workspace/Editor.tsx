@@ -39,6 +39,10 @@ function useHistory<T>(initial: T) {
   return { value: stack.now, set, undo, redo, canUndo: stack.past.length > 0, canRedo: stack.future.length > 0 };
 }
 
+// Loads what saving loads, ahead of use (src/lib/offline.ts).
+export const prepareEditor = (toolId: ToolId) =>
+  Promise.all([import("@/lib/pdf/edit"), toolId === "redact" ? import("@/lib/pdf/security").then((s) => s.prepare()) : null]);
+
 export function Editor({
   toolId, file, options, actionLabel, onRun, onError,
 }: {

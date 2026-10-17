@@ -301,3 +301,6 @@ async function editable(docx: Docx, pdf: PDFDocumentProxy, progress?: Progress) 
     return out;
   }
 }
+
+// Loads the Word writer ahead of use (src/lib/offline.ts).
+export const prepareDocx = () => import("docx");

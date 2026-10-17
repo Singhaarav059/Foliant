@@ -13,8 +13,11 @@ type QpdfModule = {
 // Tests point this at the file on disk.
 export const qpdfWasm = { url: () => `${VENDOR}qpdf.wasm` };
 
+// The Emscripten glue; also loaded ahead of use by src/lib/offline.ts.
+export const prepareQpdf = () => import("@neslinesli93/qpdf-wasm");
+
 export async function runQpdf(input: Uint8Array, args: (inPath: string, outPath: string) => string[]) {
-  const createModule = (await import("@neslinesli93/qpdf-wasm")).default as unknown as (
+  const createModule = (await prepareQpdf()).default as unknown as (
     o: Record<string, unknown>,
   ) => Promise<QpdfModule>;
   // This build ignores the print/printErr options: its output functions are

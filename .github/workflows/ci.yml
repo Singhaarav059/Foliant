@@ -60,6 +60,9 @@ jobs:
       - name: File intake
         if: success() || failure()
         run: npm run test:e2e:intake -- ${{ matrix.browser }}
+      - name: Offline
+        if: success() || failure()
+        run: npm run test:e2e:offline -- ${{ matrix.browser }}
 
   pdf:
     name: PDF engine tests

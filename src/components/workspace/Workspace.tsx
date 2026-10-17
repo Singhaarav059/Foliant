@@ -8,9 +8,9 @@ import { Dropzone, useFileIntake } from "./Dropzone";
 import { FileBoard, type Item } from "./FileBoard";
 import { Options } from "./Options";
 import { PageBoard, type PageItem } from "./PageBoard";
-import { Editor } from "./Editor";
+import { Editor, prepareEditor } from "./Editor";
 import { Scanner } from "./Scanner";
-import { CompareView } from "./CompareView";
+import { CompareView, prepareCompare } from "./CompareView";
 import { ErrorBox, useProblem, type Problem } from "./ErrorBox";
 import { Results } from "./Results";
 import { PrintResults } from "./PrintResults";
@@ -77,6 +77,18 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   }, [items, t, tool]);
 
   useEffect(() => clearHandoff(), []);
+
+  // Once the page has settled, load what this tool runs on, so it also works
+  // offline. The imports match the ones each stage makes when it runs.
+  useEffect(() => {
+    const code =
+      tool.mode === "pages" ? () => import("@/lib/pdf/organize")
+      : tool.mode === "editor" ? () => prepareEditor(tool.id)
+      : tool.mode === "compare" ? prepareCompare
+      : () => import("@/lib/pdf/run").then((m) => m.prepare(tool.id));
+    const timer = setTimeout(() => void import("@/lib/offline").then((m) => m.warm(tool.id, code)).catch(() => {}), 1500);
+    return () => clearTimeout(timer);
+  }, [tool.id, tool.mode]);
 
   // A file that can't be opened leaves the list, and the reason is shown.
   const drop = useCallback(async (id: string, file: File, e: unknown) => {

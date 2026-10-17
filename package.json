@@ -28,7 +28,8 @@
     "test:libreoffice": "node tests/libreoffice.mjs",
     "test:errors": "node tests/errors.mjs",
     "test:e2e:errors": "node tests/e2e/errors.mjs",
-    "test:e2e:intake": "node tests/e2e/intake.mjs"
+    "test:e2e:intake": "node tests/e2e/intake.mjs",
+    "test:e2e:offline": "node tests/e2e/offline.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
