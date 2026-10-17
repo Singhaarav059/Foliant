@@ -47,11 +47,15 @@ npm run build:static
 
 This writes the site to `out/`, including a `_headers` file for security and caching headers, `sitemap.xml`, `robots.txt` and a social card per tool in `out/og/`.
 
-Before going live, set the site's address when building (in the host's build settings, or in `.env.production.local`). Canonical links, language alternates, the sitemap and social cards use it:
+Before going live, set where the site lives and who runs it when building (in the host's build settings, or in `.env.production.local`):
 
 | Variable | What it is |
 |---|---|
-| `NEXT_PUBLIC_SITE_URL` | The public address, for example `https://pdf.example.com`, with no path. |
+| `NEXT_PUBLIC_SITE_URL` | The public address, for example `https://pdf.example.com`, with no path. Canonical links, language alternates, the sitemap and social cards use it. |
+| `NEXT_PUBLIC_OPERATOR_NAME` | Who runs the site, a person or a company, as the privacy policy and terms name them. |
+| `NEXT_PUBLIC_OPERATOR_COUNTRY` | Where the operator is based. Its law governs the terms. |
+| `NEXT_PUBLIC_OPERATOR_CONTACT` | An email address or an `https://` page. The privacy policy, terms, About page and footer link to it. |
+| `NEXT_PUBLIC_REPO_URL` | Optional. The source code, for the "Source code" and "Report a problem" (GitHub issues) links. Defaults to `repository` in `package.json`. |
 
 Until it is set, pages use the placeholder in `src/lib/brand.ts`. Build with `FOLIANT_RELEASE=1` for the real deployment: the build then stops if any of these settings is missing, so placeholders can't go live. Other builds, CI's included, don't check.
 
@@ -60,8 +64,6 @@ The PNG and ICO icons in `public/` are drawn from `public/icon.svg` and `public/
 **Cloudflare Pages:** build command `npm run build:static`, output directory `out`. Missing pages get the right language's 404 page.
 
 **GitHub Pages and other static hosts:** upload `out/`. The site must be served from the root of a domain (for example `username.github.io` or a custom domain), not from a sub-path.
-
-Set `NEXT_PUBLIC_REPO_URL` (for example `https://github.com/you/foliant`) when building to add "Source code" and "Contact" (GitHub issues) links to the footer.
 
 ## Running the server build
 
@@ -86,7 +88,7 @@ For the most faithful Office conversions, install LibreOffice and the fonts your
 - Everything, including OCR and fonts, is served from your own site. Nothing is loaded from a CDN.
 - No analytics, ads or tracking cookies.
 
-The privacy policy, terms and cookie pages in `src/lib/legal.ts` are drafts. Fill in who runs your site and have them reviewed before going live.
+The privacy policy, terms and cookie pages in `src/lib/legal.ts` are drafts. They name the operator from the settings above; have them reviewed before going live.
 
 ## Project layout
 
@@ -136,4 +138,4 @@ GitHub Actions (`.github/workflows/ci.yml`) runs all of this on every push to `m
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE). The libraries Foliant uses keep their own licences.
+MIT. See [LICENSE](LICENSE). The libraries Foliant uses keep their own licences: `scripts/vendor.mjs` collects their licence texts into `public/vendor/<hash>/licenses/`, and the site lists them at `/{lang}/licenses`, including where to get LibreOffice's source code (MPL-2.0).

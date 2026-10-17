@@ -1,0 +1,37 @@
+# Where the site's "Report a problem" links lead (src/app/[lang]/[slug]/page.tsx,
+# src/components/Footer.tsx). Field ids can be prefilled from a link, for
+# example ?template=bug.yml&tool=merge&browser=Firefox+131.
+name: Report a problem
+description: A tool fails, gives a wrong result, or the site doesn't work as described.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Issues are public, so please don't attach confidential documents. If the problem only happens with a private file, describe the file instead: how many pages, what made it, what's in it.
+  - type: input
+    id: tool
+    attributes:
+      label: Tool
+      description: Which tool, or the address of the page.
+      placeholder: Merge PDF
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      placeholder: Chrome 131 on Windows 11
+  - type: textarea
+    id: error
+    attributes:
+      label: Error message
+      description: The message the page showed, if any.
+      render: text

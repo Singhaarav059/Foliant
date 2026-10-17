@@ -30,6 +30,8 @@ jobs:
         run: npm run build:static
       - name: Search and sharing (sitemap, canonical, hreflang, cards, icons)
         run: npm run test:seo
+      - name: Licences, operator and contact
+        run: npm run test:legal
 
   e2e:
     name: End-to-end (${{ matrix.browser }})

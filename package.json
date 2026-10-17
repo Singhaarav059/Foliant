@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Singhaarav059/Foliant.git"
+  },
   "engines": {
     "node": ">=22.13"
   },
@@ -26,7 +30,8 @@
     "test:pdfa": "node tests/pdfa.mjs",
     "test:ocr-accuracy": "node tests/ocr-accuracy.mjs",
     "test:libreoffice": "node tests/libreoffice.mjs",
-    "test:seo": "node tests/seo.mjs"
+    "test:seo": "node tests/seo.mjs",
+    "test:legal": "node tests/legal.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

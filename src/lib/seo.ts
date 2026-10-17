@@ -6,7 +6,7 @@ import { DEFAULT_LOCALE, LOCALE_CODES, type Locale } from "./i18n/locales";
 import { TOOLS } from "./tools";
 
 // Pages under /{lang}/{slug} that aren't tools.
-export const INFO = ["features", "faq", "security", "about", "guide", "privacy", "terms", "cookies"] as const;
+export const INFO = ["features", "faq", "security", "about", "guide", "privacy", "terms", "cookies", "licenses"] as const;
 export type Info = (typeof INFO)[number];
 
 // Every page, as the path after /{lang}. Each exists in every language.
