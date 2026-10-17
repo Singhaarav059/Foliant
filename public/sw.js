@@ -19,6 +19,17 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// Cross-origin isolation (needed for LibreOffice's threads) on hosts that
+// can't send headers, such as GitHub Pages: every response this worker hands
+// back carries them. Hosts that read _headers already send the same values.
+const ISOLATION = { "Cross-Origin-Opener-Policy": "same-origin", "Cross-Origin-Embedder-Policy": "require-corp" };
+function isolated(res) {
+  if (!res || res.status === 0 || res.type === "opaque" || res.headers.get("Cross-Origin-Embedder-Policy")) return res;
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries(ISOLATION)) headers.set(k, v);
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   const url = new URL(req.url);
@@ -32,7 +43,7 @@ self.addEventListener("fetch", (event) => {
       caches.match(req).then((hit) => hit || fetch(req).then((res) => {
         if (res.ok) caches.open(CACHE).then((c) => c.put(req, res.clone()));
         return res;
-      })),
+      })).then(isolated),
     );
     return;
   }
@@ -46,7 +57,8 @@ self.addEventListener("fetch", (event) => {
           }
           return res;
         })
-        .catch(() => caches.match(req).then((hit) => hit || caches.match("/en"))),
+        .catch(() => caches.match(req).then((hit) => hit || caches.match("/en")))
+        .then(isolated),
     );
   }
 });

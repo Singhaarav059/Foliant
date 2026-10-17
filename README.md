@@ -17,7 +17,9 @@ Also: saved workflows that run several tools in a row, "continue with" another t
 
 ## Two ways to run it
 
-**Static build (free to host).** Plain files for any static host. Every tool runs in the browser. Word, Excel, PowerPoint and HTML files are laid out in the browser and saved through its print dialog ("Save as PDF"). There are no accounts and nothing to run on a server.
+**Static build (free to host).** Plain files for any static host. Every tool runs in the browser. Word, Excel, PowerPoint and HTML files are laid out in the browser and saved through its print dialog ("Save as PDF"), or, with **High fidelity**, converted by LibreOffice running in the browser into a real PDF (also the only way to open .doc, .xls, .ppt and OpenDocument files there). There are no accounts and nothing to run on a server.
+
+High fidelity downloads about 79 MB the first time and needs about 1 GB of memory, so it's for desktops. LibreOffice runs threads, which browsers only allow on cross-origin isolated pages: the site sends `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` headers (from `security-headers.json`, written into `_headers` for Cloudflare Pages and Netlify), and on hosts that can't send headers, such as GitHub Pages, the service worker adds them from the second page load on.
 
 **Server build (self-hosted).** A Node.js app. It adds:
 
@@ -35,7 +37,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000. `npm install` also copies everything the browser loads at runtime into `public/vendor` (see `scripts/vendor.mjs`): the PDF.js worker and its font and image-decoder data, qpdf, MozJPEG (for Compress), PDFium (for Redact), the Tesseract OCR engine, PaddleOCR models with ONNX Runtime (high-accuracy OCR, about 36 MB, fetched only when chosen) with all 26 language files, Noto fonts for text the tools add to PDFs, and metric-compatible stand-ins (Arimo, Tinos, Cousine, Carlito, Caladea) that PDF/A conversion embeds for fonts a file names but doesn't include. The site never loads anything from another domain, and the static build is about 100 MB of that, mostly OCR data.
+Open http://localhost:3000. `npm install` also copies everything the browser loads at runtime into `public/vendor` (see `scripts/vendor.mjs`): the PDF.js worker and its font and image-decoder data, qpdf, MozJPEG (for Compress), PDFium (for Redact), LibreOffice (high-fidelity Office to PDF, in 20 MiB parts), the Tesseract OCR engine, PaddleOCR models with ONNX Runtime (high-accuracy OCR, about 36 MB, fetched only when chosen) with all 26 language files, Noto fonts for text the tools add to PDFs, and metric-compatible stand-ins (Arimo, Tinos, Cousine, Carlito, Caladea) that PDF/A conversion embeds for fonts a file names but doesn't include. The site never loads anything from another domain, and the static build is about 100 MB of that, mostly OCR data.
 
 ## Deploying the static build
 

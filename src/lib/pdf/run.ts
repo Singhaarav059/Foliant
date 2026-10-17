@@ -1,6 +1,6 @@
 "use client";
 
-import type { ToolId } from "../tools";
+import { LIGHT_OFFICE, type ToolId } from "../tools";
 import { baseName, type Output, type Progress } from "./common";
 import { STATIC } from "@/lib/mode";
 
@@ -116,6 +116,13 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
     case "pptToPdf":
     case "excelToPdf": {
       if (STATIC) {
+        // High fidelity (LibreOffice) when chosen, or when a file is in a format only it reads.
+        // The whole batch goes one way, so results are all PDFs or all print pages.
+        const ext = (f: File) => f.name.split(".").pop()?.toLowerCase() ?? "";
+        if (o.fidelity === "high" || files.some((f) => !LIGHT_OFFICE.includes(ext(f)))) {
+          const { officeToPdf } = await import("@/lib/office/libreoffice");
+          return each(files, progress, async (f, p) => [await officeToPdf(f, p)]);
+        }
         const { printable } = await import("@/lib/office/print");
         return each(files, progress, async (f) => [await printable(f, { orientation: s(o.orientation || "auto") })]);
       }

@@ -296,10 +296,18 @@ const ALL: Tool[] = [
 
 // Without a server, Office and HTML files are laid out in the browser and
 // saved through its print dialog, so those tools take fewer formats and options.
+// High fidelity runs LibreOffice in the browser (src/lib/office/libreoffice.ts),
+// which also reads the formats the light renderers can't; those always use it.
+const FIDELITY: OptionDef = { key: "fidelity", type: "select", choices: ["standard", "high"], default: "standard" };
+export const LIGHT_OFFICE = ["docx", "pptx", "xlsx", "csv"];
 const IN_BROWSER: Partial<Record<ToolId, Partial<Tool>>> = {
-  wordToPdf: { accept: ["docx"] },
-  pptToPdf: { accept: ["pptx"] },
-  excelToPdf: { accept: ["xlsx", "csv"] },
+  wordToPdf: { accept: ["docx", "doc", "odt", "rtf"], options: [FIDELITY] },
+  pptToPdf: { accept: ["pptx", "ppt", "odp"], options: [FIDELITY] },
+  excelToPdf: {
+    accept: ["xlsx", "xls", "ods", "csv"],
+    // LibreOffice follows each sheet's own page setup, so orientation is for standard only.
+    options: [FIDELITY, { key: "orientation", type: "select", choices: ["auto", "portrait", "landscape"], default: "auto", when: { key: "fidelity", is: ["standard"] } }],
+  },
   htmlToPdf: {
     mode: "files",
     options: [

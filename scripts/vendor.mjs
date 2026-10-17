@@ -7,7 +7,8 @@
 // package versions therefore get new URLs, so neither the service worker nor
 // a browser cache can pair new page code with an old worker or WASM file.
 import { createHash } from "node:crypto";
-import { copyFileSync, cpSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { gzipSync } from "node:zlib";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { padWoff } from "./pad-woff.mjs";
@@ -118,6 +119,40 @@ for (const [group, [pkg, only]] of Object.entries(fontGroups)) {
 }
 writeFileSync(join(fontsOut, "fonts.json"), JSON.stringify(manifest));
 console.log(`vendor: ${fontFiles} font slices`);
+
+// LibreOffice for high-fidelity Office → PDF (src/lib/office/libreoffice.ts).
+// soffice.wasm and soffice.data are 147 MB and 100 MB; gzipped and cut into
+// 20 MiB parts they fit hosts with a 25 MiB file limit (Cloudflare Pages).
+// The browser joins and unzips them. Gzipping takes a while, so the parts
+// are cached in node_modules/.cache per package version.
+{
+  const pkg = pkgDir("@matbee/libreoffice-converter");
+  const pkgVersion = JSON.parse(readFileSync(join(pkg, "package.json"), "utf8")).version;
+  const cache = join(process.cwd(), "node_modules", ".cache", "foliant-libreoffice", pkgVersion);
+  const loOut = join(out, "libreoffice");
+  mkdirSync(loOut, { recursive: true });
+  const PART = 20 * 1024 * 1024;
+  const manifest = { version: pkgVersion, files: {} };
+  for (const name of ["soffice.wasm", "soffice.data"]) {
+    const gz = join(cache, `${name}.gz`);
+    if (!existsSync(gz)) {
+      mkdirSync(cache, { recursive: true });
+      writeFileSync(gz, gzipSync(readFileSync(join(pkg, "wasm", name)), { level: 6 }));
+    }
+    const data = readFileSync(gz);
+    const parts = [];
+    for (let i = 0, n = 0; i < data.length; i += PART, n++) {
+      const part = `${name}.gz.${String(n).padStart(2, "0")}`;
+      writeFileSync(join(loOut, part), data.subarray(i, i + PART));
+      parts.push(part);
+    }
+    manifest.files[name] = { parts, size: data.length };
+  }
+  for (const [from, to] of [["wasm/soffice.js", "soffice.js"], ["wasm/soffice.worker.js", "soffice.worker.js"], ["dist/browser.worker.global.js", "browser.worker.js"]])
+    copyFileSync(join(pkg, from), join(loOut, to));
+  writeFileSync(join(loOut, "manifest.json"), JSON.stringify(manifest));
+  console.log(`vendor: LibreOffice ${pkgVersion}, ${Object.values(manifest.files).reduce((n, f) => n + f.parts.length, 0)} parts`);
+}
 
 // Content hash of everything above, in a stable file order.
 const hash = createHash("sha256");
