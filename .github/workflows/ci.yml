@@ -75,6 +75,7 @@ jobs:
           chmod +x "$RUNNER_TEMP/verapdf"
       - run: npm run test:tables
       - run: npm run test:layout
+      - run: npm run test:rotated-text
       - run: npm run test:compress
       - run: npm run test:ocr
       - run: npm run test:redact

@@ -493,7 +493,10 @@ export async function pdfToPdfa(file: File, o: { pdfaDpi: string; keepText: bool
 export function runsToWords(items: Run[], pageHeight: number) {
   return items
     .filter((r) => r.text.trim())
-    .map((r) => ({ text: r.text, x: r.x, y: pageHeight - (r.y + r.size), width: r.w, height: r.size * 0.95, angle: 0 }));
+    .map((r) => r.turn
+      // Turned text keeps its direction: clockwise on screen is counter-clockwise in PDF space.
+      ? { text: r.text, x: r.turn.x, y: pageHeight - r.turn.y, width: r.turn.at[r.turn.at.length - 1], height: r.size * 0.95, angle: (-r.turn.angle * Math.PI) / 180 }
+      : { text: r.text, x: r.x, y: pageHeight - (r.y + r.size), width: r.w, height: r.size * 0.95, angle: 0 });
 }
 
 function xmlEscape(s: string) {

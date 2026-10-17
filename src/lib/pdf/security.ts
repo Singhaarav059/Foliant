@@ -3,7 +3,7 @@
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, type PDFPage } from "pdf-lib";
 import { baseName, bytesOf, canvasToBlob, closePdf, openPdf, pdfBlob, renderPage, type Output, type Progress } from "./common";
 import { runQpdf, QpdfError } from "./qpdf";
-import { pageText, type PageText } from "./text";
+import { charBox, pageText, type PageText } from "./text";
 import { addInvisibleText } from "./textlayer";
 import { runsToWords } from "./convert";
 import { visualFrame, type FracRect } from "./edit";
@@ -64,18 +64,15 @@ export function findMatches(pages: PageText[], pattern: RegExp): { page: number;
             re.lastIndex++;
             continue;
           }
-          const per = run.w / Math.max(1, run.text.length);
-          const exact = run.xs && run.xs.length === run.text.length + 1;
-          const x = exact ? run.xs![m.index] : run.x + per * m.index;
-          const w = exact ? run.xs![m.index + m[0].length] - x : per * m[0].length;
+          const box = charBox(run, m.index, m.index + m[0].length);
           const pad = run.size * 0.12;
           out.push({
             page: pi,
             rect: {
-              x: (x - pad) / p.width,
-              y: (run.y - pad) / p.height,
-              w: (w + pad * 2) / p.width,
-              h: (run.size * 1.2 + pad * 2) / p.height,
+              x: (box.x - pad) / p.width,
+              y: (box.y - pad) / p.height,
+              w: (box.w + pad * 2) / p.width,
+              h: (box.h + pad * 2) / p.height,
             },
           });
         }
