@@ -131,4 +131,59 @@ await test("bookmarks and metadata don't carry the secret", () => {
   eq(String(doc.getTitle()).includes("4471"), false, "title");
 });
 
+// ── Odd page boxes. Both are legal: a rectangle may name any two opposite
+// corners, and what's seen is the CropBox clipped to the MediaBox. Pages 8
+// and 9 of 10 carry them; the rest are plain.
+const { findMatches } = await load("security");
+const { pageNumbers, watermark } = await load("edit");
+const { pageText: textOf } = await load("text");
+async function oddBoxes() {
+  const d = await PDFDocument.create();
+  const font = await d.embedFont(StandardFonts.Helvetica);
+  for (let i = 0; i < 10; i++) {
+    const p = d.addPage([612, 792]);
+    p.drawText(`Page body SECRET-${i + 1}0 here`, { x: 160, y: 500, size: 16, font });
+    if (i === 7) p.node.set(PDFName.of("MediaBox"), d.context.obj([612, 792, 0, 0]));
+    if (i === 8) p.setCropBox(-100, -100, 2000, 2000);
+  }
+  return new Uint8Array(await d.save());
+}
+const odd = await oddBoxes();
+// Text of each page that lies on the page as seen.
+async function seen(bytes) {
+  const pdf = await openPdf(bytes.slice());
+  const out = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const t = await textOf(await pdf.getPage(i));
+    out.push(t.lines.filter((l) => l.x >= 0 && l.y >= 0 && l.x + l.w <= t.width && l.y + l.size <= t.height).map((l) => l.text).join(" | "));
+  }
+  return out;
+}
+
+await test("odd page boxes: the secret is redacted where it's seen", async () => {
+  // Boxes as the editor makes them: search hits on pdf.js's view of each page.
+  const pdf = await openPdf(odd.slice());
+  const pages = [];
+  for (let i = 1; i <= pdf.numPages; i++) pages.push(await textOf(await pdf.getPage(i)));
+  const hits = findMatches(pages, /SECRET-\d+/g);
+  eq(hits.length, 10, "search hits");
+  const [res] = await redact(new File([odd], "odd.pdf"), hits, { redactDpi: "150" });
+  const after = await seen(new Uint8Array(await res.blob.arrayBuffer()));
+  eq(after.filter((t) => /SECRET/.test(t)).join(" || "), "", "pages still showing a secret");
+  eq(after.filter((t) => /Page body\s+here/.test(t)).length, 10, "text beside the box kept");
+});
+
+await test("odd page boxes: page numbers and watermarks land on the page", async () => {
+  const [numbered] = await pageNumbers(new File([odd], "odd.pdf"), {
+    position: "bottom-center", numberFormat: "pageNOfTotal", startAt: 1, pageRange: "", skipFirst: false, fontSize: 12, color: "#000000", facing: false,
+  });
+  const labels = await seen(new Uint8Array(await numbered.blob.arrayBuffer()));
+  for (const n of [1, 8, 9, 10]) eq(labels[n - 1].includes(`Page ${n} of 10`), true, `label on page ${n} in "${labels[n - 1]}"`);
+  const [marked] = await watermark(new File([odd], "odd.pdf"), {
+    markType: "text", markText: "DRAFT COPY", fontSize: 40, color: "#cc0000", imageScale: 50, position: "middle-center", mosaic: false, opacity: 50, rotation: "0", layer: "over", pageRange: "",
+  });
+  const marks = await seen(new Uint8Array(await marked.blob.arrayBuffer()));
+  eq(marks.filter((t) => t.includes("DRAFT COPY")).length, 10, `pages with the mark: ${JSON.stringify(marks)}`);
+});
+
 process.exit(results.failed ? 1 : 0);

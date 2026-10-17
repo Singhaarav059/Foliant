@@ -11,9 +11,30 @@ import { fontCovering, layoutText, type LaidOut } from "./fonts";
 // ── Visual ↔ user space
 // Users place things on the page as they see it. A page may carry /Rotate and
 // a CropBox that doesn't start at 0,0, so every placement goes through here.
+
+// The part of the page that is seen, built the way pdf.js builds its view (and
+// so the editor's): each box normalised, since a rectangle may name any two
+// opposite corners; the CropBox clipped to the MediaBox; the MediaBox alone
+// when they don't overlap, and US Letter when the MediaBox is empty.
+export function viewBox(page: PDFPage) {
+  const norm = (r: { x: number; y: number; width: number; height: number }) => ({
+    x0: Math.min(r.x, r.x + r.width), y0: Math.min(r.y, r.y + r.height),
+    x1: Math.max(r.x, r.x + r.width), y1: Math.max(r.y, r.y + r.height),
+  });
+  let media = norm(page.getMediaBox());
+  if (media.x1 - media.x0 <= 0 || media.y1 - media.y0 <= 0) media = { x0: 0, y0: 0, x1: 612, y1: 792 };
+  const crop = norm(page.getCropBox());
+  const x0 = Math.max(crop.x0, media.x0), y0 = Math.max(crop.y0, media.y0);
+  const x1 = Math.min(crop.x1, media.x1), y1 = Math.min(crop.y1, media.y1);
+  const b = x1 > x0 && y1 > y0 ? { x0, y0, x1, y1 } : media;
+  return { x: b.x0, y: b.y0, width: b.x1 - b.x0, height: b.y1 - b.y0 };
+}
+
 export function visualFrame(page: PDFPage) {
-  const box = page.getCropBox();
-  const r = ((page.getRotation().angle % 360) + 360) % 360;
+  const box = viewBox(page);
+  // Like pdf.js, a /Rotate that isn't a multiple of 90 counts as none.
+  const angle = page.getRotation().angle;
+  const r = angle % 90 ? 0 : ((angle % 360) + 360) % 360;
   const swap = r === 90 || r === 270;
   const vw = swap ? box.height : box.width;
   const vh = swap ? box.width : box.height;
@@ -392,7 +413,7 @@ export async function readFields(file: File): Promise<FieldInfo[]> {
       page = Math.max(0, page);
       const r = widget.getRectangle();
       const f = visualFrame(pages[page]);
-      const box = pages[page].getCropBox();
+      const box = viewBox(pages[page]);
       // Approximate for unrotated pages; rotated pages fall back to the side list.
       if (f.rot === 0) rect = { x: (r.x - box.x) / f.vw, y: 1 - (r.y - box.y + r.height) / f.vh, w: r.width / f.vw, h: r.height / f.vh };
     }
