@@ -326,6 +326,8 @@ const d: { [K in DictKey]?: string } = {
   "ed.redactArea": "範囲を指定",
   "ed.redactSearch": "テキストを検索して指定",
   "ed.redactSearchPlaceholder": "単語、フレーズ、メール…",
+  "ed.redactMatchCase": "大文字と小文字を区別",
+  "ed.redactWholeWords": "単語全体のみ",
   "ed.redactFound": "{n} 件を指定しました",
   "ed.redactPresets": "クイック指定",
   "ed.redactEmails": "メールアドレス",

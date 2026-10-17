@@ -326,6 +326,8 @@ const d: { [K in DictKey]?: string } = {
   "ed.redactArea": "تحديد منطقة",
   "ed.redactSearch": "البحث عن نص وتحديده",
   "ed.redactSearchPlaceholder": "كلمة أو عبارة أو بريد إلكتروني…",
+  "ed.redactMatchCase": "مطابقة حالة الأحرف",
+  "ed.redactWholeWords": "كلمات كاملة فقط",
   "ed.redactFound": "تم تحديد {n} من النتائج",
   "ed.redactPresets": "تحديد سريع",
   "ed.redactEmails": "عناوين البريد",

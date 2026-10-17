@@ -326,6 +326,8 @@ const d: { [K in DictKey]?: string } = {
   "ed.redactArea": "Markera område",
   "ed.redactSearch": "Sök och markera text",
   "ed.redactSearchPlaceholder": "Ord, fras, e-post…",
+  "ed.redactMatchCase": "Matcha versaler/gemener",
+  "ed.redactWholeWords": "Endast hela ord",
   "ed.redactFound": "{n} träffar markerade",
   "ed.redactPresets": "Snabbmarkering",
   "ed.redactEmails": "E-postadresser",

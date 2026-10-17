@@ -326,6 +326,8 @@ const d: { [K in DictKey]?: string } = {
   "ed.redactArea": "Marca una zona",
   "ed.redactSearch": "Cerca i marca text",
   "ed.redactSearchPlaceholder": "Paraula, frase, correu…",
+  "ed.redactMatchCase": "Distingeix majúscules i minúscules",
+  "ed.redactWholeWords": "Només paraules senceres",
   "ed.redactFound": "{n} coincidències marcades",
   "ed.redactPresets": "Marques ràpides",
   "ed.redactEmails": "Correus",

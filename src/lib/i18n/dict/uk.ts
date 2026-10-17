@@ -326,6 +326,8 @@ const d: { [K in DictKey]?: string } = {
   "ed.redactArea": "Позначити область",
   "ed.redactSearch": "Знайти й позначити текст",
   "ed.redactSearchPlaceholder": "Слово, фраза, email…",
+  "ed.redactMatchCase": "З урахуванням регістру",
+  "ed.redactWholeWords": "Лише цілі слова",
   "ed.redactFound": "Позначено збігів: {n}",
   "ed.redactPresets": "Швидкі позначки",
   "ed.redactEmails": "Email-адреси",

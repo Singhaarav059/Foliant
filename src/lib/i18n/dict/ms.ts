@@ -326,6 +326,8 @@ const d: { [K in DictKey]?: string } = {
   "ed.redactArea": "Tanda kawasan",
   "ed.redactSearch": "Cari dan tanda teks",
   "ed.redactSearchPlaceholder": "Perkataan, frasa, e-mel…",
+  "ed.redactMatchCase": "Padankan huruf besar/kecil",
+  "ed.redactWholeWords": "Perkataan penuh sahaja",
   "ed.redactFound": "{n} padanan ditanda",
   "ed.redactPresets": "Tanda pantas",
   "ed.redactEmails": "E-mel",

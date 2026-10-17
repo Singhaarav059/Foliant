@@ -326,6 +326,8 @@ const d: { [K in DictKey]?: string } = {
   "ed.redactArea": "Bereich markieren",
   "ed.redactSearch": "Text suchen und markieren",
   "ed.redactSearchPlaceholder": "Wort, Satz, E-Mail…",
+  "ed.redactMatchCase": "Groß-/Kleinschreibung beachten",
+  "ed.redactWholeWords": "Nur ganze Wörter",
   "ed.redactFound": "{n} Treffer markiert",
   "ed.redactPresets": "Schnellmarkierung",
   "ed.redactEmails": "E-Mails",

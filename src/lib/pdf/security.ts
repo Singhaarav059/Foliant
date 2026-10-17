@@ -6,7 +6,7 @@ import {
 } from "pdf-lib";
 import { baseName, bytesOf, canvasToBlob, closePdf, openPdf, pdfBlob, renderPage, type Output, type Progress } from "./common";
 import { runQpdf, QpdfError } from "./qpdf";
-import { charBox, pageText, type PageText } from "./text";
+import { charBox, lineChars, pageText, type PageText } from "./text";
 import { addInvisibleText } from "./textlayer";
 import { runsToWords } from "./convert";
 import { visualFrame, type FracRect } from "./edit";
@@ -53,34 +53,110 @@ export async function unlock(file: File, o: { password: string }): Promise<Outpu
   }
 }
 
-// Text matches → boxes in visual fractions, for the redaction editor, with the text matched.
-export function findMatches(pages: PageText[], pattern: RegExp): { page: number; rect: FracRect; text: string }[] {
-  const out: { page: number; rect: FracRect; text: string }[] = [];
-  pages.forEach((p, pi) => {
-    for (const line of p.lines) {
-      // Match against each run separately so boxes follow real glyph positions.
-      for (const run of line.runs) {
-        const re = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g");
-        let m: RegExpExecArray | null;
-        while ((m = re.exec(run.text))) {
-          if (!m[0]) {
-            re.lastIndex++;
-            continue;
-          }
-          const box = charBox(run, m.index, m.index + m[0].length);
-          const pad = run.size * 0.12;
-          out.push({
-            page: pi,
-            text: m[0],
-            rect: {
-              x: (box.x - pad) / p.width,
-              y: (box.y - pad) / p.height,
-              w: (box.w + pad * 2) / p.width,
-              h: (box.h + pad * 2) / p.height,
-            },
-          });
-        }
+// The editor's quick marks. Plain spaces only: search text marks line breaks
+// and column gaps with other whitespace, so a number never runs on into the
+// next line or table cell.
+export const PRESETS = {
+  emails: /[\w.+-]+@[\w-]+\.[\w.-]+/g,
+  phones: /(?:\+?\d[\d ().-]{7,}\d)/g,
+  numbers: /\b\d[\d -]{6,}\d\b/g,
+};
+
+// The editor's search box as a pattern: the text as typed, where any run of
+// spaces matches any whitespace (so a phrase may wrap to the next line),
+// optionally in the same case only and as whole words only.
+export function searchPattern(query: string, o: { matchCase?: boolean; wholeWord?: boolean } = {}) {
+  const body = query.trim().split(/\s+/).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+");
+  const [before, after] = o.wholeWord ? ["(?<![\\p{L}\\p{N}_])", "(?![\\p{L}\\p{N}_])"] : ["", ""];
+  return new RegExp(before + body + after, o.matchCase ? "gu" : "giu");
+}
+
+// A page's text as one string to search, and where each character comes from:
+// [line, run, index]. Lines join with a line break, or with nothing where a
+// word is hyphenated across them; `joins` keeps each left-out hyphen by the
+// position the next line starts at, so a match across the break boxes it too.
+// A gap as wide as a table column becomes a tab, so patterns that allow only
+// spaces (the number presets) stay within a cell.
+export function searchText(p: PageText) {
+  let text = "";
+  const from: ([number, number, number] | null)[] = [];
+  const joins = new Map<number, [number, number, number]>();
+  p.lines.forEach((line, li) => {
+    const chars = lineChars(line.runs);
+    if (li > 0) {
+      const hyphen = from[from.length - 1];
+      if (hyphen && /\p{L}[-\u2010\u00ad]$/u.test(text) && /^\p{Ll}/u.test(chars.text)) {
+        text = text.slice(0, -1);
+        from.pop();
+        joins.set(text.length, hyphen);
+      } else {
+        text += "\n";
+        from.push(null);
       }
+    }
+    chars.from.forEach((f, j) => {
+      let ch = chars.text[j];
+      const [before, after] = [chars.from[j - 1], chars.from[j + 1]];
+      if (!f && before && after && before[0] !== after[0]) {
+        const a = line.runs[before[0]];
+        const b = line.runs[after[0]];
+        if (b.x - (a.x + a.w) > Math.max(b.size * 1.2, 9)) ch = "\t";
+      }
+      text += ch;
+      from.push(f ? [li, f[0], f[1]] : null);
+    });
+  });
+  return { text, from, joins };
+}
+
+// Text matches → boxes in visual fractions, for the redaction editor. A match
+// is found in the page's text, so it may span runs (a bold surname, a phrase
+// split across text objects) and lines; it gets one box per line it covers.
+// `hit` numbers the matches, `text` is what matched with whitespace as single spaces.
+export function findMatches(pages: PageText[], pattern: RegExp): { page: number; rect: FracRect; text: string; hit: number }[] {
+  const out: { page: number; rect: FracRect; text: string; hit: number }[] = [];
+  const re = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g");
+  let hit = 0;
+  pages.forEach((p, pi) => {
+    const { text, from, joins } = searchText(p);
+    for (const m of text.matchAll(re)) {
+      if (!m[0]) continue;
+      // The characters covered, as a range in each run of each line.
+      const covered = new Map<number, Map<number, [number, number]>>();
+      const cover = ([li, ri, k]: [number, number, number]) => {
+        const runs = covered.get(li) ?? new Map<number, [number, number]>();
+        const [a, b] = runs.get(ri) ?? [k, k];
+        runs.set(ri, [Math.min(a, k), Math.max(b, k)]);
+        covered.set(li, runs);
+      };
+      const end = m.index + m[0].length;
+      for (let k = m.index; k < end; k++) {
+        const f = from[k];
+        if (f) cover(f);
+        const hyphen = k > m.index ? joins.get(k) : undefined;
+        if (hyphen) cover(hyphen);
+      }
+      for (const [li, runs] of covered) {
+        const line = p.lines[li];
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, size = 0;
+        for (const [ri, [a, b]] of runs) {
+          const run = line.runs[ri];
+          const box = charBox(run, a, b + 1);
+          x0 = Math.min(x0, box.x);
+          y0 = Math.min(y0, box.y);
+          x1 = Math.max(x1, box.x + box.w);
+          y1 = Math.max(y1, box.y + box.h);
+          size = Math.max(size, run.size);
+        }
+        const pad = size * 0.12;
+        out.push({
+          page: pi,
+          hit,
+          text: m[0].replace(/\s+/g, " "),
+          rect: { x: (x0 - pad) / p.width, y: (y0 - pad) / p.height, w: (x1 - x0 + pad * 2) / p.width, h: (y1 - y0 + pad * 2) / p.height },
+        });
+      }
+      hit++;
     }
   });
   return out;
@@ -294,8 +370,10 @@ async function tidy(bytes: Uint8Array) {
 // form values, metadata), in XMP or attached files, or in the text of a page.
 export async function leftovers(bytes: Uint8Array, terms: string[]): Promise<string[]> {
   const found = new Set<string>();
+  // Spaces in a term match any whitespace, as in the search, so a phrase that wraps is still found.
+  const patterns = terms.map((t) => [t, new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+"), "u")] as const);
   const check = (s: string) => {
-    for (const t of terms) if (s.includes(t)) found.add(t);
+    for (const [t, re] of patterns) if (re.test(s)) found.add(t);
   };
   const visit = (o: unknown): void => {
     if (o instanceof PDFString || o instanceof PDFHexString) {
@@ -330,7 +408,7 @@ export async function leftovers(bytes: Uint8Array, terms: string[]): Promise<str
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const text = await pageText(page);
-      check(text.lines.map((l) => l.text).join("\n"));
+      check(searchText(text).text);
       check(text.items.map((r) => r.text).join(""));
       page.cleanup();
     }

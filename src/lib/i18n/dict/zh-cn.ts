@@ -326,6 +326,8 @@ const d: { [K in DictKey]?: string } = {
   "ed.redactArea": "标记区域",
   "ed.redactSearch": "查找并标记文字",
   "ed.redactSearchPlaceholder": "词语、短语、邮箱…",
+  "ed.redactMatchCase": "区分大小写",
+  "ed.redactWholeWords": "全字匹配",
   "ed.redactFound": "已标记 {n} 处",
   "ed.redactPresets": "快速标记",
   "ed.redactEmails": "邮箱",

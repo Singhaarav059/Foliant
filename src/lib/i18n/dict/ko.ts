@@ -326,6 +326,8 @@ const d: { [K in DictKey]?: string } = {
   "ed.redactArea": "영역 표시",
   "ed.redactSearch": "텍스트 찾아 표시",
   "ed.redactSearchPlaceholder": "단어, 문구, 이메일…",
+  "ed.redactMatchCase": "대소문자 구분",
+  "ed.redactWholeWords": "전체 단어만",
   "ed.redactFound": "{n}곳을 표시했습니다",
   "ed.redactPresets": "빠른 표시",
   "ed.redactEmails": "이메일",

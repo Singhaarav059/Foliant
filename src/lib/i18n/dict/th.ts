@@ -326,6 +326,8 @@ const d: { [K in DictKey]?: string } = {
   "ed.redactArea": "ทำเครื่องหมายพื้นที่",
   "ed.redactSearch": "ค้นหาและทำเครื่องหมายข้อความ",
   "ed.redactSearchPlaceholder": "คำ วลี อีเมล…",
+  "ed.redactMatchCase": "ตรงตามตัวพิมพ์ใหญ่-เล็ก",
+  "ed.redactWholeWords": "เฉพาะทั้งคำ",
   "ed.redactFound": "ทำเครื่องหมายแล้ว {n} ตำแหน่ง",
   "ed.redactPresets": "ทำเครื่องหมายด่วน",
   "ed.redactEmails": "อีเมล",

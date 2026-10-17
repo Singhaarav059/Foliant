@@ -326,6 +326,8 @@ const d: { [K in DictKey]?: string } = {
   "ed.redactArea": "Đánh dấu vùng",
   "ed.redactSearch": "Tìm và đánh dấu chữ",
   "ed.redactSearchPlaceholder": "Từ, cụm từ, email…",
+  "ed.redactMatchCase": "Phân biệt chữ hoa/thường",
+  "ed.redactWholeWords": "Chỉ khớp nguyên từ",
   "ed.redactFound": "Đã đánh dấu {n} kết quả",
   "ed.redactPresets": "Đánh dấu nhanh",
   "ed.redactEmails": "Email",

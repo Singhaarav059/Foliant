@@ -223,6 +223,79 @@ await test("search boxes cover the whole match, first character included", async
   eq(/\d/.test(after), false, `digits left in "${after}"`);
 });
 
+// ── Search across runs. A phrase can be one run, two text objects, change
+// style halfway, wrap to the next line or be hyphenated there.
+async function phrases() {
+  const d = await PDFDocument.create();
+  const font = await d.embedFont(StandardFonts.Helvetica);
+  const bold = await d.embedFont(StandardFonts.HelveticaBold);
+  const p = d.addPage([W, H]);
+  let x = 20;
+  const put = (s, y, f = font) => {
+    p.drawText(s, { x, y, size: 12, font: f });
+    x += f.widthOfTextAtSize(s, 12);
+  };
+  const line = (y, ...parts) => {
+    x = 20;
+    for (const part of parts) put(...(Array.isArray(part) ? [part[0], y, part[1]] : [part, y]));
+  };
+  line(270, "Patient John Smith discharged");
+  line(250, "Patient John ", "Smith admitted"); // two text objects
+  line(230, "Patient John ", [ "Smith", bold ], " seen"); // bold surname
+  line(200, "Please call John");
+  line(186, "Smith today about the confiden-");
+  line(172, "tial file");
+  return new Uint8Array(await d.save());
+}
+const hitCount = (hits) => new Set(hits.map((h) => h.hit)).size;
+
+await test("phrases are found across text runs and line breaks", async () => {
+  const { searchPattern } = await load("security");
+  const input = await phrases();
+  const page = await textOf(await (await openPdf(input.slice())).getPage(1));
+  const names = findMatches([page], searchPattern("john smith"));
+  eq(hitCount(names), 4, "hits for John Smith");
+  eq(names.length, 5, "boxes (the wrapped one has one per line)");
+  const word = findMatches([page], searchPattern("confidential"));
+  eq(hitCount(word), 1, "hits for the hyphenated word");
+  // The hyphen left at the line end is part of the word: its box reaches past it.
+  const run = page.items.find((r) => r.text.endsWith("confiden-"));
+  const first = word.find((h) => h.rect.y * H < run.y + run.h);
+  eq((first.rect.x + first.rect.w) * W >= run.xs[run.text.length] + run.size * 0.12 - 0.01, true, "box covers the hyphen");
+  const [res] = await redact(new File([input], "p.pdf"), [...names, ...word], { redactDpi: "100", terms: [...new Set([...names, ...word].map((h) => h.text))] });
+  const after = await allText(new Uint8Array(await res.blob.arrayBuffer()));
+  console.log(`      phrases after: ${after}`);
+  for (const gone of ["John", "Smith", "confiden", "tial"]) eq(after.includes(gone), false, `"${gone}" left`);
+  for (const kept of ["discharged", "admitted", "seen", "Please call", "today about the", "file"]) eq(after.includes(kept), true, `"${kept}" kept`);
+});
+
+await test("quick marks stay within a line and a table cell", async () => {
+  const { PRESETS } = await load("security");
+  const d = await PDFDocument.create();
+  const font = await d.embedFont(StandardFonts.Helvetica);
+  const p = d.addPage([W, H]);
+  [["2023", 20], ["2024", 120], ["2025", 220]].forEach(([s, x]) => p.drawText(s, { x, y: 260, size: 12, font }));
+  p.drawText("1999", { x: 20, y: 240, size: 12, font });
+  p.drawText("2000", { x: 20, y: 226, size: 12, font });
+  p.drawText("Card 4111 1111 1111 1111, call +1 (555) 123-4567", { x: 20, y: 200, size: 12, font });
+  const page = await textOf(await (await openPdf(new Uint8Array(await d.save()))).getPage(1));
+  eq(findMatches([page], PRESETS.numbers).map((h) => h.text).join("|"), "4111 1111 1111 1111|123-4567", "long numbers");
+  eq(findMatches([page], PRESETS.phones).map((h) => h.text).join("|"), "4111 1111 1111 1111|+1 (555) 123-4567", "phone numbers");
+});
+
+await test("match case and whole words", async () => {
+  const { searchPattern } = await load("security");
+  const d = await PDFDocument.create();
+  const font = await d.embedFont(StandardFonts.Helvetica);
+  d.addPage([W, H]).drawText("Ann met ANN and Anna about the annual plan", { x: 20, y: 250, size: 12, font });
+  const page = await textOf(await (await openPdf(new Uint8Array(await d.save()))).getPage(1));
+  const count = (q, o) => hitCount(findMatches([page], searchPattern(q, o)));
+  eq(count("ann"), 4, "anywhere, any case");
+  eq(count("ann", { wholeWord: true }), 2, "whole words");
+  eq(count("Ann", { matchCase: true }), 2, "same case");
+  eq(count("Ann", { matchCase: true, wholeWord: true }), 1, "both");
+});
+
 // `terms` asks redact() to check the whole output for the searched texts.
 async function noted(where) {
   const d = await PDFDocument.create();

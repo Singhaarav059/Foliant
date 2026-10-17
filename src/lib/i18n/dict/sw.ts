@@ -326,6 +326,8 @@ const d: { [K in DictKey]?: string } = {
   "ed.redactArea": "Weka alama eneo",
   "ed.redactSearch": "Tafuta na uwekee alama maandishi",
   "ed.redactSearchPlaceholder": "Neno, kifungu, barua pepe…",
+  "ed.redactMatchCase": "Linganisha herufi kubwa na ndogo",
+  "ed.redactWholeWords": "Maneno kamili pekee",
   "ed.redactFound": "Matokeo {n} yamewekewa alama",
   "ed.redactPresets": "Alama za haraka",
   "ed.redactEmails": "Barua pepe",

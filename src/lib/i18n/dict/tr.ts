@@ -326,6 +326,8 @@ const d: { [K in DictKey]?: string } = {
   "ed.redactArea": "Alan işaretle",
   "ed.redactSearch": "Metin bul ve işaretle",
   "ed.redactSearchPlaceholder": "Kelime, ifade, e-posta…",
+  "ed.redactMatchCase": "Büyük/küçük harfe duyarlı",
+  "ed.redactWholeWords": "Yalnızca tam sözcükler",
   "ed.redactFound": "{n} eşleşme işaretlendi",
   "ed.redactPresets": "Hızlı işaretler",
   "ed.redactEmails": "E-postalar",

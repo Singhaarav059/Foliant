@@ -326,6 +326,8 @@ const d: { [K in DictKey]?: string } = {
   "ed.redactArea": "Segna un’area",
   "ed.redactSearch": "Trova e segna testo",
   "ed.redactSearchPlaceholder": "Parola, frase, email…",
+  "ed.redactMatchCase": "Maiuscole/minuscole",
+  "ed.redactWholeWords": "Solo parole intere",
   "ed.redactFound": "{n} corrispondenze segnate",
   "ed.redactPresets": "Segni rapidi",
   "ed.redactEmails": "Email",

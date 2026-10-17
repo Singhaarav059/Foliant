@@ -326,6 +326,8 @@ const d: { [K in DictKey]?: string } = {
   "ed.redactArea": "Σήμανση περιοχής",
   "ed.redactSearch": "Εύρεση και σήμανση κειμένου",
   "ed.redactSearchPlaceholder": "Λέξη, φράση, email…",
+  "ed.redactMatchCase": "Διάκριση πεζών-κεφαλαίων",
+  "ed.redactWholeWords": "Μόνο ολόκληρες λέξεις",
   "ed.redactFound": "Σημειώθηκαν {n} αντιστοιχίες",
   "ed.redactPresets": "Γρήγορη σήμανση",
   "ed.redactEmails": "Email",

@@ -343,6 +343,8 @@ const en = {
   "ed.redactArea": "Mark area",
   "ed.redactSearch": "Find and mark text",
   "ed.redactSearchPlaceholder": "Word, phrase, email…",
+  "ed.redactMatchCase": "Match case",
+  "ed.redactWholeWords": "Whole words only",
   "ed.redactFound": "{n} matches marked",
   "ed.redactPresets": "Quick marks",
   "ed.redactEmails": "Emails",

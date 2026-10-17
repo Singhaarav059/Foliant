@@ -16,17 +16,12 @@ import type { ToolId } from "@/lib/tools";
 type EdTool = "select" | "text" | "image" | "rect" | "ellipse" | "line" | "path" | "highlight" | "whiteout" | "redact" | "crop" | "textField" | "checkbox" | "place";
 type Size = { w: number; h: number };
 // Marks from a search keep the text matched, the search they came from and how
-// many hits that text had in it, so the run can tell which texts are fully marked.
+// many boxes that text got in it, so the run can tell which texts are fully marked.
 type Mark = { id: string; page: number; rect: FracRect; term?: string; search?: string; of?: number };
 
 const COLORS = ["#111827", "#d33f6a", "#2f6fed", "#12a37f", "#e2662b", "#7b4fe0", "#ffffff"];
 const uid = () => crypto.randomUUID();
-
-const PRESETS: Record<string, RegExp> = {
-  emails: /[\w.+-]+@[\w-]+\.[\w.-]+/g,
-  phones: /(?:\+?\d[\d\s().-]{7,}\d)/g,
-  numbers: /\b\d[\d\s-]{6,}\d\b/g,
-};
+const PRESET_NAMES = ["emails", "phones", "numbers"] as const;
 
 function useHistory<T>(initial: T) {
   const [stack, setStack] = useState<{ past: T[]; now: T; future: T[] }>({ past: [], now: initial, future: [] });
@@ -67,6 +62,8 @@ export function Editor({
   const [values, setValues] = useState<Record<string, string | boolean | string[]>>({});
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<number | null>(null);
+  const [matchCase, setMatchCase] = useState(false);
+  const [wholeWord, setWholeWord] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
@@ -302,16 +299,18 @@ export function Editor({
   });
 
   // ── Redaction search across all pages.
-  const markMatches = async (pattern: RegExp) => {
-    const [{ documentText }, { findMatches }] = await Promise.all([import("@/lib/pdf/text"), import("@/lib/pdf/security")]);
+  // `preset` names one of the quick marks; otherwise `typed` is the search box text.
+  const markMatches = async (typed: string, preset?: (typeof PRESET_NAMES)[number]) => {
+    const [{ documentText }, { findMatches, searchPattern, PRESETS }] = await Promise.all([import("@/lib/pdf/text"), import("@/lib/pdf/security")]);
     const doc = await docFor(file);
     const pages = await documentText(doc);
-    const hits = findMatches(pages, pattern);
+    const hits = findMatches(pages, preset ? PRESETS[preset] : searchPattern(typed, { matchCase, wholeWord }));
     const search = uid();
     const of = new Map<string, number>();
     for (const h of hits) of.set(h.text, (of.get(h.text) ?? 0) + 1);
     marks.set((l) => [...l, ...hits.map((h) => ({ id: uid(), page: h.page, rect: h.rect, term: h.text, search, of: of.get(h.text) }))]);
-    setFound(hits.length);
+    // A match that wraps to the next line has a box on each line but counts once.
+    setFound(new Set(hits.map((h) => h.hit)).size);
   };
 
   // ── Crop: trim to the inked area of the current page.
@@ -569,16 +568,26 @@ export function Editor({
             <form className="flex gap-2" onSubmit={(e) => {
               e.preventDefault();
               if (!query.trim()) return;
-              void markMatches(new RegExp(query.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"));
+              void markMatches(query);
             }}>
               <input className="field" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("ed.redactSearchPlaceholder")} aria-label={t("ed.redactSearch")} />
               <button className="icon-btn h-10 w-10 shrink-0 border border-line" aria-label={t("ed.redactSearch")}><Search size={17} /></button>
             </form>
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+              <label className="flex items-center gap-2 text-[13px] text-ink-2">
+                <input type="checkbox" className="accent-[var(--accent)]" checked={matchCase} onChange={(e) => setMatchCase(e.target.checked)} />
+                {t("ed.redactMatchCase")}
+              </label>
+              <label className="flex items-center gap-2 text-[13px] text-ink-2">
+                <input type="checkbox" className="accent-[var(--accent)]" checked={wholeWord} onChange={(e) => setWholeWord(e.target.checked)} />
+                {t("ed.redactWholeWords")}
+              </label>
+            </div>
             <div>
               <p className="mb-1.5 text-[13px] font-medium text-ink-2">{t("ed.redactPresets")}</p>
               <div className="flex flex-wrap gap-1.5">
-                {(["emails", "phones", "numbers"] as const).map((k) => (
-                  <button key={k} className="btn btn-quiet btn-sm" onClick={() => markMatches(PRESETS[k])}>
+                {PRESET_NAMES.map((k) => (
+                  <button key={k} className="btn btn-quiet btn-sm" onClick={() => markMatches("", k)}>
                     {t(`ed.redact${k[0].toUpperCase()}${k.slice(1)}`)}
                   </button>
                 ))}

@@ -326,6 +326,8 @@ const d: { [K in DictKey]?: string } = {
   "ed.redactArea": "Маркирай област",
   "ed.redactSearch": "Намери и маркирай текст",
   "ed.redactSearchPlaceholder": "Дума, фраза, имейл…",
+  "ed.redactMatchCase": "Различавай главни и малки букви",
+  "ed.redactWholeWords": "Само цели думи",
   "ed.redactFound": "Маркирани съвпадения: {n}",
   "ed.redactPresets": "Бързо маркиране",
   "ed.redactEmails": "Имейли",

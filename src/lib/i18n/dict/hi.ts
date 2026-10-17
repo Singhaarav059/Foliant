@@ -326,6 +326,8 @@ const d: { [K in DictKey]?: string } = {
   "ed.redactArea": "हिस्सा चिह्नित करें",
   "ed.redactSearch": "टेक्स्ट खोजकर चिह्नित करें",
   "ed.redactSearchPlaceholder": "शब्द, वाक्यांश, ईमेल…",
+  "ed.redactMatchCase": "बड़े-छोटे अक्षर मिलाएँ",
+  "ed.redactWholeWords": "सिर्फ़ पूरे शब्द",
   "ed.redactFound": "{n} मिलान चिह्नित किए गए",
   "ed.redactPresets": "तुरंत चिह्नित करें",
   "ed.redactEmails": "ईमेल",
