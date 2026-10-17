@@ -1,14 +1,11 @@
 import { BRAND } from "@/lib/brand";
 
-// A sheet with a folded corner, stacked on a second sheet.
-export function LogoMark({ size = 28 }: { size?: number }) {
+// A single folio: an ink sheet with a vermilion folded corner.
+export function LogoMark({ size = 22 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
-      <rect x="7" y="3" width="20" height="24" rx="4" fill="#d33f6a" />
-      <path d="M5 9a4 4 0 0 1 4-4h10l6 6v14a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4z" fill="#2f6fed" />
-      <path d="M19 5v4a2 2 0 0 0 2 2h4" fill="#9dbbff" />
-      <rect x="9.5" y="16" width="11" height="2.2" rx="1.1" fill="#fff" />
-      <rect x="9.5" y="20.6" width="7.5" height="2.2" rx="1.1" fill="#fff" opacity=".75" />
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
+      <path d="M5 3.5A1.5 1.5 0 0 1 6.5 2H15l5 5v13.5a1.5 1.5 0 0 1-1.5 1.5h-12A1.5 1.5 0 0 1 5 20.5z" fill="var(--ink)" />
+      <path d="M15 2v3.5A1.5 1.5 0 0 0 16.5 7H20z" fill="var(--accent)" />
     </svg>
   );
 }
@@ -17,7 +14,7 @@ export function Logo() {
   return (
     <span className="inline-flex items-center gap-2">
       <LogoMark />
-      <span className="text-[1.15rem] font-bold tracking-[-0.02em]">{BRAND.name}</span>
+      <span className="text-[1.05rem] font-semibold tracking-[-0.03em]">{BRAND.name}</span>
     </span>
   );
 }

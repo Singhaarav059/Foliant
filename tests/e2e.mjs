@@ -94,7 +94,7 @@ for (const name of engines) {
 
   await test("home lists 31 tools", async () => {
     await open("/en");
-    const n = await page.locator("main ul li a.card").count();
+    const n = await page.locator("main a[data-tool]").count();
     const over = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     if (n !== 31 || over > 0) throw new Error(`${n} tools, ${over}px overflow`);
     return `${n} tools`;

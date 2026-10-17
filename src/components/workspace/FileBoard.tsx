@@ -54,7 +54,7 @@ function Card({ item, onRemove, sortable }: { item: Item; onRemove: () => void; 
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 10 : undefined }}
-      className={`group relative flex w-[164px] flex-col items-center rounded-2xl border bg-surface p-4 ${isDragging ? "border-brand shadow-card" : "border-line"} ${sortable ? "cursor-grab touch-none active:cursor-grabbing" : ""}`}
+      className={`group relative flex w-[164px] flex-col items-center rounded-xl border bg-surface p-4 transition-[border-color,box-shadow] ${isDragging ? "border-brand shadow-card" : "border-line"} ${sortable ? "cursor-grab touch-none active:cursor-grabbing" : ""}`}
       {...attributes}
       {...listeners}
     >
@@ -62,7 +62,7 @@ function Card({ item, onRemove, sortable }: { item: Item; onRemove: () => void; 
         aria-label={`${t("ws.remove")} ${item.file.name}`}
         onPointerDown={(e) => e.stopPropagation()}
         onClick={onRemove}
-        className="absolute end-2 top-2 z-10 grid h-7 w-7 place-items-center rounded-full border border-line bg-surface text-muted opacity-100 transition-opacity hover:text-danger sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+        className="absolute end-2 top-2 z-10 grid h-7 w-7 place-items-center rounded-md border border-line bg-surface text-muted opacity-100 transition-opacity hover:text-danger sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
       >
         <X size={15} />
       </button>

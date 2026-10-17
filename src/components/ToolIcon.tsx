@@ -4,7 +4,7 @@ import {
   Crop, PenLine, TextCursorInput, LockOpen, Lock, Signature, SquareSlash, GitCompare,
   type LucideIcon,
 } from "lucide-react";
-import { categoryColor, type Tool } from "@/lib/tools";
+import type { Tool } from "@/lib/tools";
 
 const ICONS: Record<string, LucideIcon> = {
   Combine, Split, FileOutput, FileMinus, LayoutGrid, ScanLine, Shrink, Wrench, ScanText, ImagePlus, FileType,
@@ -12,22 +12,16 @@ const ICONS: Record<string, LucideIcon> = {
   Crop, PenLine, TextCursorInput, LockOpen, Lock, Signature, SquareSlash, GitCompare,
 };
 
-export function ToolIcon({ tool, size = 44 }: { tool: Tool; size?: number }) {
+// A quiet, monochrome tile. Tools are told apart by glyph, not colour.
+export function ToolIcon({ tool, size = 40 }: { tool: Tool; size?: number }) {
   const Icon = ICONS[tool.icon] ?? FileText;
-  const color = categoryColor(tool.category);
   return (
     <span
       aria-hidden
-      className="inline-grid shrink-0 place-items-center"
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size * 0.3,
-        background: `color-mix(in oklab, ${color} 13%, var(--surface))`,
-        color,
-      }}
+      className="inline-grid shrink-0 place-items-center border border-line bg-surface text-ink-2 transition-colors group-hover:border-line-strong group-hover:text-ink"
+      style={{ width: size, height: size, borderRadius: Math.round(size * 0.26) }}
     >
-      <Icon size={size * 0.5} strokeWidth={1.9} />
+      <Icon size={Math.round(size * 0.46)} strokeWidth={1.5} />
     </span>
   );
 }

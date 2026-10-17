@@ -11,13 +11,13 @@ export type CategoryId =
   | "edit"
   | "security";
 
-export const CATEGORIES: { id: CategoryId; color: string }[] = [
-  { id: "organize", color: "#2f6fed" },
-  { id: "optimize", color: "#12a37f" },
-  { id: "convertTo", color: "#e2662b" },
-  { id: "convertFrom", color: "#d33f6a" },
-  { id: "edit", color: "#7b4fe0" },
-  { id: "security", color: "#1d8fb3" },
+export const CATEGORIES: { id: CategoryId }[] = [
+  { id: "organize" },
+  { id: "optimize" },
+  { id: "convertTo" },
+  { id: "convertFrom" },
+  { id: "edit" },
+  { id: "security" },
 ];
 
 // How the workspace behaves once files are in.
@@ -310,7 +310,6 @@ export const TOOLS: Tool[] = STATIC
 
 export const toolBySlug = (slug: string) => TOOLS.find((t) => t.slug === slug);
 export const toolById = (id: ToolId) => TOOLS.find((t) => t.id === id)!;
-export const categoryColor = (id: CategoryId) => CATEGORIES.find((c) => c.id === id)!.color;
 
 export function defaultOptions(tool: Tool): Record<string, unknown> {
   const out: Record<string, unknown> = {};

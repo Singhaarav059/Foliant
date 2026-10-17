@@ -21,11 +21,11 @@ export function ContactForm() {
       }
     }}>
       <label className="block">
-        <span className="mb-1.5 block text-[13px] font-semibold text-ink-2">{t("auth.email")}</span>
+        <span className="mb-1.5 block text-[13px] font-medium text-ink-2">{t("auth.email")}</span>
         <input name="email" type="email" required className="field" autoComplete="email" />
       </label>
       <label className="block">
-        <span className="mb-1.5 block text-[13px] font-semibold text-ink-2">{t("contact.message")}</span>
+        <span className="mb-1.5 block text-[13px] font-medium text-ink-2">{t("contact.message")}</span>
         <textarea name="message" required minLength={5} maxLength={5000} rows={6} className="field" />
       </label>
       {state.err && <p role="alert" className="text-[14px] text-danger">{state.err}</p>}

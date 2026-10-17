@@ -29,18 +29,18 @@ export function Options({
         if (d.type === "toggle") {
           return (
             <label key={d.key} htmlFor={id} className="flex cursor-pointer items-center justify-between gap-4">
-              <span className="text-[15px]">{label}</span>
+              <span className="text-[14px] text-ink-2">{label}</span>
               <span className="relative inline-flex shrink-0">
                 <input id={id} type="checkbox" className="peer sr-only" checked={Boolean(value)} onChange={(e) => onChange(d.key, e.target.checked)} />
                 <span className="h-6 w-11 rounded-full bg-line-strong transition-colors peer-checked:bg-brand peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[var(--focus)]" />
-                <span className="absolute start-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5 rtl:peer-checked:-translate-x-5" />
+                <span className="absolute start-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-[0_1px_2px_rgb(0_0_0/0.2)] transition-[transform,background-color] duration-200 peer-checked:translate-x-5 peer-checked:bg-brand-ink rtl:peer-checked:-translate-x-5" />
               </span>
             </label>
           );
         }
         return (
           <div key={d.key}>
-            <label htmlFor={id} className="mb-1.5 flex items-baseline justify-between text-[13px] font-semibold text-ink-2">
+            <label htmlFor={id} className="mb-1.5 flex items-baseline justify-between text-[13px] font-medium text-ink-2">
               {label}
               {d.type === "range" && <span className="tabular font-normal text-muted">{String(value)}{d.unit}</span>}
             </label>
@@ -56,9 +56,9 @@ export function Options({
                         role="radio"
                         aria-checked={on}
                         onClick={() => onChange(d.key, c)}
-                        className={`rounded-xl border px-3 py-2.5 text-start text-[15px] transition-colors ${on ? "border-brand bg-[color-mix(in_oklab,var(--brand)_8%,var(--surface))]" : "border-line hover:border-line-strong"}`}
+                        className={`rounded-lg border px-3 py-2.5 text-start text-[14px] transition-colors ${on ? "border-brand bg-[color-mix(in_oklab,var(--brand)_8%,var(--surface))]" : "border-line hover:border-line-strong"}`}
                       >
-                        <span className={on ? "font-semibold text-ink" : "text-ink-2"}>{title}</span>
+                        <span className={on ? "font-medium text-ink" : "text-ink-2"}>{title}</span>
                         {rest.length > 0 && <span className="block text-[13px] text-muted">{rest.join(":").trim()}</span>}
                       </button>
                     );

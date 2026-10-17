@@ -36,7 +36,7 @@ export default function Start() {
       <ul style={{ listStyle: "none", padding: 0, columns: 2 }}>
         {LOCALES.map((l) => (
           <li key={l.code} style={{ padding: "4px 0" }}>
-            <a href={`/${l.code}`} lang={l.code} style={{ color: "#2f6fed" }}>{l.name}</a>
+            <a href={`/${l.code}`} lang={l.code} style={{ color: "#191917" }}>{l.name}</a>
           </li>
         ))}
       </ul>

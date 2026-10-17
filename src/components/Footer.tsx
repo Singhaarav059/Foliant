@@ -47,26 +47,26 @@ export function Footer() {
   ];
 
   return (
-    <footer className="mt-24 border-t border-line bg-surface">
-      <div className="mx-auto grid max-w-[1240px] gap-10 px-4 py-12 sm:px-6 md:grid-cols-[1.3fr_repeat(4,1fr)]">
-        <div>
+    <footer className="mt-28 border-t border-line">
+      <div className="mx-auto grid max-w-[1240px] grid-cols-2 gap-x-6 gap-y-10 px-4 py-14 sm:px-6 md:grid-cols-[1.4fr_repeat(4,1fr)]">
+        <div className="col-span-2 md:col-span-1">
           <Logo />
-          <p className="mt-3 max-w-[260px] text-[15px] text-muted">{BRAND.tagline}</p>
+          <p className="mt-3 max-w-[260px] text-pretty text-[14px] leading-relaxed text-muted">{BRAND.tagline}</p>
           <button onClick={doInstall} className="btn btn-quiet btn-sm mt-5">
-            <Download size={16} /> {t("foot.install")}
+            <Download size={15} strokeWidth={1.75} /> {t("foot.install")}
           </button>
           {hint && <p className="mt-2 max-w-[260px] text-[13px] text-muted">{t("install.manual")}</p>}
         </div>
         {cols.map((c) => (
           <div key={c.title}>
-            <p className="mb-3 text-[13px] font-semibold text-ink">{c.title}</p>
-            <ul className="space-y-2">
+            <p className="eyebrow mb-3.5">{c.title}</p>
+            <ul className="space-y-2.5">
               {c.links.map(([label, path]) => (
                 <li key={path}>
                   {path.startsWith("http") ? (
-                    <a href={path} className="text-[15px] text-muted hover:text-ink">{label}</a>
+                    <a href={path} className="text-[14px] text-ink-2 transition-colors hover:text-ink">{label}</a>
                   ) : (
-                    <Link href={href(path)} className="text-[15px] text-muted hover:text-ink">{label}</Link>
+                    <Link href={href(path)} className="text-[14px] text-ink-2 transition-colors hover:text-ink">{label}</Link>
                   )}
                 </li>
               ))}
@@ -75,7 +75,7 @@ export function Footer() {
         ))}
       </div>
       <div className="border-t border-line">
-        <p className="mx-auto max-w-[1240px] px-4 py-5 text-[13px] text-muted sm:px-6">
+        <p className="eyebrow mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
           {t("foot.rights", { year: year ?? "", brand: BRAND.name })}
         </p>
       </div>

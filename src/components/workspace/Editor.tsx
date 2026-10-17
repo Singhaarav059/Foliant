@@ -388,7 +388,7 @@ export function Editor({
     <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
       <div className="min-w-0">
         {/* Toolbar */}
-        <div className="sticky top-16 z-20 mb-3 flex flex-wrap items-center gap-1 rounded-2xl border border-line bg-surface p-1.5">
+        <div className="sticky top-[72px] z-20 mb-3 flex flex-wrap items-center gap-1 rounded-xl border border-line bg-[color-mix(in_oklab,var(--surface)_92%,transparent)] p-1.5 shadow-card backdrop-blur-md">
           {tools.map((x) => (
             <button key={x.id} className="icon-btn" aria-pressed={tool === x.id} aria-label={x.label} title={x.label}
               onClick={() => {
@@ -418,7 +418,7 @@ export function Editor({
         </div>
 
         {/* Page */}
-        <div ref={wrap} className="overflow-auto rounded-2xl bg-surface-2 p-4">
+        <div ref={wrap} className="overflow-auto rounded-xl bg-surface-2 p-4">
           <div
             ref={stage}
             className="relative mx-auto touch-none select-none bg-white shadow-[0_0_0_1px_var(--line),0_8px_24px_rgb(0_0_0/0.08)]"
@@ -432,11 +432,11 @@ export function Editor({
 
             {/* Existing form fields */}
             {toolId === "forms" && fields.filter((f) => f.page === page && f.rect).map((f) => (
-              <label key={f.name} className="absolute rounded-sm bg-[color-mix(in_oklab,var(--brand)_14%,transparent)] outline outline-1 outline-[var(--brand)]"
+              <label key={f.name} className="absolute rounded-sm bg-[color-mix(in_oklab,var(--accent)_14%,transparent)] outline outline-1 outline-[var(--accent)]"
                 style={{ left: `${f.rect!.x * 100}%`, top: `${f.rect!.y * 100}%`, width: `${f.rect!.w * 100}%`, height: `${f.rect!.h * 100}%` }}
                 onPointerDown={(e) => e.stopPropagation()}>
                 {f.type === "checkbox" ? (
-                  <input type="checkbox" className="h-full w-full accent-[var(--brand)]" checked={Boolean(values[f.name])} onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.checked }))} />
+                  <input type="checkbox" className="h-full w-full accent-[var(--accent)]" checked={Boolean(values[f.name])} onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.checked }))} />
                 ) : f.type === "text" ? (
                   <input className="h-full w-full bg-transparent px-1 text-black outline-none" style={{ fontSize: Math.max(9, f.rect!.h * height * 0.62) }}
                     value={String(values[f.name] ?? "")} onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))} aria-label={f.name} />
@@ -475,7 +475,7 @@ export function Editor({
             {pageItems.map((i) => {
               const boxStyle: React.CSSProperties = { left: `${i.x * 100}%`, top: `${i.y * 100}%`, width: `${i.w * 100}%`, height: `${i.h * 100}%` };
               const isSel = sel === i.id;
-              const frame = isSel ? "outline outline-2 outline-offset-2 outline-[var(--brand)]" : "";
+              const frame = isSel ? "outline outline-2 outline-offset-2 outline-[var(--accent)]" : "";
               const common = { onPointerDown: (e: React.PointerEvent) => startItemDrag(e, i, "move"), onPointerMove: onMove, onPointerUp: onUp };
               let inner: React.ReactNode = null;
               if (i.kind === "text") {
@@ -490,7 +490,7 @@ export function Editor({
                         onChange={(e) => patch(i.id, { text: e.target.value }, false)}
                         onBlur={() => { setEditing(null); if (!(i.text ?? "").trim()) items.set((l) => l.filter((x) => x.id !== i.id), false); }}
                         placeholder={t("ed.typeHere")}
-                        className="resize-none overflow-hidden bg-[color-mix(in_oklab,var(--brand)_6%,transparent)] outline-none"
+                        className="resize-none overflow-hidden bg-[color-mix(in_oklab,var(--accent)_6%,transparent)] outline-none"
                         style={{ font: "inherit", color: "inherit", width: `${Math.max(6, ...((i.text || t("ed.typeHere")).split("\n").map((l) => l.length + 1)))}ch` }} />
                     ) : (i.text || " ")}
                   </div>
@@ -508,21 +508,21 @@ export function Editor({
                 i.kind === "ellipse" ? { border: `${(i.stroke ?? 2) * ptToPx}px solid ${i.color}`, background: i.fill ?? "transparent", borderRadius: "50%" } :
                 i.kind === "highlight" ? { background: i.color, opacity: 0.38, mixBlendMode: "multiply" } :
                 i.kind === "whiteout" ? { background: "#fff", boxShadow: isSel ? undefined : "0 0 0 1px rgb(0 0 0 / 0.06)" } :
-                i.kind === "textField" ? { background: "color-mix(in oklab, var(--brand) 12%, transparent)", border: "1px dashed var(--brand)" } :
+                i.kind === "textField" ? { background: "color-mix(in oklab, var(--accent) 12%, transparent)", border: "1px dashed var(--accent)" } :
                 i.kind === "checkbox" ? { border: "1.5px solid #4b5563", background: "#fff" } : {};
               return (
                 <div key={i.id} {...common} className={`absolute cursor-move ${frame}`} style={{ ...boxStyle, ...shape }}>
                   {inner}
-                  {i.kind === "textField" && <span className="absolute left-1 top-0 text-[10px] text-brand">{i.name}</span>}
+                  {i.kind === "textField" && <span className="absolute left-1 top-0 text-[10px] text-accent">{i.name}</span>}
                   {isSel && (
                     <span onPointerDown={(e) => startItemDrag(e, i, "resize")}
-                      className="absolute -bottom-2 -right-2 h-4 w-4 cursor-nwse-resize rounded-full border-2 border-white bg-brand shadow" />
+                      className="absolute -bottom-2 -right-2 h-4 w-4 cursor-nwse-resize rounded-full border-2 border-white bg-accent shadow" />
                   )}
                 </div>
               );
             })}
             {(tool === "place" && stamp) || (tool === "image" && pendingImage) ? (
-              <div className="pointer-events-none absolute inset-x-0 top-3 mx-auto w-max rounded-full bg-ink px-3 py-1 text-[13px] text-bg">{t("ed.clickToPlace")}</div>
+              <div className="pointer-events-none absolute inset-x-0 top-3 mx-auto w-max rounded-lg bg-ink px-3 py-1.5 text-[13px] text-bg shadow-card">{t("ed.clickToPlace")}</div>
             ) : null}
           </div>
         </div>
@@ -560,7 +560,7 @@ export function Editor({
               <button className="icon-btn h-10 w-10 shrink-0 border border-line" aria-label={t("ed.redactSearch")}><Search size={17} /></button>
             </form>
             <div>
-              <p className="mb-1.5 text-[13px] font-semibold text-ink-2">{t("ed.redactPresets")}</p>
+              <p className="mb-1.5 text-[13px] font-medium text-ink-2">{t("ed.redactPresets")}</p>
               <div className="flex flex-wrap gap-1.5">
                 {(["emails", "phones", "numbers"] as const).map((k) => (
                   <button key={k} className="btn btn-quiet btn-sm" onClick={() => markMatches(PRESETS[k])}>
@@ -586,14 +586,14 @@ export function Editor({
 
         {toolId === "forms" && (
           <div>
-            <p className="mb-2 text-[13px] font-semibold text-ink-2">{t("ed.formFields")}</p>
+            <p className="mb-2 text-[13px] font-medium text-ink-2">{t("ed.formFields")}</p>
             {fields.length === 0 ? <p className="text-[14px] text-muted">{t("ed.noFields")}</p> : (
               <div className="max-h-[340px] space-y-3 overflow-auto pr-1">
                 {fields.map((f) => (
                   <label key={f.name} className="block">
                     <span className="mb-1 block truncate text-[13px] text-muted" title={f.name}>{f.name}</span>
                     {f.type === "checkbox" ? (
-                      <input type="checkbox" className="h-5 w-5 accent-[var(--brand)]" checked={Boolean(values[f.name])} onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.checked }))} />
+                      <input type="checkbox" className="h-5 w-5 accent-[var(--accent)]" checked={Boolean(values[f.name])} onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.checked }))} />
                     ) : f.type === "dropdown" || f.type === "radio" ? (
                       <select className="field" value={String(values[f.name] ?? "")} onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}>
                         <option value="" />
@@ -641,13 +641,13 @@ export function Editor({
             {(!selected || ["rect", "ellipse", "line", "path"].includes(selected.kind)) && toolId === "edit" && (
               <label className="flex items-center gap-2 text-[13px] text-ink-2">
                 {t("ed.stroke")}
-                <input type="range" min={0.5} max={12} step={0.5} className="flex-1 accent-[var(--brand)]" value={selected?.stroke ?? style.stroke}
+                <input type="range" min={0.5} max={12} step={0.5} className="flex-1 accent-[var(--accent)]" value={selected?.stroke ?? style.stroke}
                   onChange={(e) => { const v = Number(e.target.value); setStyle((s) => ({ ...s, stroke: v })); if (selected) patch(selected.id, { stroke: v }, false); }} />
               </label>
             )}
             {(!selected || ["rect", "ellipse"].includes(selected.kind)) && toolId === "edit" && (
               <label className="flex items-center gap-2 text-[13px] text-ink-2">
-                <input type="checkbox" className="accent-[var(--brand)]" checked={Boolean(selected?.fill ?? style.fill)}
+                <input type="checkbox" className="accent-[var(--accent)]" checked={Boolean(selected?.fill ?? style.fill)}
                   onChange={(e) => { const f = e.target.checked ? (selected?.color ?? style.color) : null; setStyle((s) => ({ ...s, fill: f })); if (selected) patch(selected.id, { fill: f }); }} />
                 {t("ed.fill")}
               </label>
@@ -698,7 +698,7 @@ function CropOverlay({ rect, onStart }: { rect: FracRect; onStart: (e: React.Poi
         onPointerDown={(e) => onStart(e)}>
         {["nw", "ne", "sw", "se", "n", "s", "e", "w"].map((h) => (
           <span key={h} onPointerDown={(e) => onStart(e, h)}
-            className="absolute h-3.5 w-3.5 rounded-full border-2 border-white bg-brand"
+            className="absolute h-3.5 w-3.5 rounded-full border-2 border-white bg-accent"
             style={{
               left: h.includes("w") ? -7 : h.includes("e") ? "calc(100% - 7px)" : "calc(50% - 7px)",
               top: h.includes("n") ? -7 : h.includes("s") ? "calc(100% - 7px)" : "calc(50% - 7px)",

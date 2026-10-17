@@ -33,21 +33,21 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
 
   return (
     <div className="mx-auto max-w-[420px] px-4 pb-10 pt-14">
-      <h1 className="text-center text-[1.9rem] font-bold tracking-[-0.03em]">{mode === "login" ? t("auth.loginTitle") : t("auth.signupTitle")}</h1>
+      <h1 className="text-center text-[2rem] font-semibold tracking-[-0.04em]">{mode === "login" ? t("auth.loginTitle") : t("auth.signupTitle")}</h1>
       <p className="mt-2 text-center text-[15px] text-muted">{t("auth.why")}</p>
       <form onSubmit={submit} className="card mt-8 space-y-4 p-6">
         {mode === "register" && (
           <label className="block">
-            <span className="mb-1.5 block text-[13px] font-semibold text-ink-2">{t("auth.name")}</span>
+            <span className="mb-1.5 block text-[13px] font-medium text-ink-2">{t("auth.name")}</span>
             <input name="name" className="field" autoComplete="name" maxLength={80} />
           </label>
         )}
         <label className="block">
-          <span className="mb-1.5 block text-[13px] font-semibold text-ink-2">{t("auth.email")}</span>
+          <span className="mb-1.5 block text-[13px] font-medium text-ink-2">{t("auth.email")}</span>
           <input name="email" type="email" required className="field" autoComplete="email" />
         </label>
         <label className="block">
-          <span className="mb-1.5 block text-[13px] font-semibold text-ink-2">{t("auth.password")}</span>
+          <span className="mb-1.5 block text-[13px] font-medium text-ink-2">{t("auth.password")}</span>
           <input name="password" type="password" required minLength={mode === "register" ? 8 : 1} className="field" autoComplete={mode === "login" ? "current-password" : "new-password"} />
           {mode === "register" && <span className="mt-1 block text-[13px] text-muted">{t("auth.passwordHint")}</span>}
         </label>
@@ -59,7 +59,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       </form>
       <p className="mt-5 text-center text-[15px] text-muted">
         {mode === "login" ? t("auth.noAccount") : t("auth.haveAccount")}{" "}
-        <Link href={href(mode === "login" ? "/register" : "/login")} className="font-semibold text-brand">
+        <Link href={href(mode === "login" ? "/register" : "/login")} className="font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink">
           {mode === "login" ? t("nav.signup") : t("nav.login")}
         </Link>
       </p>

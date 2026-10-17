@@ -14,7 +14,7 @@ import type { ToolId } from "@/lib/tools";
 
 export type PageItem = { key: string; file: number; page: number; rotate: number; blank?: boolean };
 
-const FILE_TINTS = ["#2f6fed", "#d33f6a", "#12a37f", "#e2662b", "#7b4fe0", "#1d8fb3", "#c28a00"];
+const FILE_TINTS = ["#cf4a24", "#3d6b8f", "#5a8a5c", "#b08a2e", "#7a5c8f", "#3f8a86", "#8f5a4a"];
 
 function PageCard({
   item, files, index, mode, selected, onToggle, onRotate, onDelete, onDuplicate, onBlank, multiFile,
@@ -42,7 +42,7 @@ function PageCard({
         tabIndex={selectable ? 0 : -1}
         aria-pressed={selectable ? selected : undefined}
         aria-label={t("ws.page", { n: index + 1 })}
-        className={`relative grid h-[180px] w-[136px] place-items-center rounded-lg transition-[box-shadow] ${selectable ? "cursor-pointer" : "cursor-[inherit]"} ${marked ? (mode === "remove" ? "shadow-[0_0_0_3px_var(--danger)]" : "shadow-[0_0_0_3px_var(--brand)]") : "hover:shadow-[0_0_0_2px_var(--line-strong)]"} ${isDragging ? "shadow-card" : ""}`}
+        className={`relative grid h-[180px] w-[136px] place-items-center rounded-lg transition-[box-shadow] ${selectable ? "cursor-pointer" : "cursor-[inherit]"} ${marked ? (mode === "remove" ? "shadow-[0_0_0_3px_var(--danger)]" : "shadow-[0_0_0_3px_var(--accent)]") : "hover:shadow-[0_0_0_2px_var(--line-strong)]"} ${isDragging ? "shadow-card" : ""}`}
       >
         {item.blank ? (
           <div className="h-[170px] w-[120px] bg-white shadow-[0_0_0_1px_var(--line)]" style={{ transform: `rotate(${item.rotate}deg)` }} />
@@ -51,7 +51,7 @@ function PageCard({
         )}
         {marked && mode === "remove" && <span className="absolute inset-0 rounded-lg bg-[color-mix(in_oklab,var(--danger)_18%,transparent)]" />}
         {marked && (
-          <span className={`absolute end-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full text-white ${mode === "remove" ? "bg-danger" : "bg-brand"}`}>
+          <span className={`absolute end-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full text-white ${mode === "remove" ? "bg-danger" : "bg-accent"}`}>
             {mode === "remove" ? <Trash2 size={13} /> : <Check size={14} strokeWidth={3} />}
           </span>
         )}

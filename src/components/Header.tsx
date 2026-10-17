@@ -63,28 +63,28 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-[color-mix(in_oklab,var(--bg)_88%,transparent)] backdrop-blur-md">
+    <header className="sticky top-0 z-40 border-b border-line bg-[color-mix(in_oklab,var(--bg)_86%,transparent)] backdrop-blur-md backdrop-saturate-150">
       <div className="mx-auto flex h-16 max-w-[1240px] items-center gap-2 px-4 sm:px-6">
-        <Link href={href("/")} className="me-2 rounded-lg" aria-label="Home">
+        <Link href={href("/")} className="me-4 rounded-md" aria-label="Home">
           <Logo />
         </Link>
 
-        <nav className="hidden items-center gap-1 md:flex">
+        <nav className="hidden items-center gap-0.5 md:flex">
           <div ref={toolsRef} className="relative">
             <button
-              className="btn btn-sm gap-1 bg-transparent text-ink-2 hover:bg-surface-2 hover:text-ink"
+              className="btn btn-sm btn-ghost gap-1 aria-expanded:bg-surface-2 aria-expanded:text-ink"
               aria-expanded={menu === "tools"}
               onClick={() => setMenu(menu === "tools" ? null : "tools")}
             >
               {t("nav.allTools")}
-              <ChevronDown size={16} className={`transition-transform ${menu === "tools" ? "rotate-180" : ""}`} />
+              <ChevronDown size={14} strokeWidth={2} className={`text-muted transition-transform duration-200 ${menu === "tools" ? "rotate-180" : ""}`} />
             </button>
             {menu === "tools" && (
-              <div className="rise fixed inset-x-0 top-16 mx-auto max-w-[1100px] px-4">
-                <div className="card grid max-h-[75vh] grid-cols-4 gap-x-6 gap-y-5 overflow-auto p-6 shadow-card">
+              <div className="rise fixed inset-x-0 top-[72px] mx-auto max-w-[1200px] px-4 sm:px-6">
+                <div className="card grid max-h-[75vh] grid-cols-3 gap-x-8 gap-y-7 overflow-auto p-7 shadow-card lg:grid-cols-6">
                   {CATEGORIES.map((c) => (
                     <div key={c.id}>
-                      <p className="mb-2 text-[13px] font-semibold" style={{ color: c.color }}>
+                      <p className="mb-2.5 text-[13px] text-muted">
                         {t(`cat.${c.id}`)}
                       </p>
                       <ul className="space-y-0.5">
@@ -92,9 +92,8 @@ export function Header() {
                           <li key={tool.id}>
                             <Link
                               href={href(`/${tool.slug}`)}
-                              className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[15px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+                              className="-mx-2 block rounded-md px-2 py-1.5 text-[14px] text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink"
                             >
-                              <ToolIcon tool={tool} size={26} />
                               {t(`tool.${tool.id}.name`)}
                             </Link>
                           </li>
@@ -106,7 +105,7 @@ export function Header() {
               </div>
             )}
           </div>
-          <Link href={href("/workflows")} className="btn btn-sm bg-transparent text-ink-2 hover:bg-surface-2 hover:text-ink">
+          <Link href={href("/workflows")} aria-current={pathname.endsWith("/workflows") ? "page" : undefined} className="btn btn-sm btn-ghost aria-[current]:text-ink">
             {t("nav.workflows")}
           </Link>
         </nav>
@@ -114,22 +113,22 @@ export function Header() {
         <div className="ms-auto flex items-center gap-1">
           <div ref={langRef} className="relative hidden sm:block">
             <button
-              className="icon-btn w-auto gap-1.5 px-2.5 text-sm"
+              className="icon-btn h-9 w-auto gap-1.5 px-2.5 text-[13px] aria-expanded:bg-surface-2"
               aria-label={t("nav.language")}
               aria-expanded={menu === "lang"}
               onClick={() => setMenu(menu === "lang" ? null : "lang")}
             >
-              <Globe2 size={18} />
-              <span className="uppercase">{locale === "zh-cn" ? "简" : locale === "zh-tw" ? "繁" : locale}</span>
+              <Globe2 size={16} strokeWidth={1.75} />
+              <span className="font-mono uppercase">{locale === "zh-cn" ? "简" : locale === "zh-tw" ? "繁" : locale}</span>
             </button>
             {menu === "lang" && (
-              <div className="rise absolute end-0 top-11 w-[420px] card grid grid-cols-2 gap-0.5 p-2 shadow-card">
+              <div className="rise absolute end-0 top-11 card grid w-[420px] grid-cols-2 gap-0.5 p-1.5 shadow-card">
                 {LOCALES.map((l) => (
                   <button
                     key={l.code}
                     lang={l.code}
                     onClick={() => switchLocale(l.code)}
-                    className={`rounded-lg px-3 py-1.5 text-start text-[15px] hover:bg-surface-2 ${l.code === locale ? "font-semibold text-brand" : "text-ink-2"}`}
+                    className={`rounded-md px-3 py-1.5 text-start text-[14px] hover:bg-surface-2 ${l.code === locale ? "bg-surface-2 font-medium text-ink" : "text-ink-2"}`}
                   >
                     {l.name}
                   </button>
@@ -140,7 +139,7 @@ export function Header() {
 
           {!STATIC && ready && !user && (
             <>
-              <Link href={href("/login")} className="btn btn-sm hidden bg-transparent text-ink-2 hover:bg-surface-2 hover:text-ink sm:inline-flex">
+              <Link href={href("/login")} className="btn btn-sm btn-ghost hidden sm:inline-flex">
                 {t("nav.login")}
               </Link>
               <Link href={href("/register")} className="btn btn-sm btn-primary hidden sm:inline-flex">
@@ -151,24 +150,24 @@ export function Header() {
           {ready && user && (
             <div ref={userRef} className="relative hidden sm:block">
               <button
-                className="flex h-9 items-center gap-2 rounded-full border border-line bg-surface ps-1 pe-3 text-sm hover:border-line-strong"
+                className="flex h-9 items-center gap-2 rounded-lg border border-line bg-surface ps-1 pe-3 text-[13px] transition-colors hover:border-line-strong"
                 aria-expanded={menu === "user"}
                 onClick={() => setMenu(menu === "user" ? null : "user")}
               >
-                <span className="grid h-7 w-7 place-items-center rounded-full bg-brand text-[13px] font-bold text-brand-ink">
+                <span className="grid h-7 w-7 place-items-center rounded-md bg-ink text-[12px] font-semibold text-bg">
                   {(user.name || user.email)[0].toUpperCase()}
                 </span>
                 <span className="max-w-[140px] truncate">{user.name || user.email}</span>
               </button>
               {menu === "user" && (
-                <div className="rise absolute end-0 top-11 w-56 card p-1.5 shadow-card">
-                  <Link href={href("/account")} className="flex items-center gap-2 rounded-lg px-3 py-2 text-[15px] hover:bg-surface-2">
+                <div className="rise absolute end-0 top-11 card w-56 p-1.5 shadow-card">
+                  <Link href={href("/account")} className="flex items-center gap-2.5 rounded-md px-3 py-2 text-[14px] text-ink-2 hover:bg-surface-2 hover:text-ink">
                     <UserRound size={16} /> {t("nav.account")}
                   </Link>
-                  <Link href={href("/workflows")} className="flex items-center gap-2 rounded-lg px-3 py-2 text-[15px] hover:bg-surface-2">
+                  <Link href={href("/workflows")} className="flex items-center gap-2.5 rounded-md px-3 py-2 text-[14px] text-ink-2 hover:bg-surface-2 hover:text-ink">
                     <LayoutGridIcon /> {t("nav.workflows")}
                   </Link>
-                  <button onClick={logout} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-start text-[15px] hover:bg-surface-2">
+                  <button onClick={logout} className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-start text-[14px] text-ink-2 hover:bg-surface-2 hover:text-ink">
                     <LogOut size={16} /> {t("nav.logout")}
                   </button>
                 </div>
@@ -208,13 +207,13 @@ export function Header() {
               <Link href={href("/workflows")} className="btn btn-quiet btn-sm flex-1">{t("nav.workflows")}</Link>
             </div>
             {CATEGORIES.map((c) => (
-              <div key={c.id} className="mb-5">
-                <p className="mb-1.5 text-[13px] font-semibold" style={{ color: c.color }}>{t(`cat.${c.id}`)}</p>
+              <div key={c.id} className="mb-7">
+                <p className="eyebrow mb-1">{t(`cat.${c.id}`)}</p>
                 <ul>
                   {TOOLS.filter((x) => x.category === c.id).map((tool) => (
                     <li key={tool.id}>
-                      <Link href={href(`/${tool.slug}`)} className="flex items-center gap-3 rounded-lg py-2 text-[16px]">
-                        <ToolIcon tool={tool} size={30} />
+                      <Link href={href(`/${tool.slug}`)} className="group flex items-center gap-3 border-b border-line py-2.5 text-[16px]">
+                        <ToolIcon tool={tool} size={32} />
                         {t(`tool.${tool.id}.name`)}
                       </Link>
                     </li>

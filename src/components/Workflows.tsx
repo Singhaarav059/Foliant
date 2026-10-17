@@ -157,12 +157,12 @@ export function Workflows() {
 
   return (
     <div className="mx-auto max-w-[1100px] px-4 pb-10 pt-12 sm:px-6">
-      <h1 className="text-[2rem] font-bold tracking-[-0.03em]">{t("wf.title")}</h1>
+      <h1 className="text-[2.25rem] font-semibold tracking-[-0.04em]">{t("wf.title")}</h1>
       <p className="mt-2 max-w-[620px] text-[16px] text-muted">{t("wf.subtitle")}</p>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_340px]">
         <section className="card min-w-0 p-5 sm:p-6">
-          <h2 className="mb-4 text-[17px] font-semibold">{t("wf.new")}</h2>
+          <h2 className="mb-4 text-[16px] font-medium tracking-[-0.01em]">{t("wf.new")}</h2>
           <input className="field mb-5" placeholder={t("wf.name")} aria-label={t("wf.name")} value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
 
           <ol className="space-y-2">
@@ -171,7 +171,7 @@ export function Workflows() {
               return (
                 <li key={i}>
                   {i > 0 && <ArrowDown size={16} className="mx-auto my-1 text-muted" aria-hidden />}
-                  <details className="rounded-2xl border border-line bg-bg" open={tool.options.length > 0 && i === steps.length - 1}>
+                  <details className="rounded-xl border border-line bg-bg" open={tool.options.length > 0 && i === steps.length - 1}>
                     <summary className="flex cursor-pointer list-none items-center gap-3 p-3">
                       <span className="tabular text-[13px] text-muted">{i + 1}</span>
                       <ToolIcon tool={tool} size={32} />
@@ -193,10 +193,10 @@ export function Workflows() {
           </ol>
 
           <div className="mt-4">
-            <p className="mb-2 text-[13px] font-semibold text-muted">{t("wf.addStep")}</p>
+            <p className="eyebrow mb-2.5">{t("wf.addStep")}</p>
             <div className="flex flex-wrap gap-2">
               {CHAINABLE.map((tool) => (
-                <button key={tool.id} className="flex items-center gap-2 rounded-full border border-line bg-surface py-1 ps-1 pe-3 text-[14px] hover:border-line-strong"
+                <button key={tool.id} className="group flex items-center gap-2 rounded-lg border border-line bg-surface py-1 ps-1 pe-3 text-[14px] transition-colors hover:border-line-strong"
                   disabled={tool.id === "merge" && steps.length > 0} onClick={() => addStep(tool.id)}>
                   <ToolIcon tool={tool} size={24} /> {t(`tool.${tool.id}.name`)} <Plus size={14} className="text-muted" />
                 </button>
@@ -209,7 +209,7 @@ export function Workflows() {
               <Dropzone tool={{ ...pdfTool, multiple: true }} onFiles={(f) => setFiles(f.filter((x) => /\.pdf$/i.test(x.name)))} />
             ) : (
               <div className="flex flex-wrap items-center gap-2">
-                {files.map((f) => <span key={f.name + f.size} className="rounded-full bg-surface-2 px-3 py-1 text-[14px]">{f.name}</span>)}
+                {files.map((f) => <span key={f.name + f.size} className="rounded-md bg-surface-2 px-2.5 py-1 text-[13px]">{f.name}</span>)}
                 <button className="icon-btn" aria-label={t("ws.remove")} onClick={() => setFiles([])}><X size={16} /></button>
               </div>
             )}
@@ -226,7 +226,7 @@ export function Workflows() {
         </section>
 
         <aside className="card h-max min-w-0 p-5">
-          <h2 className="mb-3 text-[17px] font-semibold">{t("wf.title")}</h2>
+          <h2 className="mb-3 text-[16px] font-medium tracking-[-0.01em]">{t("wf.title")}</h2>
           {!user && <p className="mb-3 text-[13px] text-muted">{STATIC ? t("wf.savedHere") : t("wf.savedLocally")}</p>}
           {saved.length === 0 ? <p className="text-[15px] text-muted">{t("wf.empty")}</p> : (
             <ul className="space-y-2">

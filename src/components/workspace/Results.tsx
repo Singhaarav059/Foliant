@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, Download, FileArchive, RefreshCw, ShieldCheck, Server } from "lucide-react";
+import { Check, Download, FileArchive, RefreshCw, ShieldCheck, Server } from "lucide-react";
 import { useI18n } from "../I18n";
 import { ToolIcon } from "../ToolIcon";
 import { PdfThumb } from "../PdfThumb";
@@ -59,8 +59,10 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
 
   return (
     <div className="rise mx-auto max-w-[760px] text-center">
-      <CheckCircle2 size={48} className="mx-auto text-success" strokeWidth={1.8} />
-      <h2 className="mt-3 text-2xl font-bold tracking-[-0.02em]">{outputs.length > 1 ? t("res.doneTitlePlural") : t("res.doneTitle")}</h2>
+      <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-[color-mix(in_oklab,var(--success)_14%,var(--surface))] text-success">
+        <Check size={20} strokeWidth={2.25} />
+      </span>
+      <h2 className="mt-5 text-[1.75rem] font-semibold tracking-[-0.035em]">{outputs.length > 1 ? t("res.doneTitlePlural") : t("res.doneTitle")}</h2>
       {saved && (
         <p className="tabular mt-2 text-[15px] text-ink-2">
           {t("res.saved", { pct: Math.round((1 - saved[2] / saved[1]) * 100), from: humanSize(saved[1]), to: humanSize(saved[2]) })}
@@ -70,13 +72,13 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
       {first?.note === "rebuilt" && <p className="mt-2 text-[15px] text-muted">{t("res.rebuilt")}</p>}
       {first?.note === "ocrNone" && <p className="mt-2 text-[15px] text-muted">{t("res.ocrNone")}</p>}
       <p className="mt-2 flex items-center justify-center gap-1.5 text-[13px] text-muted">
-        {tool.runtime === "browser" ? <ShieldCheck size={14} /> : <Server size={14} />}
+        {tool.runtime === "browser" ? <ShieldCheck size={14} strokeWidth={1.75} /> : <Server size={14} strokeWidth={1.75} />}
         {tool.runtime === "browser" ? t("ws.processedLocally") : t("ws.processedServer")}
       </p>
 
       {pdfs.length === 1 && outputs.length === 1 && (
         <div className="mt-6 flex justify-center">
-          <PdfThumb file={pdfs[0].blob} page={0} width={150} className="rounded" />
+          <PdfThumb file={pdfs[0].blob} page={0} width={150} className="rounded-sm" />
         </div>
       )}
 
@@ -101,7 +103,7 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
       </div>
 
       {outputs.length > 1 && (
-        <ul className="mx-auto mt-6 max-h-[320px] max-w-[520px] divide-y divide-line overflow-auto rounded-2xl border border-line bg-surface text-start">
+        <ul className="mx-auto mt-6 max-h-[320px] max-w-[520px] divide-y divide-line overflow-auto rounded-xl border border-line bg-surface text-start">
           {outputs.map((o, i) => (
             <li key={i} className="flex items-center gap-3 px-4 py-2.5">
               <span className="min-w-0 flex-1 truncate text-[15px]">{o.name}</span>
@@ -114,14 +116,14 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
 
       {pdfs.length > 0 && (
         <div className="mt-12 text-start">
-          <p className="mb-3 text-center text-[13px] font-semibold text-muted">{t("res.continue")}</p>
+          <p className="eyebrow mb-3 text-center">{t("res.continue")}</p>
           <div className="flex flex-wrap justify-center gap-2">
             {next.map((n) => (
               <Link
                 key={n.id}
                 href={href(`/${n.slug}`)}
                 onClick={() => handOff(pdfs.map((o) => new File([o.blob], o.name, { type: "application/pdf" })))}
-                className="flex items-center gap-2 rounded-full border border-line bg-surface py-1.5 ps-1.5 pe-3.5 text-[14px] hover:border-line-strong"
+                className="group flex items-center gap-2 rounded-lg border border-line bg-surface py-1 ps-1 pe-3 text-[14px] transition-colors hover:border-line-strong"
               >
                 <ToolIcon tool={n} size={26} />
                 {t(`tool.${n.id}.name`)}

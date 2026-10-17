@@ -58,7 +58,7 @@ export function Scanner({ onCapture }: { onCapture: (f: File) => void }) {
     );
   }
   return (
-    <div className="relative mx-auto w-full max-w-[640px] overflow-hidden rounded-2xl bg-black">
+    <div className="relative mx-auto w-full max-w-[640px] overflow-hidden rounded-xl bg-black">
       <video ref={video} autoPlay playsInline muted className="block max-h-[60vh] w-full object-contain" />
       <div className={`pointer-events-none absolute inset-0 bg-white transition-opacity duration-150 ${flash ? "opacity-70" : "opacity-0"}`} />
       <div className="absolute inset-x-0 bottom-4 flex items-center justify-center gap-3">

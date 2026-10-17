@@ -28,19 +28,19 @@ export function Account() {
 
   return (
     <div className="mx-auto max-w-[860px] space-y-6 px-4 pb-10 pt-12 sm:px-6">
-      <h1 className="text-[2rem] font-bold tracking-[-0.03em]">{t("acc.title")}</h1>
+      <h1 className="text-[2.25rem] font-semibold tracking-[-0.04em]">{t("acc.title")}</h1>
 
       <section className="card flex flex-wrap items-center gap-4 p-6">
-        <span className="grid h-12 w-12 place-items-center rounded-full bg-brand text-lg font-bold text-brand-ink">{(user.name || user.email)[0].toUpperCase()}</span>
+        <span className="grid h-12 w-12 place-items-center rounded-xl bg-ink text-lg font-semibold text-bg">{(user.name || user.email)[0].toUpperCase()}</span>
         <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold">{user.name || user.email}</p>
+          <p className="truncate font-medium">{user.name || user.email}</p>
           <p className="truncate text-[15px] text-muted">{user.email}</p>
         </div>
       </section>
 
       <section className="card p-6">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-[17px] font-semibold">{t("acc.history")}</h2>
+          <h2 className="text-[16px] font-medium tracking-[-0.01em]">{t("acc.history")}</h2>
           {items.length > 0 && (
             <button className="btn btn-quiet btn-sm" onClick={async () => { await postJson("/api/history", undefined, "DELETE"); setItems([]); }}>
               {t("acc.clearHistory")}
@@ -67,7 +67,7 @@ export function Account() {
       </section>
 
       <section className="card p-6">
-        <h2 className="mb-4 text-[17px] font-semibold">{t("acc.changePassword")}</h2>
+        <h2 className="mb-4 text-[16px] font-medium tracking-[-0.01em]">{t("acc.changePassword")}</h2>
         <form className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]" onSubmit={async (e) => {
           e.preventDefault();
           const f = new FormData(e.currentTarget);

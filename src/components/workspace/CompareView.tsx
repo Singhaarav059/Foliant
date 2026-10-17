@@ -45,10 +45,10 @@ export function CompareView({ a, b }: { a: File; b: File }) {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="flex gap-1 rounded-full bg-surface-2 p-1" role="tablist">
+        <div className="flex gap-0.5 rounded-[10px] bg-surface-2 p-0.5" role="tablist">
           {(["text", "visual", "side"] as const).map((k) => (
             <button key={k} role="tab" aria-selected={view === k} onClick={() => setView(k)}
-              className={`rounded-full px-4 py-1.5 text-[14px] font-medium ${view === k ? "bg-surface shadow-sm" : "text-muted"}`}>
+              className={`rounded-lg px-3.5 py-1.5 text-[14px] font-medium transition-colors ${view === k ? "bg-surface text-ink shadow-[0_1px_2px_rgb(0_0_0/0.08)]" : "text-muted hover:text-ink"}`}>
               {t(`cmp.${k}`)}
             </button>
           ))}
@@ -61,12 +61,12 @@ export function CompareView({ a, b }: { a: File; b: File }) {
       </div>
 
       {view === "text" && (
-        !diffs ? <div className="h-40 animate-pulse rounded-2xl bg-surface-2" /> :
+        !diffs ? <div className="h-40 animate-pulse rounded-xl bg-surface-2" /> :
         changed.length === 0 ? <p className="card p-8 text-center text-muted">{t("cmp.noChanges")}</p> : (
           <div className="space-y-4">
             {changed.map((d) => (
               <article key={d.page} className="card p-5">
-                <h3 className="mb-3 flex items-center gap-3 text-[14px] font-semibold">
+                <h3 className="mb-3 flex items-center gap-3 text-[14px] font-medium">
                   {t("ws.page", { n: d.page + 1 })}
                   <span className="tabular font-normal text-[#2563eb]">+{d.added}</span>
                   <span className="tabular font-normal text-[#dc2626]">−{d.removed}</span>
@@ -100,7 +100,7 @@ export function CompareView({ a, b }: { a: File; b: File }) {
             <div className="grid grid-cols-2 gap-4">
               {[a, b].map((f, i) => (
                 <figure key={i} className="flex flex-col items-center">
-                  <figcaption className="mb-2 text-[13px] font-semibold text-muted">{i === 0 ? t("cmp.original") : t("cmp.revised")} · <span className="font-normal">{f.name}</span></figcaption>
+                  <figcaption className="mb-2 text-[13px] font-medium text-muted">{i === 0 ? t("cmp.original") : t("cmp.revised")} · <span className="font-normal">{f.name}</span></figcaption>
                   <PdfThumb key={`${i}-${page}`} file={f} page={page} width={Math.min(440, holderWidth / 2 - 12)} />
                 </figure>
               ))}

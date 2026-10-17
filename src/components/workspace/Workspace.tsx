@@ -17,7 +17,7 @@ import { PrintResults } from "./PrintResults";
 import { clearHandoff, peekHandoff } from "@/lib/handoff";
 import { fileExt, type Output, type Progress } from "@/lib/pdf/common";
 import { pageCount } from "@/lib/pdf/thumbs";
-import { categoryColor, defaultOptions, LIMITS, toolById, type ToolId } from "@/lib/tools";
+import { defaultOptions, LIMITS, toolById, type ToolId } from "@/lib/tools";
 
 type Stage = "select" | "work" | "busy" | "done";
 type Caps = { chrome: boolean; libreoffice: boolean };
@@ -40,7 +40,6 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   const [url, setUrl] = useState("");
   const [caps, setCaps] = useState<Caps | null>(null);
   const run = useRef(0);
-  const color = categoryColor(tool.category);
   const files = useMemo(() => items.map((i) => i.file), [items]);
 
   useEffect(() => {
@@ -198,11 +197,11 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   }
 
   const errorBox = error && (
-    <div role="alert" className="rise mx-auto mb-5 flex max-w-[760px] items-start gap-3 rounded-2xl border border-[color-mix(in_oklab,var(--danger)_35%,transparent)] bg-[color-mix(in_oklab,var(--danger)_7%,var(--surface))] p-4 text-[15px]">
+    <div role="alert" className="rise mx-auto mb-5 flex max-w-[760px] items-start gap-3 rounded-xl border border-[color-mix(in_oklab,var(--danger)_30%,var(--line))] bg-[color-mix(in_oklab,var(--danger)_5%,var(--surface))] p-4 text-[15px]">
       <AlertTriangle size={18} className="mt-0.5 shrink-0 text-danger" />
       <span className="flex-1">{error.text}</span>
       {error.unlock && (
-        <Link href={href("/unlock-pdf")} className="flex shrink-0 items-center gap-1 font-semibold text-brand">
+        <Link href={href("/unlock-pdf")} className="flex shrink-0 items-center gap-1 font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink">
           {t("tool.unlock.name")} <ArrowRight size={15} />
         </Link>
       )}
@@ -210,7 +209,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   );
 
   const warn = unavailable && (
-    <p className="mx-auto mb-5 flex max-w-[760px] items-start gap-2 rounded-2xl bg-surface-2 p-4 text-[14px] text-ink-2">
+    <p className="mx-auto mb-5 flex max-w-[760px] items-start gap-2 rounded-xl border border-line bg-surface p-4 text-[14px] text-ink-2">
       <AlertTriangle size={16} className="mt-0.5 shrink-0" /> {unavailable}
     </p>
   );
@@ -218,13 +217,13 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   if (stage === "busy") {
     return (
       <div className="mx-auto flex max-w-[520px] flex-col items-center py-16 text-center" aria-live="polite">
-        <Loader2 size={40} className="animate-spin" style={{ color }} />
-        <p className="mt-4 text-lg font-semibold">{t("ws.processing")}</p>
+        <Loader2 size={28} className="animate-spin text-muted" strokeWidth={1.75} />
+        <p className="mt-5 text-[17px] font-medium tracking-[-0.01em]">{t("ws.processing")}</p>
         {progress.label && <p className="mt-1 text-[14px] text-muted">{progress.label}</p>}
-        <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-surface-2">
-          <div className="h-full rounded-full transition-[width] duration-300" style={{ width: `${Math.max(4, progress.value * 100)}%`, background: color }} />
+        <div className="mt-6 h-1 w-full overflow-hidden rounded-full bg-line">
+          <div className="h-full rounded-full bg-ink transition-[width] duration-300" style={{ width: `${Math.max(4, progress.value * 100)}%` }} />
         </div>
-        <p className="tabular mt-2 text-[13px] text-muted">{Math.round(progress.value * 100)}%</p>
+        <p className="eyebrow mt-2.5">{Math.round(progress.value * 100)}%</p>
         <button className="btn btn-quiet btn-sm mt-6" onClick={() => { run.current++; setStage("work"); }}>{t("ws.cancel")}</button>
       </div>
     );
@@ -236,11 +235,11 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
       <div>
         {warn}
         {errorBox}
-        <form className="mx-auto flex max-w-[760px] flex-col gap-3 rounded-[22px] border border-line bg-surface p-6 sm:flex-row"
+        <form className="mx-auto flex max-w-[760px] flex-col gap-3 rounded-2xl border border-line bg-surface p-3 sm:flex-row"
           onSubmit={(e) => { e.preventDefault(); if (url.trim()) setStage("work"); }}>
           <label className="sr-only" htmlFor="url">{t("ws.urlLabel")}</label>
           <input id="url" type="url" inputMode="url" required className="field h-12 flex-1 text-[16px]" placeholder={t("ws.urlPlaceholder")} value={url} onChange={(e) => setUrl(e.target.value)} />
-          <button className="btn btn-lg btn-primary" style={{ background: color }}>{t("tool.htmlToPdf.action")}</button>
+          <button className="btn btn-lg btn-primary">{t("tool.htmlToPdf.action")}</button>
         </form>
         <p className="my-6 text-center text-[14px] text-muted">{t("ws.orHtmlFile")}</p>
         <Dropzone tool={tool} onFiles={addFiles} />
@@ -310,17 +309,17 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
       {errorBox}
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
         <div className="min-w-0">{board}</div>
-        <aside className="card h-max p-5 lg:sticky lg:top-20">
-          <p className="mb-4 text-[13px] font-semibold text-muted">{t("ws.options")}</p>
+        <aside className="card h-max p-5 lg:sticky lg:top-[88px]">
+          <p className="mb-5 text-[14px] font-medium">{t("ws.options")}</p>
           <Options defs={tool.options} values={options} onChange={(k, v) => setOptions((o) => ({ ...o, [k]: v }))} />
-          <button className="btn btn-primary btn-lg mt-6 hidden w-full lg:inline-flex" style={{ background: color }} onClick={start}>
+          <button className="btn btn-primary btn-lg mt-6 hidden w-full lg:inline-flex" onClick={start}>
             {t(`tool.${tool.id}.action`)} <ArrowRight size={18} className="rtl:rotate-180" />
           </button>
         </aside>
       </div>
       {/* Phones: the action stays in reach at the bottom. */}
       <div className="sticky bottom-0 z-30 -mx-4 mt-6 border-t border-line bg-[color-mix(in_oklab,var(--bg)_92%,transparent)] px-4 py-3 backdrop-blur lg:hidden">
-        <button className="btn btn-primary btn-lg w-full" style={{ background: color }} onClick={start}>
+        <button className="btn btn-primary btn-lg w-full" onClick={start}>
           {t(`tool.${tool.id}.action`)} <ArrowRight size={18} className="rtl:rotate-180" />
         </button>
       </div>
