@@ -319,10 +319,12 @@ function glyphRuns(glyphs: Placed[], view: View): Run[] {
 }
 
 export function groupLines(items: Run[]): Line[] {
-  const lines = linesOf(items.filter((r) => !r.turn));
+  // Lines that stay together, in reading order.
+  const groups = linesOf(items.filter((r) => !r.turn)).map((l) => [l]);
   // Turned runs are grouped in their own frame, where they read left to right.
   // Each of their lines becomes one run, so its words stay in reading order
-  // for everything downstream.
+  // for everything downstream, and the lines of each direction stay together
+  // in the order they read in, so a phrase that wraps there runs on.
   const ways = new Map<number, Run[]>();
   for (const r of items) {
     if (!r.turn) continue;
@@ -337,9 +339,13 @@ export function groupLines(items: Run[]): Line[] {
       const v = t.y * c - t.x * s;
       return { ...r, turn: undefined, x: u, y: v - r.size, w: t.at[t.at.length - 1], h: r.size, xs: t.at.map((a) => u + a) };
     });
-    for (const l of linesOf(level)) lines.push(turnLine(l, angle, c, s));
+    groups.push(linesOf(level).map((l) => turnLine(l, angle, c, s)));
   }
-  return lines.sort((p, q) => p.y - q.y || p.x - q.x);
+  const top = (g: Line[]) => [Math.min(...g.map((l) => l.y)), Math.min(...g.map((l) => l.x))];
+  return groups
+    .map((g) => [g, top(g)] as const)
+    .sort(([, p], [, q]) => p[0] - q[0] || p[1] - q[1])
+    .flatMap(([g]) => g);
 }
 
 function linesOf(items: Run[]): Line[] {

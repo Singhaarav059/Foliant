@@ -9,9 +9,7 @@ import {
   PDFDocument, PDFName, PDFString, PDFHexString, PDFRawStream, PDFArray, PDFDict, PDFRef, StandardFonts, degrees, decodePDFRawStream,
   PDFOperator, PDFOperatorNames as Ops, pushGraphicsState, popGraphicsState, concatTransformationMatrix, drawObject,
 } from "pdf-lib";
-import { createRequire } from "node:module";
-import { join } from "node:path";
-import { load, openPdf, check, eq, root } from "./lib/load.mjs";
+import { load, openPdf, check, eq, nodeCanvas } from "./lib/load.mjs";
 
 const { redact, findMatches } = await load("security");
 const { pageText: textOf } = await load("text");
@@ -50,16 +48,8 @@ const allText = async (bytes) => {
   return out.join(" | ");
 };
 
-// Pages drawn as images need a canvas: a Node one stands in for the browser's.
-// @napi-rs/canvas (MIT) comes with pdfjs-dist, which uses it in Node.
-const { createCanvas } = createRequire(join(root, "package.json"))("@napi-rs/canvas");
-globalThis.document = {
-  createElement: () => {
-    const c = createCanvas(1, 1);
-    c.toBlob = (cb, type, q) => cb(new Blob([c.toBuffer(type === "image/png" ? "image/png" : "image/jpeg", Math.round((q ?? 0.9) * 100))]));
-    return c;
-  },
-};
+// Pages drawn as images need a canvas.
+nodeCanvas();
 
 // ── Fallback: PDFium fails to load, every marked page is drawn as an image.
 // Runs first: PDFium is loaded once, and a failed load is retried next time.
@@ -104,6 +94,23 @@ globalThis.document = {
     eq(doc.context.enumerateIndirectObjects().filter(([, o]) => o instanceof PDFDict && o.get(PDFName.of("Type")) === PDFName.of("Page")).length, 3, "page objects");
   });
 
+  await test("fallback: a page drawn as an image keeps nothing of an inherited CropBox", async () => {
+    // The CropBox comes from the page tree: the page is seen as 300×200, from (50, 50).
+    const d = await PDFDocument.create();
+    const font = await d.embedFont(StandardFonts.Helvetica);
+    const p = d.addPage([W, H]);
+    p.drawText("Left edge text SECRET-1 here", { x: 60, y: 200, size: 12, font });
+    p.drawText("Bottom line kept", { x: 60, y: 60, size: 12, font });
+    d.catalog.lookup(PDFName.of("Pages")).set(PDFName.of("CropBox"), d.context.obj([50, 50, 350, 250]));
+    const input = new Uint8Array(await d.save());
+    const hits = findMatches([await textOf(await (await openPdf(input.slice())).getPage(1))], /SECRET-1/g);
+    const [res] = await redact(new File([input], "crop.pdf"), hits, { redactDpi: "100" });
+    const page = await (await openPdf(new Uint8Array(await res.blob.arrayBuffer()))).getPage(1);
+    eq(page.view.join(","), "0,0,300,200", "page as seen");
+    const lines = (await textOf(page)).lines.map((l) => `${l.text} @${Math.round(l.x)}`);
+    eq(lines.join(" | "), "Left edge text here @10 | Bottom line kept @10", "text layer");
+  });
+
   pdfium.pdfiumWasm.load = realLoad;
 }
 
@@ -123,6 +130,7 @@ async function build() {
   p1.pushOperators(pushGraphicsState(), concatTransformationMatrix(200, 0, 0, 100, 100, 120), drawObject("Im1"), popGraphicsState());
   const link = (rect, url) => doc.context.register(doc.context.obj({ Type: "Annot", Subtype: "Link", Rect: rect, Border: [0, 0, 0], A: { S: "URI", URI: PDFString.of(url) } }));
   p1.node.set(PDFName.of("Annots"), doc.context.obj([link([70, 245, 140, 262], `mailto:${SECRET}@example.com`), link([20, 55, 120, 72], "https://example.com/public")]));
+  p1.node.set(PDFName.of("PieceInfo"), doc.context.obj({ Illustrator: { Private: doc.context.register(doc.context.obj({ Note: PDFString.of(`artwork ${SECRET}`) })) } }));
 
   // Page 2: the secret only in tagged ActualText, over harmless visible text.
   const p2 = doc.addPage([W, H]);
@@ -248,6 +256,8 @@ async function phrases() {
   return new Uint8Array(await d.save());
 }
 const hitCount = (hits) => new Set(hits.map((h) => h.hit)).size;
+// What the editor sends for each fully marked text: the text and the search that found it.
+const termsOf = (hits, pattern) => [...new Set(hits.map((h) => h.text))].map((text) => ({ text, pattern }));
 
 await test("phrases are found across text runs and line breaks", async () => {
   const { searchPattern } = await load("security");
@@ -262,11 +272,55 @@ await test("phrases are found across text runs and line breaks", async () => {
   const run = page.items.find((r) => r.text.endsWith("confiden-"));
   const first = word.find((h) => h.rect.y * H < run.y + run.h);
   eq((first.rect.x + first.rect.w) * W >= run.xs[run.text.length] + run.size * 0.12 - 0.01, true, "box covers the hyphen");
-  const [res] = await redact(new File([input], "p.pdf"), [...names, ...word], { redactDpi: "100", terms: [...new Set([...names, ...word].map((h) => h.text))] });
+  const terms = [...termsOf(names, searchPattern("john smith")), ...termsOf(word, searchPattern("confidential"))];
+  const [res] = await redact(new File([input], "p.pdf"), [...names, ...word], { redactDpi: "100", terms });
   const after = await allText(new Uint8Array(await res.blob.arrayBuffer()));
   console.log(`      phrases after: ${after}`);
   for (const gone of ["John", "Smith", "confiden", "tial"]) eq(after.includes(gone), false, `"${gone}" left`);
   for (const kept of ["discharged", "admitted", "seen", "Please call", "today about the", "file"]) eq(after.includes(kept), true, `"${kept}" kept`);
+});
+
+await test("phrases wrap in turned text too", async () => {
+  const { searchPattern } = await load("security");
+  for (const angle of [90, 180, 270]) {
+    const d = await PDFDocument.create();
+    const font = await d.embedFont(StandardFonts.Helvetica);
+    const p = d.addPage([612, 792]);
+    const [c, s] = [Math.cos((angle * Math.PI) / 180), Math.sin((angle * Math.PI) / 180)];
+    // Each line under the one before, in the text's own direction.
+    ["Please call John", "Smith today about the confiden-", "tial file"].forEach((t, i) => p.drawText(t, { x: 306 + s * i * 14, y: 396 - c * i * 14, size: 12, font, rotate: degrees(angle) }));
+    const input = new Uint8Array(await d.save());
+    const page = await textOf(await (await openPdf(input.slice())).getPage(1));
+    const names = findMatches([page], searchPattern("john smith"));
+    const word = findMatches([page], searchPattern("confidential"));
+    eq(hitCount(names), 1, `${angle}°: hits for John Smith in ${JSON.stringify(page.lines.map((l) => l.text))}`);
+    eq(hitCount(word), 1, `${angle}°: hits for the hyphenated word`);
+    const [res] = await redact(new File([input], "t.pdf"), [...names, ...word], { redactDpi: "100" });
+    const after = await allText(new Uint8Array(await res.blob.arrayBuffer()));
+    for (const gone of ["John", "Smith", "confiden", "tial"]) eq(after.includes(gone), false, `${angle}°: "${gone}" left in "${after}"`);
+  }
+});
+
+await test("words and numbers wrapped at a hyphen are found as typed", async () => {
+  const { searchPattern, PRESETS } = await load("security");
+  const d = await PDFDocument.create();
+  const font = await d.embedFont(StandardFonts.Helvetica);
+  const p = d.addPage([W, H]);
+  ["Her social security number is 123-45-", "6789 and the claim reference is AB-", "77120 as filed. The drug is a well-", "known anti-", "cancer agent."]
+    .forEach((t, i) => p.drawText(t, { x: 20, y: 250 - i * 14, size: 12, font }));
+  const input = new Uint8Array(await d.save());
+  const page = await textOf(await (await openPdf(input.slice())).getPage(1));
+  const count = (q, o) => hitCount(findMatches([page], searchPattern(q, o)));
+  for (const [q, o] of [["123-45-6789", {}], ["AB-77120", {}], ["well-known", {}], ["known", { wholeWord: true }], ["anti-cancer", {}], ["cancer", { wholeWord: true }], ["wellknown", {}]])
+    eq(count(q, o), 1, `hits for "${q}" ${JSON.stringify(o)}`);
+  const numbers = findMatches([page], PRESETS.numbers);
+  eq(`${hitCount(numbers)} ${numbers[0]?.text}`, "1 123-45-6789", "long numbers");
+  const pattern = searchPattern("123-45-6789");
+  const hits = findMatches([page], pattern);
+  const [res] = await redact(new File([input], "w.pdf"), hits, { redactDpi: "100", terms: termsOf(hits, pattern) });
+  const after = await allText(new Uint8Array(await res.blob.arrayBuffer()));
+  eq(/123|6789/.test(after), false, `number left in "${after}"`);
+  eq(after.includes("and the claim reference"), true, "text beside it kept");
 });
 
 await test("quick marks stay within a line and a table cell", async () => {
@@ -296,6 +350,32 @@ await test("match case and whole words", async () => {
   eq(count("Ann", { matchCase: true, wholeWord: true }), 1, "both");
 });
 
+await test("checked terms: only what the same search finds again counts as left", async () => {
+  const { searchPattern } = await load("security");
+  // The output's own dates and producer hold the year and "Foliant".
+  const year = String(new Date().getUTCFullYear());
+  const d = await PDFDocument.create();
+  const font = await d.embedFont(StandardFonts.Helvetica);
+  const p = d.addPage([W, H]);
+  p.drawText("Ann met Anna about the plan", { x: 20, y: 250, size: 12, font });
+  p.drawText(`Invoice of 17 Oct ${year}, printed by Foliant`, { x: 20, y: 220, size: 12, font });
+  p.drawText("Account 4471 closed", { x: 20, y: 190, size: 12, font });
+  // Two table cells, far apart.
+  p.drawText("44", { x: 20, y: 160, size: 12, font });
+  p.drawText("71", { x: 120, y: 160, size: 12, font });
+  const input = new Uint8Array(await d.save());
+  const page = await textOf(await (await openPdf(input.slice())).getPage(1));
+  for (const [q, o, gone, kept] of [["ann", { wholeWord: true }, /\bAnn\b/, "Anna"], [year, {}, year, "Invoice of 17 Oct"], ["Foliant", {}, "Foliant", "printed by"], ["4471", {}, "4471", "44 71"]]) {
+    const pattern = searchPattern(q, o);
+    const hits = findMatches([page], pattern);
+    const res = await redact(new File([input], "t.pdf"), hits, { redactDpi: "100", terms: termsOf(hits, pattern) }).then(([r]) => r, (e) => e);
+    eq(res.code, undefined, `"${q}" ${JSON.stringify(o)}: error`);
+    const after = (await allText(new Uint8Array(await res.blob.arrayBuffer()))).replace(/\s+/g, " ");
+    eq(typeof gone === "string" ? after.includes(gone) : gone.test(after), false, `"${q}" left in "${after}"`);
+    eq(after.includes(kept), true, `"${kept}" kept in "${after}"`);
+  }
+});
+
 // `terms` asks redact() to check the whole output for the searched texts.
 async function noted(where) {
   const d = await PDFDocument.create();
@@ -308,7 +388,7 @@ async function noted(where) {
   if (where) (where === "same" ? p : other).node.set(PDFName.of("Annots"), d.context.obj([note]));
   const input = new Uint8Array(await d.save());
   const hits = findMatches([await textOf(await (await openPdf(input.slice())).getPage(1))], /SECRET-9/g);
-  const [res] = await redact(new File([input], "n.pdf"), hits, { redactDpi: "100", terms: ["SECRET-9"] });
+  const [res] = await redact(new File([input], "n.pdf"), hits, { redactDpi: "100", terms: [{ text: "SECRET-9" }] });
   return new Uint8Array(await res.blob.arrayBuffer());
 }
 const images = async (bytes) => (await PDFDocument.load(bytes)).context.enumerateIndirectObjects().filter(([, o]) => o instanceof PDFRawStream && o.dict.get(PDFName.of("Subtype")) === PDFName.of("Image")).length;
@@ -329,6 +409,43 @@ await test("checked terms: a copy left on a marked page is cleared by drawing it
 await test("checked terms: a copy left on another page stops the export", async () => {
   const err = await noted("other").then(() => null, (e) => e);
   eq(err?.code, "redaction_leak", `error (${err?.message})`);
+});
+
+await test("a form field under a box is gone, though its form goes on another page", async () => {
+  // Fields named applicant.name and applicant.address share a parent field.
+  const d = await PDFDocument.create();
+  const font = await d.embedFont(StandardFonts.Helvetica);
+  const [p1, p2] = [d.addPage([W, H]), d.addPage([W, H])];
+  p1.drawText("Name:", { x: 20, y: 250, size: 12, font });
+  const form = d.getForm();
+  const nameField = form.createTextField("applicant.name");
+  nameField.setText("SECRET-5555");
+  nameField.addToPage(p1, { x: 80, y: 240, width: 150, height: 24, font });
+  const address = form.createTextField("applicant.address");
+  address.setText("1 Main Street");
+  address.addToPage(p2, { x: 80, y: 240, width: 150, height: 24, font });
+  const input = new Uint8Array(await d.save());
+  const box = [{ page: 0, rect: frac(70, 30, 240, 65) }];
+  const [res] = await redact(new File([input], "f.pdf"), box, { redactDpi: "100" });
+  const out = new Uint8Array(await res.blob.arrayBuffer());
+  eq((await holding(out, "SECRET-5555")).join(","), "", "objects holding the secret");
+  eq((await PDFDocument.load(out)).getPage(1).node.lookup(PDFName.of("Annots"), PDFArray).size(), 1, "widget on page 2 kept");
+  const err = await redact(new File([input], "f.pdf"), box, { redactDpi: "100", terms: [{ text: "SECRET-5555" }] }).then(() => null, (e) => e);
+  eq(err?.code, undefined, "checked terms: error");
+});
+
+await test("without qpdf's rewrite, nothing is saved", async () => {
+  // qpdf drops what PDFium took off the page but left in its resources.
+  const qpdf = await load("qpdf");
+  const [url, log] = [qpdf.qpdfWasm.url, console.error];
+  qpdf.qpdfWasm.url = () => "/nonexistent/qpdf.wasm";
+  console.error = () => {};
+  try {
+    const err = await redact(new File([input], "case.pdf"), marks, { redactDpi: "150" }).then(() => null, (e) => e);
+    eq(err instanceof Error, true, "redact() refused");
+  } finally {
+    [qpdf.qpdfWasm.url, console.error] = [url, log];
+  }
 });
 
 await test("pages stay vector (no page turned into an image)", () => {

@@ -55,7 +55,7 @@ export async function unlock(file: File, o: { password: string }): Promise<Outpu
 
 // The editor's quick marks. Plain spaces only: search text marks line breaks
 // and column gaps with other whitespace, so a number never runs on into the
-// next line or table cell.
+// next line (unless it wraps at a hyphen) or table cell.
 export const PRESETS = {
   emails: /[\w.+-]+@[\w-]+\.[\w.-]+/g,
   phones: /(?:\+?\d[\d ().-]{7,}\d)/g,
@@ -72,23 +72,23 @@ export function searchPattern(query: string, o: { matchCase?: boolean; wholeWord
 }
 
 // A page's text as one string to search, and where each character comes from:
-// [line, run, index]. Lines join with a line break, or with nothing where a
-// word is hyphenated across them; `joins` keeps each left-out hyphen by the
-// position the next line starts at, so a match across the break boxes it too.
-// A gap as wide as a table column becomes a tab, so patterns that allow only
-// spaces (the number presets) stay within a cell.
+// [line, run, index]. Lines join with a line break, or with nothing where one
+// ends in a hyphen after a letter or digit and the next starts with one (a
+// word, number or code wrapped there). Such a hyphen may be part of the text
+// (well-known, 123-45-6789) or only mark the break (confiden-tial), so
+// `versions` holds the text as written and, when there are any, without the
+// ones after a letter with a lowercase letter next; `at` takes each of a
+// version's characters back to `text`. A gap as wide as a table column becomes
+// a tab, so patterns that allow only spaces (the number presets) stay within a cell.
 export function searchText(p: PageText) {
   let text = "";
   const from: ([number, number, number] | null)[] = [];
-  const joins = new Map<number, [number, number, number]>();
+  const soft = new Set<number>();
   p.lines.forEach((line, li) => {
     const chars = lineChars(line.runs);
     if (li > 0) {
-      const hyphen = from[from.length - 1];
-      if (hyphen && /\p{L}[-\u2010\u00ad]$/u.test(text) && /^\p{Ll}/u.test(chars.text)) {
-        text = text.slice(0, -1);
-        from.pop();
-        joins.set(text.length, hyphen);
+      if (/[\p{L}\p{N}][-\u2010\u00ad]$/u.test(text) && /^[\p{L}\p{N}]/u.test(chars.text)) {
+        if (/\p{L}.$/u.test(text) && /^\p{Ll}/u.test(chars.text)) soft.add(text.length - 1);
       } else {
         text += "\n";
         from.push(null);
@@ -106,8 +106,16 @@ export function searchText(p: PageText) {
       from.push(f ? [li, f[0], f[1]] : null);
     });
   });
-  return { text, from, joins };
+  const all = Array.from({ length: text.length }, (_, k) => k);
+  const versions = [{ text, at: all }];
+  if (soft.size) {
+    const at = all.filter((k) => !soft.has(k));
+    versions.push({ text: at.map((k) => text[k]).join(""), at });
+  }
+  return { text, from, versions };
 }
+
+const globally = (re: RegExp) => new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
 
 // Text matches → boxes in visual fractions, for the redaction editor. A match
 // is found in the page's text, so it may span runs (a bold surname, a phrase
@@ -115,33 +123,38 @@ export function searchText(p: PageText) {
 // `hit` numbers the matches, `text` is what matched with whitespace as single spaces.
 export function findMatches(pages: PageText[], pattern: RegExp): { page: number; rect: FracRect; text: string; hit: number }[] {
   const out: { page: number; rect: FracRect; text: string; hit: number }[] = [];
-  const re = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g");
+  const re = globally(pattern);
   let hit = 0;
   pages.forEach((p, pi) => {
-    const { text, from, joins } = searchText(p);
-    for (const m of text.matchAll(re)) {
-      if (!m[0]) continue;
+    const { from, versions } = searchText(p);
+    // Each match as the range of the text it covers (a hyphen left out
+    // included); both versions find most of them.
+    const found = new Map<string, [number, number, string]>();
+    for (const v of versions) {
+      for (const m of v.text.matchAll(re)) {
+        if (!m[0]) continue;
+        const [a, b] = [v.at[m.index], v.at[m.index + m[0].length - 1] + 1];
+        if (!found.has(`${a}:${b}`)) found.set(`${a}:${b}`, [a, b, m[0]]);
+      }
+    }
+    for (const [a, b, matched] of [...found.values()].sort((x, y) => x[0] - y[0] || x[1] - y[1])) {
       // The characters covered, as a range in each run of each line.
       const covered = new Map<number, Map<number, [number, number]>>();
-      const cover = ([li, ri, k]: [number, number, number]) => {
-        const runs = covered.get(li) ?? new Map<number, [number, number]>();
-        const [a, b] = runs.get(ri) ?? [k, k];
-        runs.set(ri, [Math.min(a, k), Math.max(b, k)]);
-        covered.set(li, runs);
-      };
-      const end = m.index + m[0].length;
-      for (let k = m.index; k < end; k++) {
+      for (let k = a; k < b; k++) {
         const f = from[k];
-        if (f) cover(f);
-        const hyphen = k > m.index ? joins.get(k) : undefined;
-        if (hyphen) cover(hyphen);
+        if (!f) continue;
+        const [li, ri, i] = f;
+        const runs = covered.get(li) ?? new Map<number, [number, number]>();
+        const [lo, hi] = runs.get(ri) ?? [i, i];
+        runs.set(ri, [Math.min(lo, i), Math.max(hi, i)]);
+        covered.set(li, runs);
       }
       for (const [li, runs] of covered) {
         const line = p.lines[li];
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, size = 0;
-        for (const [ri, [a, b]] of runs) {
+        for (const [ri, [lo, hi]] of runs) {
           const run = line.runs[ri];
-          const box = charBox(run, a, b + 1);
+          const box = charBox(run, lo, hi + 1);
           x0 = Math.min(x0, box.x);
           y0 = Math.min(y0, box.y);
           x1 = Math.max(x1, box.x + box.w);
@@ -152,7 +165,7 @@ export function findMatches(pages: PageText[], pattern: RegExp): { page: number;
         out.push({
           page: pi,
           hit,
-          text: m[0].replace(/\s+/g, " "),
+          text: matched.replace(/\s+/g, " "),
           rect: { x: (x0 - pad) / p.width, y: (y0 - pad) / p.height, w: (x1 - x0 + pad * 2) / p.width, h: (y1 - y0 + pad * 2) / p.height },
         });
       }
@@ -225,6 +238,7 @@ function blank(page: PDFPage) {
   const node = page.node;
   for (const key of node.keys()) if (key !== name("Type") && key !== name("Parent")) node.delete(key);
   node.set(name("MediaBox"), node.context.obj([0, 0, 1, 1]));
+  node.set(name("CropBox"), node.context.obj([0, 0, 1, 1]));
   node.set(name("Resources"), node.context.obj({}));
   node.set(name("Rotate"), PDFNumber.of(0));
 }
@@ -234,35 +248,48 @@ function blank(page: PDFPage) {
 // page scripts and article beads.
 const PRIVATE = ["Thumb", "PieceInfo", "Metadata", "AA", "B", "StructParents"];
 
-// Links in the output may only point at its own pages; a target outside them
-// (a page that was never in the page tree) would come along hidden.
-function dropDeadTargets(out: PDFDocument) {
-  const pages = new Set(out.getPages().map((p) => p.ref));
-  const live = (o: unknown) => !(o instanceof PDFRef) || pages.has(o);
-  for (const page of out.getPages()) {
-    for (const ref of page.node.lookupMaybe(name("Annots"), PDFArray)?.asArray() ?? []) {
-      const a = out.context.lookup(ref);
-      if (!(a instanceof PDFDict)) continue;
-      if (!live(a.get(name("P")))) a.delete(name("P"));
-      const dest = a.lookupMaybe(name("Dest"), PDFArray);
-      if (dest && !live(dest.get(0))) a.delete(name("Dest"));
-      const action = a.lookupMaybe(name("A"), PDFDict);
-      const target = action?.lookupMaybe(name("D"), PDFArray);
-      if (target && !live(target.get(0))) a.delete(name("A"));
-    }
+// Cuts what the copier would follow from the pages to anything they don't
+// show: the page data above, link targets outside the page tree (a page that
+// was never in it would come along hidden), replies and popups whose note is
+// gone, and the form a widget belongs to. The output has no form, and a
+// field's tree leads to every field in it, those under a box included.
+// Done before copying, so none of it is copied at all.
+function detach(doc: PDFDocument) {
+  const pages = doc.getPages();
+  const annots = new Set<PDFDict>();
+  const list = (page: PDFPage) => (page.node.lookupMaybe(name("Annots"), PDFArray)?.asArray() ?? []).map((ref) => doc.context.lookup(ref));
+  for (const page of pages) for (const a of list(page)) if (a instanceof PDFDict) annots.add(a);
+  const refs = new Set(pages.map((p) => p.ref));
+  const live = (o: unknown) => !(o instanceof PDFRef) || refs.has(o);
+  const kept = (o: unknown) => o === undefined || annots.has(doc.context.lookup(o as PDFRef) as PDFDict);
+  for (const page of pages) for (const key of PRIVATE) page.node.delete(name(key));
+  for (const a of annots) {
+    if (a.get(name("Subtype")) === name("Widget")) a.delete(name("Parent"));
+    else if (!kept(a.get(name("Parent")))) a.delete(name("Parent"));
+    for (const key of ["IRT", "Popup"]) if (!kept(a.get(name(key)))) a.delete(name(key));
+    if (!live(a.get(name("P")))) a.delete(name("P"));
+    const dest = a.lookupMaybe(name("Dest"), PDFArray);
+    if (dest && !live(dest.get(0))) a.delete(name("Dest"));
+    const action = a.lookupMaybe(name("A"), PDFDict);
+    const target = action?.lookupMaybe(name("D"), PDFArray);
+    if (target && !live(target.get(0))) a.delete(name("A"));
   }
 }
+
+// A searched text the caller expects gone everywhere, and the search that
+// found it (the text itself, in the same case, when there is none).
+export type Term = { text: string; pattern?: RegExp };
 
 export class RedactionLeakError extends Error {
   code = "redaction_leak";
 }
 
 // `terms` are texts the caller expects gone everywhere (every search hit was
-// kept). If one survives anywhere, every marked page is drawn as an image
-// instead; if it still survives (a note or form field outside the boxes),
-// nothing is returned.
+// kept). If the same search finds one anywhere, every marked page is drawn as
+// an image instead; if it still finds one (a note or form field outside the
+// boxes), nothing is returned.
 export async function redact(
-  file: File, marks: { page: number; rect: FracRect }[], o: { redactDpi: string; terms?: string[] }, progress?: Progress,
+  file: File, marks: { page: number; rect: FracRect }[], o: { redactDpi: string; terms?: Term[] }, progress?: Progress,
 ): Promise<Output[]> {
   const bytes = await bytesOf(file);
   const byPage = new Map<number, FracRect[]>();
@@ -276,8 +303,8 @@ export async function redact(
   } catch {
     // PDFium couldn't open or save the file: every marked page is rendered instead.
   }
-  const terms = [...new Set(o.terms ?? [])].filter((t) => t.trim());
-  const title = terms.some((t) => baseName(file.name).includes(t)) ? "" : baseName(file.name);
+  const terms = (o.terms ?? []).filter((t) => t.text.trim());
+  const title = terms.some((t) => baseName(file.name).includes(t.text)) ? "" : baseName(file.name);
   const build = (raster: Set<number>) => assemble(bytes, pdfium?.bytes ?? null, byPage, boxes, raster, Number(o.redactDpi) / 72, title, progress);
   let out = await build(new Set(pdfium ? pdfium.failed : byPage.keys()));
   if (terms.length && (await leftovers(out, terms)).length) {
@@ -299,6 +326,7 @@ async function assemble(
     if (raster.has(i)) blank(src.getPage(i));
     else dropAnnotsUnder(src.getPage(i), b);
   }
+  detach(src);
   // One copier for every page, so a link to another page lands on that page's
   // copy rather than bringing along a hidden duplicate (the unredacted one, for
   // a page drawn as an image).
@@ -309,12 +337,9 @@ async function assemble(
   const copier = PDFObjectCopier.for(src.context, out.context);
   for (let i = 0; i < count; i++) {
     const ref = copier.copy(src.getPage(i).ref);
-    const page = PDFPage.of(out.context.lookup(ref) as PDFPageLeaf, ref, out);
-    for (const key of PRIVATE) page.node.delete(name(key));
-    out.addPage(page);
+    out.addPage(PDFPage.of(out.context.lookup(ref) as PDFPageLeaf, ref, out));
     if (!raster.has(i)) tick();
   }
-  dropDeadTargets(out);
 
   const view = raster.size ? await openPdf(bytes) : null;
   for (const i of [...raster].sort((a, b) => a - b)) {
@@ -327,7 +352,7 @@ async function assemble(
     for (const b of rects) ctx.fillRect(b.x * canvas.width, b.y * canvas.height, b.w * canvas.width, b.h * canvas.height);
     const jpg = await out.embedJpg(await bytesOf(await canvasToBlob(canvas, "image/jpeg", 0.9)));
     const p = out.getPage(i);
-    p.node.set(name("MediaBox"), out.context.obj([0, 0, v.width, v.height]));
+    for (const box of ["MediaBox", "CropBox"]) p.node.set(name(box), out.context.obj([0, 0, v.width, v.height]));
     p.drawImage(jpg, { x: 0, y: 0, width: v.width, height: v.height });
     const text = await pageText(page);
     // Word by word, so text beside a redaction stays searchable.
@@ -352,28 +377,24 @@ async function assemble(
   out.setCreator("Foliant");
   if (title) out.setTitle(title);
   out.catalog.delete(name("Metadata"));
-  return tidy(await out.save({ useObjectStreams: true }));
+  // qpdf rewrites the file from what it still refers to, so nothing left over
+  // from editing survives, and drops resources no page uses (an image wholly
+  // under a box that PDFium took off the page). Without it, nothing is saved.
+  return (await runQpdf(await out.save({ useObjectStreams: true }), (i, o) => ["--object-streams=generate", "--remove-unreferenced-resources=yes", i, o])).output;
 }
 
-// qpdf rewrites the file from what it still refers to, so nothing left over
-// from editing survives, and drops resources no page uses (an image wholly
-// under a box that PDFium took off the page).
-async function tidy(bytes: Uint8Array) {
-  try {
-    return (await runQpdf(bytes, (i, out) => ["--object-streams=generate", "--remove-unreferenced-resources=yes", i, out])).output;
-  } catch {
-    return bytes;
-  }
-}
-
-// Texts from `terms` still in the file: in any string (link targets, notes,
-// form values, metadata), in XMP or attached files, or in the text of a page.
-export async function leftovers(bytes: Uint8Array, terms: string[]): Promise<string[]> {
+// Texts from `terms` the same search still finds in the file: in any string
+// (link targets, notes, form values), in XMP or attached files, or in the text
+// of a page. The document information dictionary is redact()'s own: dates,
+// the producer and a title it has checked.
+export async function leftovers(bytes: Uint8Array, terms: Term[]): Promise<string[]> {
   const found = new Set<string>();
-  // Spaces in a term match any whitespace, as in the search, so a phrase that wraps is still found.
-  const patterns = terms.map((t) => [t, new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+"), "u")] as const);
+  // Each term's own search, run again: a whole-word search for "Ann" doesn't
+  // count "Anna", and "ANN" is another text.
+  const searches = terms.map((t) => [t.text, globally(t.pattern ?? searchPattern(t.text, { matchCase: true }))] as const);
   const check = (s: string) => {
-    for (const [t, re] of patterns) if (re.test(s)) found.add(t);
+    for (const [text, re] of searches)
+      if (!found.has(text) && [...s.matchAll(re)].some((m) => m[0].replace(/\s+/g, " ") === text)) found.add(text);
   };
   const visit = (o: unknown): void => {
     if (o instanceof PDFString || o instanceof PDFHexString) {
@@ -386,7 +407,9 @@ export async function leftovers(bytes: Uint8Array, terms: string[]): Promise<str
     else if (o instanceof PDFArray) o.asArray().forEach(visit);
   };
   const doc = await PDFDocument.load(bytes, { updateMetadata: false });
-  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+  const info = doc.context.trailerInfo.Info;
+  for (const [ref, obj] of doc.context.enumerateIndirectObjects()) {
+    if (ref === info) continue;
     if (!(obj instanceof PDFRawStream)) {
       visit(obj);
       continue;
@@ -408,8 +431,9 @@ export async function leftovers(bytes: Uint8Array, terms: string[]): Promise<str
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const text = await pageText(page);
-      check(searchText(text).text);
-      check(text.items.map((r) => r.text).join(""));
+      for (const v of searchText(text).versions) check(v.text);
+      // Each run on its own as well, apart from the next (table cells "44" and "71" aren't "4471").
+      check(text.items.map((r) => r.text).join("\n"));
       page.cleanup();
     }
   } finally {
