@@ -1,6 +1,9 @@
 "use client";
 
-import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, type PDFPage } from "pdf-lib";
+import {
+  PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFObjectCopier, PDFPage, PDFPageLeaf, PDFRawStream, PDFRef, PDFString,
+  decodePDFRawStream,
+} from "pdf-lib";
 import { baseName, bytesOf, canvasToBlob, closePdf, openPdf, pdfBlob, renderPage, type Output, type Progress } from "./common";
 import { runQpdf, QpdfError } from "./qpdf";
 import { charBox, pageText, type PageText } from "./text";
@@ -50,9 +53,9 @@ export async function unlock(file: File, o: { password: string }): Promise<Outpu
   }
 }
 
-// Text matches → boxes in visual fractions, for the redaction editor.
-export function findMatches(pages: PageText[], pattern: RegExp): { page: number; rect: FracRect }[] {
-  const out: { page: number; rect: FracRect }[] = [];
+// Text matches → boxes in visual fractions, for the redaction editor, with the text matched.
+export function findMatches(pages: PageText[], pattern: RegExp): { page: number; rect: FracRect; text: string }[] {
+  const out: { page: number; rect: FracRect; text: string }[] = [];
   pages.forEach((p, pi) => {
     for (const line of p.lines) {
       // Match against each run separately so boxes follow real glyph positions.
@@ -68,6 +71,7 @@ export function findMatches(pages: PageText[], pattern: RegExp): { page: number;
           const pad = run.size * 0.12;
           out.push({
             page: pi,
+            text: m[0],
             rect: {
               x: (box.x - pad) / p.width,
               y: (box.y - pad) / p.height,
@@ -103,50 +107,142 @@ function userBoxes(page: PDFPage, rects: FracRect[]): Box[] {
   });
 }
 
-// Links, notes and form fields under a box would still carry or point at what's hidden.
+const name = (s: string) => PDFName.of(s);
+
+// Links, notes and form fields under a box would still carry or point at what's
+// hidden. Popups and replies belong to their note and go with it. This runs
+// before the page is copied, so what goes is never copied at all.
 function dropAnnotsUnder(page: PDFPage, boxes: Box[]) {
-  const annots = page.node.lookupMaybe(PDFName.of("Annots"), PDFArray);
+  const annots = page.node.lookupMaybe(name("Annots"), PDFArray);
   if (!annots) return;
-  const keep = annots.asArray().filter((ref) => {
-    const a = page.doc.context.lookup(ref);
-    const rect = a instanceof PDFDict ? a.lookupMaybe(PDFName.of("Rect"), PDFArray) : undefined;
-    if (!rect) return true;
+  const ctx = page.doc.context;
+  const refs = annots.asArray();
+  const dicts = refs.map((ref) => {
+    const a = ctx.lookup(ref);
+    return a instanceof PDFDict ? a : null;
+  });
+  const under = (a: PDFDict) => {
+    const rect = a.lookupMaybe(name("Rect"), PDFArray);
+    if (!rect) return false;
     const [x0, y0, x1, y1] = rect.asArray().map((v) => (v instanceof PDFNumber ? v.asNumber() : 0));
     const r = { x0: Math.min(x0, x1), x1: Math.max(x0, x1), y0: Math.min(y0, y1), y1: Math.max(y0, y1) };
-    return !boxes.some((b) => r.x0 < b.x1 && b.x0 < r.x1 && r.y0 < b.y1 && b.y0 < r.y1);
-  });
-  page.node.set(PDFName.of("Annots"), page.doc.context.obj(keep));
+    return boxes.some((b) => r.x0 < b.x1 && b.x0 < r.x1 && r.y0 < b.y1 && b.y0 < r.y1);
+  };
+  const gone = new Set(dicts.filter((a): a is PDFDict => a !== null && under(a)));
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const a of dicts) {
+      if (!a || gone.has(a)) continue;
+      const owner = a.lookupMaybe(name("Parent"), PDFDict) ?? a.lookupMaybe(name("IRT"), PDFDict);
+      if (owner && gone.has(owner)) {
+        gone.add(a);
+        grew = true;
+      }
+    }
+  }
+  page.node.set(name("Annots"), ctx.obj(refs.filter((_, i) => !gone.has(dicts[i]!))));
 }
 
-export async function redact(file: File, marks: { page: number; rect: FracRect }[], o: { redactDpi: string }, progress?: Progress): Promise<Output[]> {
+// A page drawn as an image keeps nothing of the original. Set rather than
+// removed, so nothing is inherited from the page tree either.
+function blank(page: PDFPage) {
+  const node = page.node;
+  for (const key of node.keys()) if (key !== name("Type") && key !== name("Parent")) node.delete(key);
+  node.set(name("MediaBox"), node.context.obj([0, 0, 1, 1]));
+  node.set(name("Resources"), node.context.obj({}));
+  node.set(name("Rotate"), PDFNumber.of(0));
+}
+
+// Page data that could repeat what was hidden: a thumbnail, an editor's private
+// copy of the page (Illustrator keeps the whole artwork there), page metadata,
+// page scripts and article beads.
+const PRIVATE = ["Thumb", "PieceInfo", "Metadata", "AA", "B", "StructParents"];
+
+// Links in the output may only point at its own pages; a target outside them
+// (a page that was never in the page tree) would come along hidden.
+function dropDeadTargets(out: PDFDocument) {
+  const pages = new Set(out.getPages().map((p) => p.ref));
+  const live = (o: unknown) => !(o instanceof PDFRef) || pages.has(o);
+  for (const page of out.getPages()) {
+    for (const ref of page.node.lookupMaybe(name("Annots"), PDFArray)?.asArray() ?? []) {
+      const a = out.context.lookup(ref);
+      if (!(a instanceof PDFDict)) continue;
+      if (!live(a.get(name("P")))) a.delete(name("P"));
+      const dest = a.lookupMaybe(name("Dest"), PDFArray);
+      if (dest && !live(dest.get(0))) a.delete(name("Dest"));
+      const action = a.lookupMaybe(name("A"), PDFDict);
+      const target = action?.lookupMaybe(name("D"), PDFArray);
+      if (target && !live(target.get(0))) a.delete(name("A"));
+    }
+  }
+}
+
+export class RedactionLeakError extends Error {
+  code = "redaction_leak";
+}
+
+// `terms` are texts the caller expects gone everywhere (every search hit was
+// kept). If one survives anywhere, every marked page is drawn as an image
+// instead; if it still survives (a note or form field outside the boxes),
+// nothing is returned.
+export async function redact(
+  file: File, marks: { page: number; rect: FracRect }[], o: { redactDpi: string; terms?: string[] }, progress?: Progress,
+): Promise<Output[]> {
   const bytes = await bytesOf(file);
-  const original = await PDFDocument.load(bytes, { updateMetadata: false });
   const byPage = new Map<number, FracRect[]>();
   for (const m of marks) byPage.set(m.page, [...(byPage.get(m.page) ?? []), m.rect]);
+  const original = await PDFDocument.load(bytes, { updateMetadata: false });
   const boxes = new Map([...byPage].map(([i, rects]) => [i, userBoxes(original.getPage(i), rects)] as const));
 
-  let redacted: PDFDocument | null = null;
-  let failed = new Set(byPage.keys());
+  let pdfium: { bytes: Uint8Array; failed: number[] } | null = null;
   try {
-    const res = await redactInPlace(bytes, boxes);
-    redacted = await PDFDocument.load(res.bytes, { updateMetadata: false });
-    failed = new Set(res.failed);
+    pdfium = await redactInPlace(bytes, boxes);
   } catch {
     // PDFium couldn't open or save the file: every marked page is rendered instead.
   }
+  const terms = [...new Set(o.terms ?? [])].filter((t) => t.trim());
+  const title = terms.some((t) => baseName(file.name).includes(t)) ? "" : baseName(file.name);
+  const build = (raster: Set<number>) => assemble(bytes, pdfium?.bytes ?? null, byPage, boxes, raster, Number(o.redactDpi) / 72, title, progress);
+  let out = await build(new Set(pdfium ? pdfium.failed : byPage.keys()));
+  if (terms.length && (await leftovers(out, terms)).length) {
+    out = await build(new Set(byPage.keys()));
+    if ((await leftovers(out, terms)).length) throw new RedactionLeakError();
+  }
+  return [{ name: `${baseName(file.name)}-redacted.pdf`, blob: pdfBlob(out) }];
+}
 
-  const view = failed.size ? await openPdf(bytes) : null;
+// Builds the output: pages from `redacted` (PDFium's file; the original when
+// there is none), and the pages in `raster` drawn as images from the original.
+async function assemble(
+  bytes: Uint8Array, redacted: Uint8Array | null, byPage: Map<number, FracRect[]>, boxes: Map<number, Box[]>,
+  raster: Set<number>, scale: number, title: string, progress?: Progress,
+) {
+  const src = await PDFDocument.load(redacted ?? bytes, { updateMetadata: false });
+  const count = src.getPageCount();
+  for (const [i, b] of boxes) {
+    if (raster.has(i)) blank(src.getPage(i));
+    else dropAnnotsUnder(src.getPage(i), b);
+  }
+  // One copier for every page, so a link to another page lands on that page's
+  // copy rather than bringing along a hidden duplicate (the unredacted one, for
+  // a page drawn as an image).
   const out = await PDFDocument.create();
-  const scale = Number(o.redactDpi) / 72;
-  for (let i = 0; i < original.getPageCount(); i++) {
-    const rects = byPage.get(i);
-    if (!rects?.length || !failed.has(i)) {
-      const [copied] = await out.copyPages(redacted ?? original, [i]);
-      out.addPage(copied);
-      if (rects?.length) dropAnnotsUnder(copied, boxes.get(i)!);
-      progress?.(i + 1, original.getPageCount());
-      continue;
-    }
+  let done = 0;
+  const tick = () => progress?.(++done, count);
+  await src.flush();
+  const copier = PDFObjectCopier.for(src.context, out.context);
+  for (let i = 0; i < count; i++) {
+    const ref = copier.copy(src.getPage(i).ref);
+    const page = PDFPage.of(out.context.lookup(ref) as PDFPageLeaf, ref, out);
+    for (const key of PRIVATE) page.node.delete(name(key));
+    out.addPage(page);
+    if (!raster.has(i)) tick();
+  }
+  dropDeadTargets(out);
+
+  const view = raster.size ? await openPdf(bytes) : null;
+  for (const i of [...raster].sort((a, b) => a - b)) {
+    const rects = byPage.get(i) ?? [];
     const page = await view!.getPage(i + 1);
     const v = page.getViewport({ scale: 1 });
     const canvas = await renderPage(page, scale);
@@ -154,7 +250,8 @@ export async function redact(file: File, marks: { page: number; rect: FracRect }
     ctx.fillStyle = "#000";
     for (const b of rects) ctx.fillRect(b.x * canvas.width, b.y * canvas.height, b.w * canvas.width, b.h * canvas.height);
     const jpg = await out.embedJpg(await bytesOf(await canvasToBlob(canvas, "image/jpeg", 0.9)));
-    const p = out.addPage([v.width, v.height]);
+    const p = out.getPage(i);
+    p.node.set(name("MediaBox"), out.context.obj([0, 0, v.width, v.height]));
     p.drawImage(jpg, { x: 0, y: 0, width: v.width, height: v.height });
     const text = await pageText(page);
     // Word by word, so text beside a redaction stays searchable.
@@ -171,13 +268,74 @@ export async function redact(file: File, marks: { page: number; rect: FracRect }
     addInvisibleText(out, p, runsToWords(keep, v.height));
     canvas.width = canvas.height = 0;
     page.cleanup();
-    progress?.(i + 1, original.getPageCount());
+    tick();
   }
   if (view) await closePdf(view);
   // Nothing from the original's metadata survives.
   out.setProducer("Foliant");
   out.setCreator("Foliant");
-  out.setTitle(baseName(file.name));
-  out.catalog.delete(PDFName.of("Metadata"));
-  return [{ name: `${baseName(file.name)}-redacted.pdf`, blob: pdfBlob(await out.save({ useObjectStreams: true })) }];
+  if (title) out.setTitle(title);
+  out.catalog.delete(name("Metadata"));
+  return tidy(await out.save({ useObjectStreams: true }));
+}
+
+// qpdf rewrites the file from what it still refers to, so nothing left over
+// from editing survives, and drops resources no page uses (an image wholly
+// under a box that PDFium took off the page).
+async function tidy(bytes: Uint8Array) {
+  try {
+    return (await runQpdf(bytes, (i, out) => ["--object-streams=generate", "--remove-unreferenced-resources=yes", i, out])).output;
+  } catch {
+    return bytes;
+  }
+}
+
+// Texts from `terms` still in the file: in any string (link targets, notes,
+// form values, metadata), in XMP or attached files, or in the text of a page.
+export async function leftovers(bytes: Uint8Array, terms: string[]): Promise<string[]> {
+  const found = new Set<string>();
+  const check = (s: string) => {
+    for (const t of terms) if (s.includes(t)) found.add(t);
+  };
+  const visit = (o: unknown): void => {
+    if (o instanceof PDFString || o instanceof PDFHexString) {
+      try {
+        check(o.decodeText());
+      } catch {
+        check(o.asString());
+      }
+    } else if (o instanceof PDFDict) o.values().forEach(visit);
+    else if (o instanceof PDFArray) o.asArray().forEach(visit);
+  };
+  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFRawStream)) {
+      visit(obj);
+      continue;
+    }
+    visit(obj.dict);
+    const kind = [obj.dict.get(name("Type")), obj.dict.get(name("Subtype"))].map(String).join(" ");
+    if (!/Metadata|EmbeddedFile|XML/.test(kind)) continue;
+    let data: Uint8Array;
+    try {
+      data = decodePDFRawStream(obj).decode();
+    } catch {
+      data = obj.contents;
+    }
+    check(new TextDecoder().decode(data));
+    check(new TextDecoder("utf-16be").decode(data));
+  }
+  const pdf = await openPdf(bytes);
+  try {
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const text = await pageText(page);
+      check(text.lines.map((l) => l.text).join("\n"));
+      check(text.items.map((r) => r.text).join(""));
+      page.cleanup();
+    }
+  } finally {
+    await closePdf(pdf);
+  }
+  return [...found];
 }

@@ -274,6 +274,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "Nieprawidłowe hasło. Sprawdź je i spróbuj ponownie.",
   "ws.officeReload": "Wysoka wierność wymaga ponownego wczytania strony. Odśwież stronę i spróbuj jeszcze raz.",
   "ws.officeMemory": "To urządzenie nie ma dość wolnej pamięci na wysoką wierność. Wybierz standardową albo użyj komputera.",
+  "ws.redactionLeak": "Część wyszukanego tekstu wciąż jest w pliku poza zaznaczeniami, na przykład w notatce lub polu formularza na innej stronie. Nic nie zostało zapisane. Zaznacz także te miejsca i spróbuj ponownie.",
   "ws.needsChrome": "To narzędzie wymaga Chrome lub LibreOffice na serwerze, a żadne z nich nie jest jeszcze zainstalowane.",
   "fmt.nOfTotal": "{n} z {total}",
   "ws.urlLabel": "Adres strony",

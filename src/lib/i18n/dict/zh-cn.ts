@@ -274,6 +274,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "密码不正确，请检查后重试。",
   "ws.officeReload": "高还原度需要重新加载页面。请刷新页面后再试。",
   "ws.officeMemory": "此设备的可用内存不足以使用高还原度。请改用标准模式或使用电脑。",
+  "ws.redactionLeak": "你搜索的部分文字仍留在文件中标记之外的位置，例如其他页面上的批注或表单字段。没有保存任何内容。请把这些位置也标记出来，然后重试。",
   "ws.needsChrome": "此工具需要服务器上安装 Chrome 或 LibreOffice，但目前都未安装。",
   "fmt.nOfTotal": "{n} / {total}",
   "ws.urlLabel": "网址",

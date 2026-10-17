@@ -289,6 +289,7 @@ const en = {
   "ws.wrongPassword": "That password is wrong. Check it and try again.",
   "ws.officeReload": "High fidelity needs a fresh page load. Reload the page and try again.",
   "ws.officeMemory": "This device doesn't have enough free memory for high fidelity. Try Standard, or use a computer.",
+  "ws.redactionLeak": "Some text you searched for is still in the file outside your marks, for example in a note or form field on another page. Nothing was saved. Mark those places too and try again.",
   "ws.needsChrome": "This tool needs Chrome or LibreOffice on the server, and neither is installed yet.",
   "fmt.nOfTotal": "{n} of {total}",
   "ws.urlLabel": "Web address",

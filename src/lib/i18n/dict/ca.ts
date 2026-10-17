@@ -274,6 +274,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "La contrasenya no és correcta. Revisa-la i torna-ho a provar.",
   "ws.officeReload": "L’alta fidelitat necessita tornar a carregar la pàgina. Torna-la a carregar i prova-ho de nou.",
   "ws.officeMemory": "Aquest dispositiu no té prou memòria lliure per a l’alta fidelitat. Prova l’estàndard o un ordinador.",
+  "ws.redactionLeak": "Part del text que has cercat encara és al fitxer fora de les marques, per exemple en una nota o un camp de formulari d’una altra pàgina. No s’ha desat res. Marca també aquests llocs i torna-ho a provar.",
   "ws.needsChrome": "Aquesta eina necessita Chrome o LibreOffice al servidor, i encara no n’hi ha cap d’instal·lat.",
   "fmt.nOfTotal": "{n} de {total}",
   "ws.urlLabel": "Adreça web",

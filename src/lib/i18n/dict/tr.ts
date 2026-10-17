@@ -274,6 +274,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "Parola yanlış. Kontrol edip yeniden deneyin.",
   "ws.officeReload": "Yüksek uygunluk için sayfanın yeniden yüklenmesi gerekir. Sayfayı yenileyip tekrar deneyin.",
   "ws.officeMemory": "Bu cihazda yüksek uygunluk için yeterli boş bellek yok. Standart’ı deneyin ya da bir bilgisayar kullanın.",
+  "ws.redactionLeak": "Aradığınız metnin bir kısmı dosyada hâlâ işaretlerinizin dışında duruyor; örneğin başka bir sayfadaki bir notta ya da form alanında. Hiçbir şey kaydedilmedi. Bu yerleri de işaretleyip yeniden deneyin.",
   "ws.needsChrome": "Bu araç sunucuda Chrome veya LibreOffice gerektiriyor ve ikisi de henüz yüklü değil.",
   "fmt.nOfTotal": "{n} / {total}",
   "ws.urlLabel": "Web adresi",

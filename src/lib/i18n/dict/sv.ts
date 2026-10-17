@@ -274,6 +274,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "Fel lösenord. Kontrollera det och försök igen.",
   "ws.officeReload": "Hög återgivning kräver att sidan laddas om. Ladda om sidan och försök igen.",
   "ws.officeMemory": "Enheten har inte tillräckligt med ledigt minne för hög återgivning. Prova Standard eller en dator.",
+  "ws.redactionLeak": "En del av texten du sökte efter finns kvar i filen utanför dina markeringar, till exempel i en anteckning eller ett formulärfält på en annan sida. Inget sparades. Markera även de ställena och försök igen.",
   "ws.needsChrome": "Det här verktyget kräver Chrome eller LibreOffice på servern, och inget av dem är installerat än.",
   "fmt.nOfTotal": "{n} av {total}",
   "ws.urlLabel": "Webbadress",

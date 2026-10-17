@@ -15,7 +15,9 @@ import type { ToolId } from "@/lib/tools";
 
 type EdTool = "select" | "text" | "image" | "rect" | "ellipse" | "line" | "path" | "highlight" | "whiteout" | "redact" | "crop" | "textField" | "checkbox" | "place";
 type Size = { w: number; h: number };
-type Mark = { id: string; page: number; rect: FracRect };
+// Marks from a search keep the text matched, the search they came from and how
+// many hits that text had in it, so the run can tell which texts are fully marked.
+type Mark = { id: string; page: number; rect: FracRect; term?: string; search?: string; of?: number };
 
 const COLORS = ["#111827", "#d33f6a", "#2f6fed", "#12a37f", "#e2662b", "#7b4fe0", "#ffffff"];
 const uid = () => crypto.randomUUID();
@@ -305,7 +307,10 @@ export function Editor({
     const doc = await docFor(file);
     const pages = await documentText(doc);
     const hits = findMatches(pages, pattern);
-    marks.set((l) => [...l, ...hits.map((h) => ({ id: uid(), page: h.page, rect: h.rect }))]);
+    const search = uid();
+    const of = new Map<string, number>();
+    for (const h of hits) of.set(h.text, (of.get(h.text) ?? 0) + 1);
+    marks.set((l) => [...l, ...hits.map((h) => ({ id: uid(), page: h.page, rect: h.rect, term: h.text, search, of: of.get(h.text) }))]);
     setFound(hits.length);
   };
 
@@ -343,7 +348,17 @@ export function Editor({
       const edit = await import("@/lib/pdf/edit");
       if (toolId === "redact") {
         const { redact } = await import("@/lib/pdf/security");
-        return redact(file, marks.value.map((m) => ({ page: m.page, rect: m.rect })), { redactDpi: String(options.redactDpi ?? "200") }, progress);
+        // A searched text whose every hit is still marked must be gone from the whole file; redact() checks.
+        const kept = new Map<string, { term: string; of: number; n: number }>();
+        for (const m of marks.value) {
+          if (!m.term || !m.search) continue;
+          const k = `${m.search}\n${m.term}`;
+          const e = kept.get(k) ?? { term: m.term, of: m.of ?? 0, n: 0 };
+          e.n++;
+          kept.set(k, e);
+        }
+        const terms = [...kept.values()].filter((e) => e.n >= e.of).map((e) => e.term);
+        return redact(file, marks.value.map((m) => ({ page: m.page, rect: m.rect })), { redactDpi: String(options.redactDpi ?? "200"), terms }, progress);
       }
       if (toolId === "crop") {
         const all = crops.get(-1);

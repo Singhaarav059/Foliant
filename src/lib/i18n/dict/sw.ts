@@ -274,6 +274,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "Nenosiri si sahihi. Likague kisha ujaribu tena.",
   "ws.officeReload": "Uaminifu wa juu unahitaji kupakia ukurasa upya. Pakia upya kisha ujaribu tena.",
   "ws.officeMemory": "Kifaa hiki hakina kumbukumbu ya kutosha kwa uaminifu wa juu. Jaribu Kawaida au tumia kompyuta.",
+  "ws.redactionLeak": "Sehemu ya maandishi uliyotafuta bado iko kwenye faili nje ya alama zako, kwa mfano kwenye dokezo au sehemu ya fomu katika ukurasa mwingine. Hakuna kilichohifadhiwa. Weka alama kwenye sehemu hizo pia kisha ujaribu tena.",
   "ws.needsChrome": "Zana hii inahitaji Chrome au LibreOffice kwenye seva, na hakuna kati ya hizo iliyosakinishwa bado.",
   "fmt.nOfTotal": "{n} kati ya {total}",
   "ws.urlLabel": "Anwani ya wavuti",

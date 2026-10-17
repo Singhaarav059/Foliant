@@ -274,6 +274,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "Mật khẩu không đúng. Hãy kiểm tra và thử lại.",
   "ws.officeReload": "Độ trung thực cao cần tải lại trang. Hãy tải lại trang rồi thử lại.",
   "ws.officeMemory": "Thiết bị này không đủ bộ nhớ trống cho độ trung thực cao. Hãy thử Tiêu chuẩn hoặc dùng máy tính.",
+  "ws.redactionLeak": "Một phần văn bản bạn tìm vẫn còn trong tệp, nằm ngoài các vùng đánh dấu, ví dụ trong ghi chú hoặc trường biểu mẫu ở trang khác. Chưa có gì được lưu. Hãy đánh dấu cả những chỗ đó rồi thử lại.",
   "ws.needsChrome": "Công cụ này cần Chrome hoặc LibreOffice trên máy chủ, nhưng hiện chưa cài cái nào.",
   "fmt.nOfTotal": "{n} / {total}",
   "ws.urlLabel": "Địa chỉ web",

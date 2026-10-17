@@ -274,6 +274,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "Kata laluan itu salah. Semak dan cuba lagi.",
   "ws.officeReload": "Ketepatan tinggi perlukan halaman dimuat semula. Muat semula halaman dan cuba lagi.",
   "ws.officeMemory": "Peranti ini tiada memori kosong yang cukup untuk ketepatan tinggi. Cuba Standard atau guna komputer.",
+  "ws.redactionLeak": "Sebahagian teks yang anda cari masih ada dalam fail di luar tanda anda, contohnya dalam nota atau medan borang di halaman lain. Tiada apa-apa disimpan. Tanda juga tempat-tempat itu dan cuba lagi.",
   "ws.needsChrome": "Alat ini memerlukan Chrome atau LibreOffice di pelayan, dan kedua-duanya belum dipasang.",
   "fmt.nOfTotal": "{n} daripada {total}",
   "ws.urlLabel": "Alamat web",

@@ -274,6 +274,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "비밀번호가 틀렸습니다. 확인 후 다시 시도하세요.",
   "ws.officeReload": "높은 충실도를 쓰려면 페이지를 새로 불러와야 합니다. 새로 고친 뒤 다시 시도하세요.",
   "ws.officeMemory": "이 기기에는 높은 충실도에 필요한 여유 메모리가 부족합니다. 표준을 쓰거나 컴퓨터를 이용하세요.",
+  "ws.redactionLeak": "검색한 텍스트 일부가 표시한 영역 밖, 예를 들어 다른 페이지의 메모나 양식 필드에 아직 남아 있습니다. 아무것도 저장되지 않았습니다. 그 부분도 표시한 뒤 다시 시도하세요.",
   "ws.needsChrome": "이 도구는 서버에 Chrome 또는 LibreOffice가 필요한데, 아직 둘 다 설치되어 있지 않습니다.",
   "fmt.nOfTotal": "{n} / {total}",
   "ws.urlLabel": "웹 주소",

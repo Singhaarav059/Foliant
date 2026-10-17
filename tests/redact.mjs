@@ -1,19 +1,111 @@
-// Redaction tests: the hidden text must be gone from every stream, every
+// Redaction tests: the hidden text must be gone from every object, every
 // extraction path and every side channel (tags, form objects, links,
 // bookmarks), while everything outside the boxes stays real and selectable.
+// The fallback that draws pages as images is tested too, with PDFium made
+// to fail and a Node canvas standing in for the browser's.
 //
 //   node tests/redact.mjs
 import {
-  PDFDocument, PDFName, PDFString, PDFRawStream, PDFArray, PDFDict, StandardFonts, degrees, decodePDFRawStream,
+  PDFDocument, PDFName, PDFString, PDFHexString, PDFRawStream, PDFArray, PDFDict, PDFRef, StandardFonts, degrees, decodePDFRawStream,
   PDFOperator, PDFOperatorNames as Ops, pushGraphicsState, popGraphicsState, concatTransformationMatrix, drawObject,
 } from "pdf-lib";
-import { load, openPdf, check, eq } from "./lib/load.mjs";
+import { createRequire } from "node:module";
+import { join } from "node:path";
+import { load, openPdf, check, eq, root } from "./lib/load.mjs";
 
-const { redact } = await load("security");
+const { redact, findMatches } = await load("security");
+const { pageText: textOf } = await load("text");
 const results = { failed: 0 };
 const test = check(results);
 const SECRET = "SECRET-4471";
 const W = 400, H = 300;
+
+// Indirect objects that still hold `needle`: stream data (decoded, as text,
+// hex or UTF-16), strings in dictionaries and arrays in any encoding, and
+// objects packed in object streams (pdf-lib unpacks those on load).
+async function holding(bytes, needle) {
+  const d = await PDFDocument.load(bytes, { updateMetadata: false });
+  const hex = Buffer.from(needle, "latin1").toString("hex");
+  const utf16 = Buffer.from(needle, "utf16le").swap16().toString("latin1");
+  const latin1 = (b) => Buffer.from(b).toString("latin1");
+  const strings = (o) => o instanceof PDFString || o instanceof PDFHexString ? [o.decodeText()]
+    : o instanceof PDFDict ? o.values().flatMap(strings)
+    : o instanceof PDFArray ? o.asArray().flatMap(strings)
+    : [];
+  const hits = [];
+  for (const [ref, o] of d.context.enumerateIndirectObjects()) {
+    let s = o.toString();
+    if (o instanceof PDFRawStream) {
+      try { s += latin1(decodePDFRawStream(o).decode()); } catch { s += latin1(o.contents); }
+    }
+    const found = s.includes(needle) || s.toLowerCase().includes(hex) || s.includes(utf16) || strings(o instanceof PDFRawStream ? o.dict : o).some((t) => t.includes(needle));
+    if (found) hits.push(String(ref));
+  }
+  return hits;
+}
+const allText = async (bytes) => {
+  const pdf = await openPdf(bytes.slice());
+  const out = [];
+  for (let i = 1; i <= pdf.numPages; i++) out.push((await (await pdf.getPage(i)).getTextContent()).items.map((t) => t.str).join(" "));
+  return out.join(" | ");
+};
+
+// Pages drawn as images need a canvas: a Node one stands in for the browser's.
+// @napi-rs/canvas (MIT) comes with pdfjs-dist, which uses it in Node.
+const { createCanvas } = createRequire(join(root, "package.json"))("@napi-rs/canvas");
+globalThis.document = {
+  createElement: () => {
+    const c = createCanvas(1, 1);
+    c.toBlob = (cb, type, q) => cb(new Blob([c.toBuffer(type === "image/png" ? "image/png" : "image/jpeg", Math.round((q ?? 0.9) * 100))]));
+    return c;
+  },
+};
+
+// ── Fallback: PDFium fails to load, every marked page is drawn as an image.
+// Runs first: PDFium is loaded once, and a failed load is retried next time.
+{
+  const pdfium = await load("pdfium");
+  const realLoad = pdfium.pdfiumWasm.load;
+  pdfium.pdfiumWasm.load = async () => { throw new Error("PDFium made to fail for the test"); };
+
+  // A contents page links to page 3, which holds the secret.
+  const d = await PDFDocument.create();
+  const font = await d.embedFont(StandardFonts.Helvetica);
+  const toc = d.addPage([W, H]);
+  toc.drawText("Contents: account details on page 3", { x: 20, y: 250, size: 12, font });
+  d.addPage([W, H]).drawText("Nothing to hide here", { x: 20, y: 250, size: 12, font });
+  const p3 = d.addPage([W, H]);
+  p3.drawText("Account SECRET3-4471 belongs to the client", { x: 20, y: 250, size: 12, font });
+  toc.node.set(PDFName.of("Annots"), d.context.obj([
+    d.context.register(d.context.obj({ Type: "Annot", Subtype: "Link", Rect: [20, 245, 220, 262], Border: [0, 0, 0], Dest: [p3.ref, PDFName.of("Fit")] })),
+    d.context.register(d.context.obj({ Type: "Annot", Subtype: "Link", Rect: [20, 225, 220, 240], Border: [0, 0, 0], A: { S: "GoTo", D: [p3.ref, PDFName.of("Fit")] } })),
+  ]));
+  const input = new Uint8Array(await d.save());
+  const pages = [];
+  const src = await openPdf(input.slice());
+  for (let i = 1; i <= src.numPages; i++) pages.push(await textOf(await src.getPage(i)));
+  const hits = findMatches(pages, /SECRET3-4471/g);
+  const [res] = await redact(new File([input], "toc.pdf"), hits, { redactDpi: "100" });
+  const out = new Uint8Array(await res.blob.arrayBuffer());
+  const text = await allText(out);
+  console.log(`      fallback text after: ${text}`);
+
+  await test("fallback: the secret is gone from the text layer, the rest stays searchable", () => {
+    eq(hits.length, 1, "search hits");
+    eq(text.includes("SECRET3"), false, "secret in text");
+    eq(text.includes("belongs to the client"), true, "text beside the box kept");
+  });
+  await test("fallback: a link to the redacted page doesn't bring the original along", async () => {
+    eq((await holding(out, "SECRET3")).join(","), "", "objects holding the secret");
+    const doc = await PDFDocument.load(out);
+    const annots = doc.getPage(0).node.lookup(PDFName.of("Annots"), PDFArray).asArray().map((r) => doc.context.lookup(r));
+    const targets = annots.map((a) => (a.lookupMaybe(PDFName.of("Dest"), PDFArray) ?? a.lookup(PDFName.of("A"), PDFDict).lookup(PDFName.of("D"), PDFArray)).get(0));
+    eq(targets.map((t) => t instanceof PDFRef && t === doc.getPage(2).ref).join(","), "true,true", "links land on page 3 of the output");
+    eq(doc.context.enumerateIndirectObjects().filter(([, o]) => o instanceof PDFDict && o.get(PDFName.of("Type")) === PDFName.of("Page")).length, 3, "page objects");
+  });
+
+  pdfium.pdfiumWasm.load = realLoad;
+}
 
 async function build() {
   const doc = await PDFDocument.create();
@@ -30,7 +122,7 @@ async function build() {
   p1.node.setXObject(PDFName.of("Im1"), img);
   p1.pushOperators(pushGraphicsState(), concatTransformationMatrix(200, 0, 0, 100, 100, 120), drawObject("Im1"), popGraphicsState());
   const link = (rect, url) => doc.context.register(doc.context.obj({ Type: "Annot", Subtype: "Link", Rect: rect, Border: [0, 0, 0], A: { S: "URI", URI: PDFString.of(url) } }));
-  p1.node.set(PDFName.of("Annots"), doc.context.obj([link([70, 245, 140, 262], "https://example.com/secret"), link([20, 55, 120, 72], "https://example.com/public")]));
+  p1.node.set(PDFName.of("Annots"), doc.context.obj([link([70, 245, 140, 262], `mailto:${SECRET}@example.com`), link([20, 55, 120, 72], "https://example.com/public")]));
 
   // Page 2: the secret only in tagged ActualText, over harmless visible text.
   const p2 = doc.addPage([W, H]);
@@ -81,27 +173,19 @@ const bytes = new Uint8Array(await out.blob.arrayBuffer());
 const doc = await PDFDocument.load(bytes);
 const pdf = await openPdf(bytes.slice());
 const pageText = async (i) => (await (await pdf.getPage(i + 1)).getTextContent()).items.map((t) => t.str).join(" ");
-const allText = (await Promise.all(Array.from({ length: pdf.numPages }, (_, i) => pageText(i)))).join(" | ");
-console.log(`      text after: ${allText}`);
+const text = (await Promise.all(Array.from({ length: pdf.numPages }, (_, i) => pageText(i)))).join(" | ");
+console.log(`      text after: ${text}`);
 
-await test("secret gone from every stream, in any encoding", () => {
-  const hex = [...SECRET].map((c) => c.charCodeAt(0).toString(16).padStart(2, "0")).join("");
+await test("secret gone from every object, in any encoding", async () => {
   const raw = new TextDecoder("latin1").decode(bytes);
-  const hits = [];
-  if (raw.includes(SECRET)) hits.push("file");
-  for (const [ref, o] of doc.context.enumerateIndirectObjects()) {
-    if (!(o instanceof PDFRawStream)) continue;
-    let s;
-    try { s = new TextDecoder("latin1").decode(decodePDFRawStream(o).decode()); } catch { continue; }
-    if (s.includes(SECRET) || s.toLowerCase().includes(hex) || s.includes("4471")) hits.push(String(ref));
-  }
-  eq(hits.join(","), "", "objects containing the secret");
+  eq(raw.includes(SECRET), false, "secret in the raw file");
+  eq((await holding(bytes, SECRET)).join(","), "", "objects holding the secret");
 });
 
 await test("secret gone from extracted text, public text still real", () => {
-  eq(/4471/.test(allText.replace("secret-4471", "")), false, "secret in text");
+  eq(/4471/.test(text.replace("secret-4471", "")), false, "secret in text");
   for (const kept of ["Account", "belongs to the client", "Public paragraph stays readable", "Tag page footer", "Form page footer", "Turned page footer", "secret-4471"])
-    eq(allText.includes(kept), true, `"${kept}" kept`);
+    eq(text.includes(kept), true, `"${kept}" kept`);
 });
 
 await test("image pixels under the box blacked out, others untouched", () => {
@@ -120,6 +204,60 @@ await test("link over the secret removed, other link kept", () => {
   eq(urls.join(","), "https://example.com/public", "links");
 });
 
+await test("search boxes cover the whole match, first character included", async () => {
+  const d = await PDFDocument.create();
+  const font = await d.embedFont(StandardFonts.Helvetica);
+  d.addPage([W, H]).drawText("Account 1234-5678 belongs to the client", { x: 20, y: 250, size: 12, font });
+  const input = new Uint8Array(await d.save());
+  const page = await textOf(await (await openPdf(input.slice())).getPage(1));
+  const hits = findMatches([page], /1234-5678/g);
+  eq(hits.length, 1, "hits");
+  const run = page.items.find((r) => r.text.includes("1234-5678"));
+  const i = run.text.indexOf("1234-5678");
+  const pad = run.size * 0.12;
+  const { rect } = hits[0];
+  eq(rect.x * W <= run.xs[i] - pad + 0.01, true, `box starts at ${(rect.x * W).toFixed(2)}, first digit at ${run.xs[i].toFixed(2)}`);
+  eq((rect.x + rect.w) * W >= run.xs[i + 9] + pad - 0.01, true, "box reaches the last digit");
+  const [res] = await redact(new File([input], "n.pdf"), hits, { redactDpi: "100" });
+  const after = await allText(new Uint8Array(await res.blob.arrayBuffer()));
+  eq(/\d/.test(after), false, `digits left in "${after}"`);
+});
+
+// `terms` asks redact() to check the whole output for the searched texts.
+async function noted(where) {
+  const d = await PDFDocument.create();
+  const font = await d.embedFont(StandardFonts.Helvetica);
+  const p = d.addPage([W, H]);
+  p.drawText("Patient SECRET-9 discharged", { x: 20, y: 250, size: 12, font });
+  const other = d.addPage([W, H]);
+  other.drawText("Follow-up notes", { x: 20, y: 250, size: 12, font });
+  const note = d.context.register(d.context.obj({ Type: "Annot", Subtype: "Text", Rect: [300, 50, 320, 70], Contents: PDFHexString.fromText("Call about SECRET-9") }));
+  if (where) (where === "same" ? p : other).node.set(PDFName.of("Annots"), d.context.obj([note]));
+  const input = new Uint8Array(await d.save());
+  const hits = findMatches([await textOf(await (await openPdf(input.slice())).getPage(1))], /SECRET-9/g);
+  const [res] = await redact(new File([input], "n.pdf"), hits, { redactDpi: "100", terms: ["SECRET-9"] });
+  return new Uint8Array(await res.blob.arrayBuffer());
+}
+const images = async (bytes) => (await PDFDocument.load(bytes)).context.enumerateIndirectObjects().filter(([, o]) => o instanceof PDFRawStream && o.dict.get(PDFName.of("Subtype")) === PDFName.of("Image")).length;
+
+await test("checked terms: a clean result stays vector", async () => {
+  const out = await noted(null);
+  eq((await holding(out, "SECRET-9")).length + (await allText(out)).includes("SECRET-9"), 0, "secret left");
+  eq(await images(out), 0, "pages drawn as images");
+});
+
+await test("checked terms: a copy left on a marked page is cleared by drawing it as an image", async () => {
+  const out = await noted("same");
+  eq((await holding(out, "SECRET-9")).join(","), "", "objects holding the secret");
+  eq(await images(out), 1, "pages drawn as images");
+  eq((await allText(out)).includes("Follow-up notes"), true, "other page kept");
+});
+
+await test("checked terms: a copy left on another page stops the export", async () => {
+  const err = await noted("other").then(() => null, (e) => e);
+  eq(err?.code, "redaction_leak", `error (${err?.message})`);
+});
+
 await test("pages stay vector (no page turned into an image)", () => {
   const images = doc.context.enumerateIndirectObjects().filter(([, o]) => o instanceof PDFRawStream && o.dict.get(PDFName.of("Subtype")) === PDFName.of("Image"));
   eq(images.length, 1, "images (only the original one)");
@@ -134,9 +272,7 @@ await test("bookmarks and metadata don't carry the secret", () => {
 // ── Odd page boxes. Both are legal: a rectangle may name any two opposite
 // corners, and what's seen is the CropBox clipped to the MediaBox. Pages 8
 // and 9 of 10 carry them; the rest are plain.
-const { findMatches } = await load("security");
 const { pageNumbers, watermark } = await load("edit");
-const { pageText: textOf } = await load("text");
 async function oddBoxes() {
   const d = await PDFDocument.create();
   const font = await d.embedFont(StandardFonts.Helvetica);

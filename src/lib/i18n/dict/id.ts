@@ -274,6 +274,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "Kata sandi salah. Periksa lalu coba lagi.",
   "ws.officeReload": "Ketepatan tinggi perlu halaman dimuat ulang. Muat ulang halaman lalu coba lagi.",
   "ws.officeMemory": "Memori kosong di perangkat ini tidak cukup untuk ketepatan tinggi. Coba Standar atau gunakan komputer.",
+  "ws.redactionLeak": "Sebagian teks yang Anda cari masih ada di file di luar tanda Anda, misalnya di catatan atau kolom formulir di halaman lain. Tidak ada yang disimpan. Tandai juga tempat-tempat itu, lalu coba lagi.",
   "ws.needsChrome": "Alat ini membutuhkan Chrome atau LibreOffice di server, dan keduanya belum terpasang.",
   "fmt.nOfTotal": "{n} dari {total}",
   "ws.urlLabel": "Alamat web",

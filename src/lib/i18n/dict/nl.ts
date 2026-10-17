@@ -274,6 +274,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "Dat wachtwoord klopt niet. Controleer het en probeer het opnieuw.",
   "ws.officeReload": "Hoge getrouwheid vraagt om een vers geladen pagina. Laad de pagina opnieuw en probeer het nog eens.",
   "ws.officeMemory": "Dit apparaat heeft niet genoeg vrij geheugen voor hoge getrouwheid. Probeer Standaard of een computer.",
+  "ws.redactionLeak": "Een deel van de gezochte tekst staat nog buiten je markeringen in het bestand, bijvoorbeeld in een notitie of formulierveld op een andere pagina. Er is niets opgeslagen. Markeer die plekken ook en probeer het opnieuw.",
   "ws.needsChrome": "Deze tool heeft Chrome of LibreOffice op de server nodig, en geen van beide is al geïnstalleerd.",
   "fmt.nOfTotal": "{n} van {total}",
   "ws.urlLabel": "Webadres",

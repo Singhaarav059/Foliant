@@ -274,6 +274,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "Ce mot de passe est incorrect. Vérifiez-le et réessayez.",
   "ws.officeReload": "La haute fidélité nécessite de recharger la page. Rechargez-la puis réessayez.",
   "ws.officeMemory": "Cet appareil n’a pas assez de mémoire libre pour la haute fidélité. Essayez Standard ou un ordinateur.",
+  "ws.redactionLeak": "Une partie du texte recherché se trouve encore dans le fichier hors de vos marques, par exemple dans une note ou un champ de formulaire sur une autre page. Rien n’a été enregistré. Marquez aussi ces endroits et réessayez.",
   "ws.needsChrome": "Cet outil a besoin de Chrome ou de LibreOffice sur le serveur, et aucun des deux n’est encore installé.",
   "fmt.nOfTotal": "{n} sur {total}",
   "ws.urlLabel": "Adresse web",

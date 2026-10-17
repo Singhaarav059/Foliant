@@ -274,6 +274,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "Das Passwort ist falsch. Prüfe es und versuche es erneut.",
   "ws.officeReload": "Hohe Genauigkeit braucht ein frisches Laden der Seite. Laden Sie die Seite neu und versuchen Sie es erneut.",
   "ws.officeMemory": "Auf diesem Gerät ist nicht genug Speicher frei. Nutzen Sie „Standard“ oder einen Computer.",
+  "ws.redactionLeak": "Ein Teil des gesuchten Textes steht noch außerhalb deiner Markierungen in der Datei, etwa in einer Notiz oder einem Formularfeld auf einer anderen Seite. Es wurde nichts gespeichert. Markiere auch diese Stellen und versuche es erneut.",
   "ws.needsChrome": "Dieses Werkzeug braucht Chrome oder LibreOffice auf dem Server, und beides ist noch nicht installiert.",
   "fmt.nOfTotal": "{n} von {total}",
   "ws.urlLabel": "Webadresse",

@@ -125,6 +125,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
     else if (code === "wrong_password") setError({ text: t("ws.wrongPassword") });
     else if (code === "office_isolation") setError({ text: t("ws.officeReload") });
     else if (code === "office_memory") setError({ text: t("ws.officeMemory") });
+    else if (code === "redaction_leak") setError({ text: t("ws.redactionLeak") });
     else setError({ text: e instanceof Error ? e.message : String(e) });
     setStage(items.length || url ? "work" : "select");
   };
