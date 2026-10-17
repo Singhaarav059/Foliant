@@ -272,6 +272,8 @@ const d: { [K in DictKey]?: string } = {
   "ws.passwordMismatch": "兩次輸入的密碼不一致。",
   "ws.passwordEmpty": "請輸入密碼。",
   "ws.wrongPassword": "密碼不正確，請確認後再試一次。",
+  "ws.passwordTooLong": "這個密碼對 PDF 來說太長了，請使用不超過 {max} 個字元。",
+  "ws.protectUnverified": "受保護的檔案無法用你的密碼開啟，因此已捨棄。請換一個密碼再試一次。",
   "ws.officeReload": "高還原度需要重新載入頁面。請重新整理頁面後再試一次。",
   "ws.officeMemory": "此裝置的可用記憶體不足以使用高還原度。請改用標準模式或使用電腦。",
   "ws.needsChrome": "此工具需要伺服器上安裝 Chrome 或 LibreOffice，但目前都尚未安裝。",

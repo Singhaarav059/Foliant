@@ -8,9 +8,26 @@ import { addInvisibleText } from "./textlayer";
 import { runsToWords } from "./convert";
 import { visualFrame, type FracRect } from "./edit";
 import { redactInPlace, type Box } from "./pdfium";
+import { MAX_PASSWORD_BYTES, passwordTooLong } from "./password";
 
 export class WrongPasswordError extends Error {
   code = "wrong_password";
+}
+
+// `max` is how many characters of the password would fit.
+export class PasswordTooLongError extends Error {
+  code = "password_too_long";
+  constructor(public max: number) {
+    super(`A PDF password can have at most ${MAX_PASSWORD_BYTES} bytes`);
+  }
+}
+
+// The protected file didn't open with the password it was made with.
+export class ProtectUnverifiedError extends Error {
+  code = "protect_unverified";
+  constructor(public fileName: string) {
+    super(`${fileName} did not open with its new password`);
+  }
 }
 
 function randomPassword() {
@@ -21,16 +38,26 @@ export async function protect(
   file: File,
   o: { password: string; allowPrint: boolean; allowCopy: boolean; allowModify: boolean },
 ): Promise<Output[]> {
+  const max = passwordTooLong(o.password);
+  if (max !== null) throw new PasswordTooLongError(max);
   // A separate random owner password means the permissions can't be lifted with the open password.
   const owner = randomPassword();
   const { output } = await runQpdf(await bytesOf(file), (i, out) => [
-    "--encrypt", o.password, owner, "256",
+    // --name=value, so a password like "-v" or "@notes" isn't read as an option or a file to include.
+    "--encrypt", `--user-password=${o.password}`, `--owner-password=${owner}`, "--bits=256",
     `--print=${o.allowPrint ? "full" : "none"}`,
     `--extract=${o.allowCopy ? "y" : "n"}`,
     `--modify=${o.allowModify ? "all" : "none"}`,
     "--",
     i, out,
   ]);
+  // Never hand over a file its own password doesn't open.
+  try {
+    await closePdf(await openPdf(output, o.password));
+  } catch (e) {
+    if ((e as { name?: string }).name === "PasswordException") throw new ProtectUnverifiedError(file.name);
+    throw e;
+  }
   return [{ name: `${baseName(file.name)}-protected.pdf`, blob: pdfBlob(output) }];
 }
 

@@ -272,6 +272,8 @@ const d: { [K in DictKey]?: string } = {
   "ws.passwordMismatch": "Kata sandi tidak cocok.",
   "ws.passwordEmpty": "Masukkan kata sandi.",
   "ws.wrongPassword": "Kata sandi salah. Periksa lalu coba lagi.",
+  "ws.passwordTooLong": "Kata sandi ini terlalu panjang untuk PDF. Gunakan paling banyak {max} karakter.",
+  "ws.protectUnverified": "File yang dilindungi tidak bisa dibuka dengan kata sandi Anda, jadi file itu dibuang. Coba kata sandi lain.",
   "ws.officeReload": "Ketepatan tinggi perlu halaman dimuat ulang. Muat ulang halaman lalu coba lagi.",
   "ws.officeMemory": "Memori kosong di perangkat ini tidak cukup untuk ketepatan tinggi. Coba Standar atau gunakan komputer.",
   "ws.needsChrome": "Alat ini membutuhkan Chrome atau LibreOffice di server, dan keduanya belum terpasang.",

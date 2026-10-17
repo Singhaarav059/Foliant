@@ -57,6 +57,9 @@ jobs:
       - name: Rotate
         if: success() || failure()
         run: npm run test:e2e:rotate -- ${{ matrix.browser }}
+      - name: Protect
+        if: success() || failure()
+        run: npm run test:e2e:protect -- ${{ matrix.browser }}
 
   pdf:
     name: PDF engine tests
@@ -78,6 +81,8 @@ jobs:
           chmod +x "$RUNNER_TEMP/verapdf"
       - run: npm run test:tables
       - run: npm run test:organize
+        if: success() || failure()
+      - run: npm run test:protect
         if: success() || failure()
       - run: npm run test:layout
       - run: npm run test:compress

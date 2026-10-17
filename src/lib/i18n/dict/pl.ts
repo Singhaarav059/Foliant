@@ -272,6 +272,8 @@ const d: { [K in DictKey]?: string } = {
   "ws.passwordMismatch": "Hasła nie są zgodne.",
   "ws.passwordEmpty": "Wpisz hasło.",
   "ws.wrongPassword": "Nieprawidłowe hasło. Sprawdź je i spróbuj ponownie.",
+  "ws.passwordTooLong": "To hasło jest za długie dla pliku PDF. Użyj maksymalnie {max} znaków.",
+  "ws.protectUnverified": "Chroniony plik nie otwierał się tym hasłem, więc został odrzucony. Spróbuj innego hasła.",
   "ws.officeReload": "Wysoka wierność wymaga ponownego wczytania strony. Odśwież stronę i spróbuj jeszcze raz.",
   "ws.officeMemory": "To urządzenie nie ma dość wolnej pamięci na wysoką wierność. Wybierz standardową albo użyj komputera.",
   "ws.needsChrome": "To narzędzie wymaga Chrome lub LibreOffice na serwerze, a żadne z nich nie jest jeszcze zainstalowane.",

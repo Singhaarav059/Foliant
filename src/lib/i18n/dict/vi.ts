@@ -272,6 +272,8 @@ const d: { [K in DictKey]?: string } = {
   "ws.passwordMismatch": "Mật khẩu không khớp.",
   "ws.passwordEmpty": "Nhập mật khẩu.",
   "ws.wrongPassword": "Mật khẩu không đúng. Hãy kiểm tra và thử lại.",
+  "ws.passwordTooLong": "Mật khẩu này quá dài đối với PDF. Hãy dùng tối đa {max} ký tự.",
+  "ws.protectUnverified": "Tệp đã bảo vệ không mở được bằng mật khẩu của bạn nên đã bị loại bỏ. Hãy thử mật khẩu khác.",
   "ws.officeReload": "Độ trung thực cao cần tải lại trang. Hãy tải lại trang rồi thử lại.",
   "ws.officeMemory": "Thiết bị này không đủ bộ nhớ trống cho độ trung thực cao. Hãy thử Tiêu chuẩn hoặc dùng máy tính.",
   "ws.needsChrome": "Công cụ này cần Chrome hoặc LibreOffice trên máy chủ, nhưng hiện chưa cài cái nào.",

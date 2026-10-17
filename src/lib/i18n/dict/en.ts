@@ -287,6 +287,8 @@ const en = {
   "ws.passwordMismatch": "The passwords don't match.",
   "ws.passwordEmpty": "Enter a password.",
   "ws.wrongPassword": "That password is wrong. Check it and try again.",
+  "ws.passwordTooLong": "That password is too long for a PDF. Use {max} characters or fewer.",
+  "ws.protectUnverified": "The protected file didn't open with your password, so it was discarded. Try a different password.",
   "ws.officeReload": "High fidelity needs a fresh page load. Reload the page and try again.",
   "ws.officeMemory": "This device doesn't have enough free memory for high fidelity. Try Standard, or use a computer.",
   "ws.needsChrome": "This tool needs Chrome or LibreOffice on the server, and neither is installed yet.",

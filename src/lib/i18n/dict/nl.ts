@@ -272,6 +272,8 @@ const d: { [K in DictKey]?: string } = {
   "ws.passwordMismatch": "De wachtwoorden komen niet overeen.",
   "ws.passwordEmpty": "Voer een wachtwoord in.",
   "ws.wrongPassword": "Dat wachtwoord klopt niet. Controleer het en probeer het opnieuw.",
+  "ws.passwordTooLong": "Dit wachtwoord is te lang voor een pdf. Gebruik maximaal {max} tekens.",
+  "ws.protectUnverified": "Het beveiligde bestand ging niet open met dit wachtwoord en is daarom niet bewaard. Probeer een ander wachtwoord.",
   "ws.officeReload": "Hoge getrouwheid vraagt om een vers geladen pagina. Laad de pagina opnieuw en probeer het nog eens.",
   "ws.officeMemory": "Dit apparaat heeft niet genoeg vrij geheugen voor hoge getrouwheid. Probeer Standaard of een computer.",
   "ws.needsChrome": "Deze tool heeft Chrome of LibreOffice op de server nodig, en geen van beide is al geïnstalleerd.",

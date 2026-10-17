@@ -272,6 +272,8 @@ const d: { [K in DictKey]?: string } = {
   "ws.passwordMismatch": "Les contrasenyes no coincideixen.",
   "ws.passwordEmpty": "Introdueix una contrasenya.",
   "ws.wrongPassword": "La contrasenya no és correcta. Revisa-la i torna-ho a provar.",
+  "ws.passwordTooLong": "Aquesta contrasenya és massa llarga per a un PDF. Fes servir {max} caràcters o menys.",
+  "ws.protectUnverified": "El fitxer protegit no s’obria amb la teva contrasenya, així que s’ha descartat. Prova una altra contrasenya.",
   "ws.officeReload": "L’alta fidelitat necessita tornar a carregar la pàgina. Torna-la a carregar i prova-ho de nou.",
   "ws.officeMemory": "Aquest dispositiu no té prou memòria lliure per a l’alta fidelitat. Prova l’estàndard o un ordinador.",
   "ws.needsChrome": "Aquesta eina necessita Chrome o LibreOffice al servidor, i encara no n’hi ha cap d’instal·lat.",

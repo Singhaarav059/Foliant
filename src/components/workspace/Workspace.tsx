@@ -16,6 +16,7 @@ import { Results } from "./Results";
 import { PrintResults } from "./PrintResults";
 import { clearHandoff, peekHandoff } from "@/lib/handoff";
 import { fileExt, type Output, type Progress } from "@/lib/pdf/common";
+import { MAX_PASSWORD_BYTES, passwordTooLong } from "@/lib/pdf/password";
 import { pageCount } from "@/lib/pdf/thumbs";
 import { defaultOptions, LIMITS, toolById, type ToolId } from "@/lib/tools";
 
@@ -122,9 +123,11 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
 
   const fail = (e: unknown) => {
     // Errors carry a code because class names don't survive minification.
-    const { code, fileName } = (e ?? {}) as { code?: string; fileName?: string };
+    const { code, fileName, max } = (e ?? {}) as { code?: string; fileName?: string; max?: number };
     if (code === "encrypted" || /is encrypted|PasswordException/i.test(String(e))) setError({ text: t("ws.encrypted", { name: fileName ?? "" }), unlock: true });
     else if (code === "wrong_password") setError({ text: t("ws.wrongPassword") });
+    else if (code === "password_too_long") setError({ text: t("ws.passwordTooLong", { max: max ?? MAX_PASSWORD_BYTES }) });
+    else if (code === "protect_unverified") setError({ text: t("ws.protectUnverified") });
     else if (code === "office_isolation") setError({ text: t("ws.officeReload") });
     else if (code === "office_memory") setError({ text: t("ws.officeMemory") });
     else setError({ text: e instanceof Error ? e.message : String(e) });
@@ -152,6 +155,8 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
     if (tool.id === "protect") {
       if (!String(options.password ?? "")) return t("ws.passwordEmpty");
       if (options.password !== options.confirmPassword) return t("ws.passwordMismatch");
+      const max = passwordTooLong(String(options.password));
+      if (max !== null) return t("ws.passwordTooLong", { max });
     }
     if (tool.minFiles && files.length < tool.minFiles) return t("ws.needMore", { n: tool.minFiles });
     if (tool.id === "extract" && selected.size === 0) return t("ws.pickPages");

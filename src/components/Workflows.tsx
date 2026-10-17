@@ -10,6 +10,7 @@ import { Dropzone } from "./workspace/Dropzone";
 import { Results } from "./workspace/Results";
 import { defaultOptions, TOOLS, toolById, type ToolId } from "@/lib/tools";
 import type { Output } from "@/lib/pdf/common";
+import { passwordTooLong } from "@/lib/pdf/password";
 import { BRAND } from "@/lib/brand";
 import { STATIC } from "@/lib/mode";
 
@@ -127,6 +128,8 @@ export function Workflows() {
     const protect = steps.find((s) => s.tool === "protect");
     if (protect && !String(protect.options.password ?? "")) return setError(t("ws.passwordEmpty"));
     if (protect && protect.options.password !== protect.options.confirmPassword) return setError(t("ws.passwordMismatch"));
+    const max = protect ? passwordTooLong(String(protect.options.password)) : null;
+    if (max !== null) return setError(t("ws.passwordTooLong", { max }));
     const { runTool } = await import("@/lib/pdf/run");
     let current = files;
     let out: Output[] = [];
