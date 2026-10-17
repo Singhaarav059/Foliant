@@ -11,9 +11,7 @@ import { CATEGORIES, LIMITS, TOOLS, toolBySlug, type Tool } from "@/lib/tools";
 import { LEGAL, LEGAL_UPDATED } from "@/lib/legal";
 import { BRAND } from "@/lib/brand";
 import { REPO_URL, STATIC } from "@/lib/mode";
-
-const INFO = ["features", "faq", "security", "about", "guide", "privacy", "terms", "cookies"] as const;
-type Info = (typeof INFO)[number];
+import { INFO, pageMetadata, type Info } from "@/lib/seo";
 
 export function generateStaticParams() {
   const slugs = [...TOOLS.map((t) => t.slug), ...INFO];
@@ -26,13 +24,29 @@ function infoTitle(slug: Info, t: Dict) {
   return t[key];
 }
 
+// A line for search results and link previews.
+function infoDescription(slug: Info, t: Dict) {
+  if (slug === "privacy" || slug === "terms" || slug === "cookies") return LEGAL[slug].intro;
+  if (slug === "about") return format(t["about.b1"], { brand: BRAND.name });
+  const key = { features: "feat.subtitle", faq: "home.subtitle", security: "sec.subtitle", guide: "guide.subtitle" }[slug] as DictKey;
+  return t[key];
+}
+
 export async function generateMetadata({ params }: PageProps<"/[lang]/[slug]">): Promise<Metadata> {
   const { lang, slug } = await params;
   if (!hasLocale(lang)) return {};
   const t = await getDictionary(lang);
   const tool = toolBySlug(slug);
-  if (tool) return { title: t[`tool.${tool.id}.name` as DictKey], description: t[`tool.${tool.id}.desc` as DictKey] };
-  if ((INFO as readonly string[]).includes(slug)) return { title: infoTitle(slug as Info, t) };
+  if (tool) {
+    const title = t[`tool.${tool.id}.name` as DictKey];
+    const description = t[`tool.${tool.id}.desc` as DictKey];
+    return { title, description, ...pageMetadata({ lang, path: `/${slug}`, title, description, image: tool.slug }) };
+  }
+  if ((INFO as readonly string[]).includes(slug)) {
+    const title = infoTitle(slug as Info, t);
+    const description = infoDescription(slug as Info, t);
+    return { title, description, ...pageMetadata({ lang, path: `/${slug}`, title, description }) };
+  }
   return {};
 }
 

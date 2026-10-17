@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowRight } from "lucide-react";
@@ -6,6 +7,15 @@ import { getDictionary } from "@/lib/i18n/dictionary";
 import { hasLocale } from "@/lib/i18n/locales";
 import { TOOLS } from "@/lib/tools";
 import { STATIC } from "@/lib/mode";
+import { BRAND } from "@/lib/brand";
+import { pageMetadata } from "@/lib/seo";
+
+export async function generateMetadata({ params }: PageProps<"/[lang]">): Promise<Metadata> {
+  const { lang } = await params;
+  if (!hasLocale(lang)) return {};
+  const t = await getDictionary(lang);
+  return pageMetadata({ lang, title: `${BRAND.name}: ${t["home.title"]}`, description: t["home.subtitle"] });
+}
 
 export default async function Home({ params }: PageProps<"/[lang]">) {
   const { lang } = await params;

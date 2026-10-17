@@ -45,7 +45,17 @@ Open http://localhost:3000. `npm install` also copies everything the browser loa
 npm run build:static
 ```
 
-This writes the site to `out/`, including a `_headers` file for security and caching headers.
+This writes the site to `out/`, including a `_headers` file for security and caching headers, `sitemap.xml`, `robots.txt` and a social card per tool in `out/og/`.
+
+Before going live, set the site's address when building (in the host's build settings, or in `.env.production.local`). Canonical links, language alternates, the sitemap and social cards use it:
+
+| Variable | What it is |
+|---|---|
+| `NEXT_PUBLIC_SITE_URL` | The public address, for example `https://pdf.example.com`, with no path. |
+
+Until it is set, pages use the placeholder in `src/lib/brand.ts`. Build with `FOLIANT_RELEASE=1` for the real deployment: the build then stops if any of these settings is missing, so placeholders can't go live. Other builds, CI's included, don't check.
+
+The PNG and ICO icons in `public/` are drawn from `public/icon.svg` and `public/icon-maskable.svg`; run `node scripts/icons.mjs` after changing either.
 
 **Cloudflare Pages:** build command `npm run build:static`, output directory `out`. Missing pages get the right language's 404 page.
 
