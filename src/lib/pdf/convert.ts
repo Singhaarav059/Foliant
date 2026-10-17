@@ -12,6 +12,7 @@ import { addInvisibleText } from "./textlayer";
 import { srgbProfile } from "./icc";
 import { withoutText } from "./strip";
 import { loadPdf } from "./organize";
+import { PdfError } from "./errors";
 
 const SIZES = { a4: [595.28, 841.89], letter: [612, 792] } as const;
 const MARGINS = { none: 0, small: 20, large: 50 } as const;
@@ -180,7 +181,7 @@ export async function extractImages(file: File): Promise<Output[]> {
     n++;
     out.push({ name: `${baseName(file.name)}-image-${n}.png`, blob: await canvasToBlob(canvas, "image/png") });
   }
-  if (!out.length) throw new Error("No extractable images were found in this PDF.");
+  if (!out.length) throw new PdfError("no_images", file.name);
   return out;
 }
 
@@ -395,7 +396,7 @@ export async function pdfToMarkdown(file: File, o: { pageBreaks: boolean }, prog
   const layouts = await documentLayout(doc, (i) => progress?.(i, doc.numPages));
   await closePdf(doc);
   const md = pagesToMarkdown(layouts, o.pageBreaks);
-  if (!md.trim()) throw new Error("No text found. If this is a scan, run OCR first.");
+  if (!md.trim()) throw new PdfError("no_text", file.name);
   return [{ name: `${baseName(file.name)}.md`, blob: new Blob([md], { type: "text/markdown" }) }];
 }
 

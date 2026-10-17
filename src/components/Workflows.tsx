@@ -8,6 +8,7 @@ import { ToolIcon } from "./ToolIcon";
 import { Options } from "./workspace/Options";
 import { Dropzone } from "./workspace/Dropzone";
 import { Results } from "./workspace/Results";
+import { ErrorBox, useProblem, type Problem } from "./workspace/ErrorBox";
 import { defaultOptions, TOOLS, toolById, type ToolId } from "@/lib/tools";
 import type { Output } from "@/lib/pdf/common";
 import { BRAND } from "@/lib/brand";
@@ -45,13 +46,15 @@ const stripSecrets = (steps: Step[]) =>
 
 export function Workflows() {
   const { t, tOr } = useI18n();
+  const problem = useProblem();
   const { user, ready } = useUser();
   const [saved, setSaved] = useState<Saved[]>([]);
   const [name, setName] = useState("");
   const [steps, setSteps] = useState<Step[]>([]);
   const [files, setFiles] = useState<File[]>([]);
   const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Problem | null>(null);
+  const say = (text: string) => setError({ text });
   const [outputs, setOutputs] = useState<Output[] | null>(null);
 
   const load = useCallback(async () => {
@@ -76,7 +79,7 @@ export function Workflows() {
   const addStep = (id: ToolId) => setSteps((s) => [...s, { tool: id, options: defaultOptions(toolById(id)) }]);
 
   const save = async () => {
-    if (!steps.length) return setError(t("wf.needSteps"));
+    if (!steps.length) return say(t("wf.needSteps"));
     const wfName = name.trim() || steps.map((s) => t(`tool.${s.tool}.name`)).join(" → ");
     if (user) await postJson("/api/workflows", { name: wfName, steps: stripSecrets(steps) });
     else writeLocal([{ id: crypto.randomUUID(), name: wfName, steps: stripSecrets(steps) }, ...readLocal()]);
@@ -110,23 +113,23 @@ export function Workflows() {
     } catch {
       /* not JSON */
     }
-    if (!list.length) return setError(t("wf.importBad"));
+    if (!list.length) return say(t("wf.importBad"));
     try {
       if (user) for (const w of list) await postJson("/api/workflows", w);
       else writeLocal([...list.map((w) => ({ id: crypto.randomUUID(), ...w })), ...readLocal()]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(problem(e));
     }
     await load();
   };
 
   const runAll = async () => {
     setError(null);
-    if (!steps.length) return setError(t("wf.needSteps"));
-    if (!files.length) return setError(t("ws.needMore", { n: 1 }));
+    if (!steps.length) return say(t("wf.needSteps"));
+    if (!files.length) return say(t("ws.needMore", { n: 1 }));
     const protect = steps.find((s) => s.tool === "protect");
-    if (protect && !String(protect.options.password ?? "")) return setError(t("ws.passwordEmpty"));
-    if (protect && protect.options.password !== protect.options.confirmPassword) return setError(t("ws.passwordMismatch"));
+    if (protect && !String(protect.options.password ?? "")) return say(t("ws.passwordEmpty"));
+    if (protect && protect.options.password !== protect.options.confirmPassword) return say(t("ws.passwordMismatch"));
     const { runTool } = await import("@/lib/pdf/run");
     let current = files;
     let out: Output[] = [];
@@ -139,7 +142,7 @@ export function Workflows() {
       }
       setOutputs(out);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(problem(e));
     } finally {
       setStatus(null);
     }
@@ -215,7 +218,7 @@ export function Workflows() {
             )}
           </div>
 
-          {error && <p role="alert" className="mt-4 text-[15px] text-danger">{error}</p>}
+          {error && <ErrorBox problem={error} className="mt-4" />}
           <div className="mt-6 flex flex-wrap gap-2">
             <button className="btn btn-primary" disabled={!!status} onClick={runAll}>
               {status ? <Loader2 size={17} className="animate-spin" /> : <Play size={17} />} {t("wf.run")}

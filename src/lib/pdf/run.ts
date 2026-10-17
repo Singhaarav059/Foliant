@@ -2,6 +2,7 @@
 
 import { LIGHT_OFFICE, type ToolId } from "../tools";
 import { baseName, type Output, type Progress } from "./common";
+import { forFile, PdfError } from "./errors";
 import { STATIC } from "@/lib/mode";
 
 type Opts = Record<string, unknown>;
@@ -10,10 +11,11 @@ const b = (v: unknown) => Boolean(v);
 const n = (v: unknown) => Number(v);
 
 // Runs the per-file loop for tools that take several files and treat each alone.
+// A failure names the file it happened on.
 async function each(files: File[], progress: Progress | undefined, fn: (f: File, p: Progress) => Promise<Output[]>) {
   const out: Output[] = [];
   for (let i = 0; i < files.length; i++) {
-    const res = await fn(files[i], (d, t) => progress?.(i + d / Math.max(1, t), files.length));
+    const res = await forFile(files[i], () => fn(files[i], (d, t) => progress?.(i + d / Math.max(1, t), files.length)));
     out.push(...res);
     progress?.(i + 1, files.length);
   }
@@ -106,6 +108,9 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
       const { protect } = await import("./security");
       return each(files, progress, (f) => protect(f, {
         password: s(o.password), allowPrint: b(o.allowPrint), allowCopy: b(o.allowCopy), allowModify: b(o.allowModify),
+      }).catch((e) => {
+        // qpdf can't open a file that already has an open password.
+        throw (e as { code?: string }).code === "encrypted" ? new PdfError("already_encrypted", f.name, e) : e;
       }));
     }
     case "unlock": {

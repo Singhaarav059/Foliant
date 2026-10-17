@@ -2,20 +2,24 @@
 
 import { PDFDocument, degrees, PDFName, PDFArray, PDFHexString, PDFNumber } from "pdf-lib";
 import { baseName, bytesOf, parseRanges, pdfBlob, type Output, type Progress } from "./common";
+import { PdfError, toPdfError } from "./errors";
 
 export async function loadPdf(file: Blob, name = "file.pdf") {
+  const bytes = await bytesOf(file);
+  let doc: PDFDocument;
   try {
-    return await PDFDocument.load(await bytesOf(file), { updateMetadata: false });
+    doc = await PDFDocument.load(bytes, { updateMetadata: false });
   } catch (e) {
-    if (String(e).includes("encrypted")) throw new EncryptedError(name);
-    throw e;
+    throw toPdfError(e, name, bytes.subarray(0, 1024));
   }
+  if (!doc.getPageCount()) throw new PdfError("no_pages", name);
+  return doc;
 }
 
-export class EncryptedError extends Error {
-  code = "encrypted";
-  constructor(public fileName: string) {
-    super(`${fileName} is encrypted`);
+// The same as PdfError("encrypted"), for callers that throw it by name.
+export class EncryptedError extends PdfError {
+  constructor(fileName: string) {
+    super("encrypted", fileName);
   }
 }
 
@@ -105,7 +109,7 @@ export async function split(
     if (current.length) groups.push(current);
   } else {
     groups = parseRanges(opts.ranges, total);
-    if (!groups.length) throw new Error("No valid page ranges");
+    if (!groups.length) throw new PdfError("bad_ranges", file.name);
   }
 
   if (opts.splitMode === "ranges" && opts.mergeRanges) {

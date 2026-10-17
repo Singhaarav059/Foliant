@@ -54,6 +54,9 @@ jobs:
           echo "Server did not start" && exit 1
       - name: Run tests
         run: npm run test:e2e -- ${{ matrix.browser }}
+      - name: Error messages
+        if: success() || failure()
+        run: npm run test:e2e:errors -- ${{ matrix.browser }}
 
   pdf:
     name: PDF engine tests
@@ -74,6 +77,8 @@ jobs:
           printf '#!/bin/sh\nexec docker run --rm -v /tmp:/tmp verapdf/cli:v1.30.2 "$@"\n' > "$RUNNER_TEMP/verapdf"
           chmod +x "$RUNNER_TEMP/verapdf"
       - run: npm run test:tables
+      - run: npm run test:errors
+        if: success() || failure()
       - run: npm run test:layout
       - run: npm run test:compress
       - run: npm run test:ocr

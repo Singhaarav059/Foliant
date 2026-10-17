@@ -2,6 +2,7 @@
 
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import { VENDOR } from "../vendor";
+import { PdfError, toPdfError } from "./errors";
 
 // `print`: the blob is HTML to save through the browser's print dialog (static build).
 export type Output = { name: string; blob: Blob; note?: string; print?: boolean };
@@ -53,8 +54,9 @@ export async function renderPage(page: PDFPageProxy, scale: number, background =
 }
 
 export function canvasToBlob(canvas: HTMLCanvasElement, type = "image/jpeg", quality = 0.9) {
+  // toBlob gives null when the canvas is over the browser's size limit.
   return new Promise<Blob>((resolve, reject) =>
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Canvas export failed"))), type, quality),
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new PdfError("page_too_large"))), type, quality),
   );
 }
 
@@ -140,7 +142,12 @@ export function humanSize(bytes: number) {
 }
 
 export async function loadImage(blob: Blob): Promise<ImageBitmap> {
-  return createImageBitmap(blob, { imageOrientation: "from-image" });
+  try {
+    return await createImageBitmap(blob, { imageOrientation: "from-image" });
+  } catch (e) {
+    // Chromium and Firefox can't decode HEIC, for one.
+    throw toPdfError(e, (blob as File).name ?? "");
+  }
 }
 
 // Converts any browser-decodable image to JPEG or PNG bytes pdf-lib can embed.

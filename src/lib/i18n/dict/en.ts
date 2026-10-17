@@ -385,6 +385,27 @@ const en = {
   "res.error": "Something went wrong",
   "res.retry": "Try again",
 
+  // Errors (codes from src/lib/pdf/errors.ts)
+  "err.notPdf": "This isn't a PDF, or the file is empty. Check that you picked the right file.",
+  "err.damaged": "This PDF is damaged and can't be read. Repairing it may help.",
+  "err.unrecoverable": "This PDF is too damaged to recover.",
+  "err.encrypted": "This PDF is password-protected. Unlock it first, then try again.",
+  "err.alreadyEncrypted": "This PDF already has a password. Unlock it first to set a new one.",
+  "err.passwordTooLong": "That password is too long. Use up to 127 characters (fewer with non-Latin letters).",
+  "err.noPages": "This PDF has no pages.",
+  "err.imageUnsupported": "This browser can't read this image. Save it as JPG or PNG and try again (Safari opens HEIC photos).",
+  "err.pageTooLarge": "A page is too large to draw on this device. Try a lower resolution.",
+  "err.outOfMemory": "This device ran out of memory. Close other tabs or try a smaller file.",
+  "err.noText": "No text found. If this is a scan, run OCR first.",
+  "err.noImages": "No images were found in this PDF.",
+  "err.badRanges": "Those page ranges don't match any pages. Use a format like 1-3, 5.",
+  "err.emptyDocument": "This document has nothing to convert.",
+  "err.missingImage": "Choose an image for the watermark.",
+  "err.download": "Couldn't download part of this tool. Check your connection and try again.",
+  "err.unknown": "Something went wrong. Try again, or try a different file.",
+  "err.details": "Technical details",
+  "err.report": "Report this problem",
+
   // Auth
   "auth.loginTitle": "Log in",
   "auth.signupTitle": "Create your account",

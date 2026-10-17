@@ -40,10 +40,12 @@ function useHistory<T>(initial: T) {
 }
 
 export function Editor({
-  toolId, file, options, actionLabel, onRun,
+  toolId, file, options, actionLabel, onRun, onError,
 }: {
   toolId: ToolId; file: File; options: Record<string, unknown>; actionLabel: string;
   onRun: (job: (p: Progress) => Promise<Output[]>) => void;
+  // The file can't be opened (not a PDF, damaged, password-protected).
+  onError: (e: unknown) => void;
 }) {
   const { t } = useI18n();
   const [sizes, setSizes] = useState<Size[]>([]);
@@ -70,8 +72,17 @@ export function Editor({
   const imageInput = useRef<HTMLInputElement>(null);
   const drag = useRef<null | { kind: "new" | "move" | "resize" | "crop-move" | "crop-resize"; id?: string; x0: number; y0: number; orig?: FracRect; handle?: string }>(null);
 
+  // The latest handler, without reloading the file when it changes.
+  const failed = useRef(onError);
   useEffect(() => {
-    pageSizes(file).then(setSizes).catch(() => setSizes([]));
+    failed.current = onError;
+  });
+
+  useEffect(() => {
+    pageSizes(file).then(setSizes).catch((e) => {
+      setSizes([]);
+      failed.current(e);
+    });
     if (toolId === "forms") {
       import("@/lib/pdf/edit").then(({ readFields }) => readFields(file)).then((f) => {
         setFields(f);

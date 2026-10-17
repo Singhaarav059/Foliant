@@ -5,6 +5,7 @@ import { zlibSync } from "fflate";
 import { baseName, bytesOf, canvasToBlob, closePdf, openPdf, pdfBlob, renderPage, type Output, type Progress } from "./common";
 import { loadPdf } from "./organize";
 import { runQpdf } from "./qpdf";
+import { PdfError } from "./errors";
 import { decodeJpeg, encodeJpeg, jpegComponents } from "./jpeg";
 import { asGray, palette, predictPng, resample, unpredictPng, type Pixels } from "./pixels";
 import { placements } from "./placements";
@@ -256,7 +257,7 @@ export async function repair(file: File): Promise<Output[]> {
         /* unreadable page skipped */
       }
     }
-    if (!out.getPageCount()) throw new Error("This file is too damaged to recover.");
+    if (!out.getPageCount()) throw new PdfError("unrecoverable", file.name);
     return [{ name: `${stem}-repaired.pdf`, blob: pdfBlob(await out.save()), note: "rebuilt" }];
   }
 }
