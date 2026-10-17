@@ -1,22 +1,19 @@
 // Word → PDF in the static build: renders tests/fixtures/rich.docx the way the
 // browser does (docx-preview), prints it with Chrome like the print dialog,
 // and checks what survived. The old mammoth path runs on the same file for
-// comparison. Needs Chrome (CHROME_PATH, or the usual install location).
+// comparison. Needs Chrome (see tests/lib/chrome.mjs).
 //
 //   node tests/office.mjs
 import pw from "playwright-core";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { root, openPdf, check, eq } from "./lib/load.mjs";
+import { requireChrome } from "./lib/chrome.mjs";
 
-const chrome = process.env.CHROME_PATH ?? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/chromium"].find(existsSync);
-if (!chrome) {
-  console.log("skip  no Chrome found (set CHROME_PATH)");
-  process.exit(0);
-}
+const chrome = requireChrome();
 const results = { failed: 0 };
 const test = check(results);
 const require = createRequire(join(root, "package.json"));
@@ -42,6 +39,12 @@ await page.route("http://test.local/**", (route) => {
 });
 await page.goto("http://test.local/");
 await page.waitForFunction(() => typeof window.render === "function");
+// Text drawn in Georgia measures differently from the fallback only if it's installed.
+const georgia = await page.evaluate(() => {
+  const c = document.createElement("canvas").getContext("2d");
+  const width = (font) => ((c.font = font), c.measureText("mmmmmmmmmmlli WQ").width);
+  return width("40px Georgia, monospace") !== width("40px monospace");
+});
 
 const docx = readFileSync(join(root, "tests/fixtures/rich.docx"));
 const printed = async (html) => {
@@ -70,7 +73,8 @@ const printed = async (html) => {
   return pages;
 };
 
-const now = await printed(await page.evaluate((b64) => window.render(b64), docx.toString("base64")));
+const html = await page.evaluate((b64) => window.render(b64), docx.toString("base64"));
+const now = await printed(html);
 const { docxHtml } = await import(join(out, "html.js"));
 const before = await printed(await docxHtml(new Uint8Array(docx)));
 const summary = (pages) => `${pages.length} pages, sizes ${[...new Set(pages.map((p) => `${Math.round(p.width)}×${Math.round(p.height)}`))].join(" / ")}`;
@@ -102,7 +106,11 @@ await test("image, table, numbered list and fonts kept", () => {
   // Chrome writes "fi" as a ligature, which extracts as "fi " — compare without spaces.
   const flat = all.replace(/\s+/g, "");
   eq(flat.includes("1.Collectthefigures") && flat.includes("3.Sendthereport"), true, "numbered list");
-  eq(now.fonts.some((f) => /georgia/i.test(f)), true, `Georgia embedded (fonts: ${now.fonts.join(", ")})`);
+  // The converter asks for Georgia; Chrome can only embed it where it's
+  // installed, which Linux machines (and CI) usually aren't.
+  eq(/font-family:[^;"}]*Georgia/i.test(html), true, "Georgia requested");
+  if (georgia) eq(now.fonts.some((f) => /georgia/i.test(f)), true, `Georgia embedded (fonts: ${now.fonts.join(", ")})`);
+  else console.log("      (Georgia isn't installed here, so only the request is checked)");
 });
 
 await browser.close();

@@ -1,6 +1,7 @@
 // Serves the static build like Cloudflare Pages does, for local checks and
-// the end-to-end tests: /a → a.html or a/index.html, and a missing path gets
-// the nearest 404.html with status 404.
+// the end-to-end tests: /a → a.html or a/index.html, a missing path gets the
+// nearest 404.html with status 404, and every response carries the headers
+// that out/_headers assigns to its path.
 // Usage: node scripts/serve-static.mjs [dir=out] [port=3202]
 import { createServer } from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -11,9 +12,36 @@ const port = Number(process.argv[3] ?? 3202);
 const types = {
   ".html": "text/html; charset=utf-8", ".txt": "text/plain; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript",
   ".css": "text/css", ".json": "application/json", ".webmanifest": "application/manifest+json", ".svg": "image/svg+xml",
-  ".wasm": "application/wasm", ".woff2": "font/woff2", ".png": "image/png", ".jpg": "image/jpeg",
+  ".wasm": "application/wasm", ".woff2": "font/woff2", ".woff": "font/woff", ".png": "image/png", ".jpg": "image/jpeg",
+  ".xml": "application/xml", ".gz": "application/gzip",
 };
 const isFile = (p) => existsSync(p) && statSync(p).isFile();
+
+// _headers: a path pattern on its own line, then indented "Name: value"
+// lines. "*" matches anything and ":name" one path segment. Every matching
+// rule applies, and a header set by several rules gets their values joined.
+function parseHeaders(text) {
+  const rules = [];
+  for (const line of text.split("\n")) {
+    if (!line.trim() || line.trim().startsWith("#")) continue;
+    if (!/^\s/.test(line)) {
+      const source = line.trim().replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/:\w+/g, "[^/]+");
+      rules.push({ match: new RegExp(`^${source}$`), headers: [] });
+    } else if (rules.length) {
+      const at = line.indexOf(":");
+      if (at > 0) rules.at(-1).headers.push([line.slice(0, at).trim(), line.slice(at + 1).trim()]);
+    }
+  }
+  return (path) => {
+    const out = {};
+    for (const rule of rules.filter((r) => r.match.test(path))) {
+      for (const [name, value] of rule.headers) out[name] = out[name] ? `${out[name]}, ${value}` : value;
+    }
+    return out;
+  };
+}
+
+const headersFor = isFile(join(root, "_headers")) ? parseHeaders(readFileSync(join(root, "_headers"), "utf8")) : () => ({});
 
 createServer((req, res) => {
   const path = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
@@ -28,7 +56,7 @@ createServer((req, res) => {
       if (dir === root) break;
     }
   }
-  if (!file) return res.writeHead(404).end("Not found");
-  res.writeHead(status, { "Content-Type": types[extname(file)] ?? "application/octet-stream" });
+  if (!file) return res.writeHead(404, headersFor(path)).end("Not found");
+  res.writeHead(status, { ...headersFor(path), "Content-Type": types[extname(file)] ?? "application/octet-stream" });
   res.end(readFileSync(file));
 }).listen(port, () => console.log(`Serving ${root} on http://localhost:${port}`));

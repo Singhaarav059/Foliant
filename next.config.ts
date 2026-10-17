@@ -17,6 +17,9 @@ const nextConfig: NextConfig = {
   // Server-side conversion libraries stay as plain Node requires.
   serverExternalPackages: ["playwright-core", "mammoth", "exceljs", "jszip"],
   turbopack: {
+    // A git worktree whose node_modules links to the main checkout builds
+    // with TURBOPACK_ROOT set to a directory that contains both.
+    ...(process.env.TURBOPACK_ROOT ? { root: process.env.TURBOPACK_ROOT } : {}),
     rules: {
       "*.css": {
         loaders: ["@tailwindcss/turbopack"],
