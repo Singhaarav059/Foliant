@@ -366,6 +366,10 @@ const en = {
   "cmp.changes": "{n} changes",
   "cmp.original": "Original",
   "cmp.revised": "Revised",
+  "cmp.pageAdded": "Page {n} added",
+  "cmp.pageRemoved": "Page {n} removed",
+  "cmp.pageMoved": "Page {a}, now page {b}",
+  "cmp.noPage": "No matching page",
 
   // Results
   "res.done": "Done",

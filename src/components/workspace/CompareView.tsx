@@ -9,14 +9,27 @@ import type { PageDiff } from "@/lib/pdf/compare";
 // Loads the comparison code ahead of use (src/lib/offline.ts).
 export const prepareCompare = () => import("@/lib/pdf/compare");
 
-export function CompareView({ a, b }: { a: File; b: File }) {
+// Errors from src/lib/pdf/compare.ts say which file failed.
+const sideOf = (e: unknown, a: File, b: File) => ((e as { side?: string }).side === "b" ? b : a);
+
+// Every view walks the same rows: pages of the two files lined up by
+// content, so an inserted page doesn't shift the rest. A file that can't be
+// read goes to onError (the workspace shows why and drops it); nothing here
+// ever reads as "no changes" after a failure.
+export function CompareView({ a, b, onError }: { a: File; b: File; onError: (e: unknown, file: File) => void }) {
   const { t } = useI18n();
   const [view, setView] = useState<"text" | "visual" | "side">("text");
-  const [diffs, setDiffs] = useState<PageDiff[] | null>(null);
-  const [page, setPage] = useState(0);
-  const [overlay, setOverlay] = useState<{ url: string; pages: number } | null>(null);
+  const [rows, setRows] = useState<PageDiff[] | null>(null);
+  const [row, setRow] = useState(0);
+  const [overlay, setOverlay] = useState<{ key: string; url: string } | null>(null);
   const holder = useRef<HTMLDivElement>(null);
   const [holderWidth, setHolderWidth] = useState(800);
+  // The latest handler, without rerunning the diff when it changes.
+  const failed = useRef(onError);
+  useEffect(() => {
+    failed.current = onError;
+  });
+
   useEffect(() => {
     const el = holder.current;
     if (!el) return;
@@ -26,24 +39,37 @@ export function CompareView({ a, b }: { a: File; b: File }) {
   }, [view]);
 
   useEffect(() => {
-    import("@/lib/pdf/compare").then(({ textDiff }) => textDiff(a, b)).then(setDiffs).catch(() => setDiffs([]));
-  }, [a, b]);
-
-  useEffect(() => {
-    if (view !== "visual") return;
     let live = true;
-    const width = Math.min(1800, holderWidth * Math.min(2, window.devicePixelRatio || 1));
-    import("@/lib/pdf/compare").then(({ visualOverlay }) => visualOverlay(a, b, page, width)).then((r) => {
-      if (!live) return;
-      setOverlay({ url: r.canvas.toDataURL("image/png"), pages: r.pages });
-    });
+    import("@/lib/pdf/compare").then(({ textDiff }) => textDiff(a, b)).then(
+      (r) => live && setRows(r),
+      (e) => live && failed.current(e, sideOf(e, a, b)),
+    );
     return () => {
       live = false;
     };
-  }, [view, page, a, b, holderWidth]);
+  }, [a, b]);
 
-  const total = diffs ? diffs.length : 0;
-  const changed = diffs?.filter((d) => d.added || d.removed) ?? [];
+  const pair = rows?.[row];
+  const width = Math.min(1800, holderWidth * Math.min(2, typeof window === "undefined" ? 1 : window.devicePixelRatio || 1));
+  const overlayKey = `${row}:${width}`;
+  useEffect(() => {
+    if (view !== "visual" || !pair) return;
+    let live = true;
+    import("@/lib/pdf/compare").then(({ visualOverlay }) => visualOverlay(a, b, pair, width)).then(
+      (r) => live && setOverlay({ key: overlayKey, url: r.canvas.toDataURL("image/png") }),
+      (e) => live && failed.current(e, sideOf(e, a, b)),
+    );
+    return () => {
+      live = false;
+    };
+  }, [view, pair, a, b, width, overlayKey]);
+
+  const changed = rows?.filter((d) => d.status !== "same") ?? [];
+  const title = (d: PageDiff) =>
+    d.a === null ? t("cmp.pageAdded", { n: d.b! + 1 })
+    : d.b === null ? t("cmp.pageRemoved", { n: d.a + 1 })
+    : d.a === d.b ? t("ws.page", { n: d.a + 1 })
+    : t("cmp.pageMoved", { a: d.a + 1, b: d.b + 1 });
 
   return (
     <div>
@@ -56,7 +82,7 @@ export function CompareView({ a, b }: { a: File; b: File }) {
             </button>
           ))}
         </div>
-        {diffs && <span className="tabular text-[14px] text-muted">{t("cmp.changes", { n: changed.length })}</span>}
+        {rows && <span className="tabular text-[14px] text-muted">{t("cmp.changes", { n: changed.length })}</span>}
         <span className="ms-auto flex items-center gap-3 text-[13px]">
           <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-sm bg-[#dc2626]" />{t("cmp.removed")}</span>
           <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-sm bg-[#2563eb]" />{t("cmp.added")}</span>
@@ -64,13 +90,13 @@ export function CompareView({ a, b }: { a: File; b: File }) {
       </div>
 
       {view === "text" && (
-        !diffs ? <div className="h-40 animate-pulse rounded-xl bg-surface-2" /> :
+        !rows ? <div className="h-40 animate-pulse rounded-xl bg-surface-2" /> :
         changed.length === 0 ? <p className="card p-8 text-center text-muted">{t("cmp.noChanges")}</p> : (
           <div className="space-y-4">
             {changed.map((d) => (
-              <article key={d.page} className="card p-5">
+              <article key={`${d.a}:${d.b}`} className="card p-5">
                 <h3 className="mb-3 flex items-center gap-3 text-[14px] font-medium">
-                  {t("ws.page", { n: d.page + 1 })}
+                  {title(d)}
                   <span className="tabular font-normal text-[#2563eb]">+{d.added}</span>
                   <span className="tabular font-normal text-[#dc2626]">−{d.removed}</span>
                 </h3>
@@ -90,21 +116,27 @@ export function CompareView({ a, b }: { a: File; b: File }) {
       {view !== "text" && (
         <div ref={holder}>
           <div className="mb-3 flex items-center justify-center gap-2">
-            <button className="icon-btn" disabled={page === 0} onClick={() => setPage((p) => p - 1)} aria-label={t("ed.prevPage")}><ChevronLeft size={18} /></button>
-            <span className="tabular text-[14px] text-muted">{page + 1} / {Math.max(total, overlay?.pages ?? 1)}</span>
-            <button className="icon-btn" disabled={page >= Math.max(total, overlay?.pages ?? 1) - 1} onClick={() => setPage((p) => p + 1)} aria-label={t("ed.nextPage")}><ChevronRight size={18} /></button>
+            <button className="icon-btn" disabled={row === 0} onClick={() => setRow((p) => p - 1)} aria-label={t("ed.prevPage")}><ChevronLeft size={18} /></button>
+            <span className="tabular text-[14px] text-muted">{row + 1} / {rows?.length ?? 1}</span>
+            <button className="icon-btn" disabled={!rows || row >= rows.length - 1} onClick={() => setRow((p) => p + 1)} aria-label={t("ed.nextPage")}><ChevronRight size={18} /></button>
           </div>
+          {pair && (pair.status !== "same" || pair.a !== pair.b) && <p className="mb-3 text-center text-[14px] font-medium">{title(pair)}</p>}
           {view === "visual" ? (
-            overlay ? (
+            overlay?.key === overlayKey ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={overlay.url} alt="" className="mx-auto w-full max-w-[900px] bg-white shadow-[0_0_0_1px_var(--line)]" />
             ) : <div className="mx-auto h-[60vh] max-w-[900px] animate-pulse rounded bg-surface-2" />
           ) : (
             <div className="grid grid-cols-2 gap-4">
-              {[a, b].map((f, i) => (
+              {([[a, pair?.a], [b, pair?.b]] as const).map(([f, index], i) => (
                 <figure key={i} className="flex flex-col items-center">
-                  <figcaption className="mb-2 text-[13px] font-medium text-muted">{i === 0 ? t("cmp.original") : t("cmp.revised")} · <span className="font-normal">{f.name}</span></figcaption>
-                  <PdfThumb key={`${i}-${page}`} file={f} page={page} width={Math.min(440, holderWidth / 2 - 12)} />
+                  <figcaption className="mb-2 text-[13px] font-medium text-muted">
+                    {i === 0 ? t("cmp.original") : t("cmp.revised")} · <span className="font-normal">{f.name}</span>
+                    {typeof index === "number" && <span className="font-normal"> · {t("ws.page", { n: index + 1 })}</span>}
+                  </figcaption>
+                  {!rows ? <div className="h-[50vh] w-full animate-pulse rounded bg-surface-2" />
+                    : typeof index === "number" ? <PdfThumb key={`${i}-${index}`} file={f} page={index} width={Math.min(440, holderWidth / 2 - 12)} />
+                    : <p className="grid h-40 w-full place-items-center rounded border border-dashed border-line text-[14px] text-muted">{t("cmp.noPage")}</p>}
                 </figure>
               ))}
             </div>

@@ -12,7 +12,7 @@ const out = mkdtempSync(join(tmpdir(), "pdf-lib-"));
 
 execFileSync(join(root, "node_modules/.bin/tsc"), [
   "--outDir", out, "--module", "esnext", "--target", "es2022", "--moduleResolution", "bundler",
-  "--skipLibCheck", "--noCheck", "--rootDir", "src/lib", "src/lib/pdf/convert.ts", "src/lib/pdf/optimize.ts", "src/lib/pdf/ocr.ts", "src/lib/pdf/security.ts",
+  "--skipLibCheck", "--noCheck", "--rootDir", "src/lib", "src/lib/pdf/convert.ts", "src/lib/pdf/optimize.ts", "src/lib/pdf/ocr.ts", "src/lib/pdf/security.ts", "src/lib/pdf/compare.ts",
 ], { cwd: root, stdio: "inherit" });
 
 // Node needs file extensions on relative imports, and bare imports resolved from the project.

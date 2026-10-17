@@ -298,7 +298,12 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
         <FileBoard items={items} onChange={(n) => { setItems(n); if (!n.length) setStage("select"); }} sortable>
           {items.length < 2 && <Dropzone tool={tool} onFiles={addFiles} compact />}
         </FileBoard>
-        <div className="mt-8">{items.length === 2 ? <CompareView a={files[0]} b={files[1]} /> : <p className="text-center text-muted">{t("ws.needMore", { n: 2 })}</p>}</div>
+        <div className="mt-8">
+          {items.length === 2 ? (
+            <CompareView key={`${items[0].id}:${items[1].id}`} a={files[0]} b={files[1]}
+              onError={(e, file) => { const item = items.find((i) => i.file === file); if (item) void drop(item.id, file, e); }} />
+          ) : <p className="text-center text-muted">{t("ws.needMore", { n: 2 })}</p>}
+        </div>
       </div>
     );
   }

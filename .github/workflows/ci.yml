@@ -63,6 +63,9 @@ jobs:
       - name: Offline
         if: success() || failure()
         run: npm run test:e2e:offline -- ${{ matrix.browser }}
+      - name: Compare
+        if: success() || failure()
+        run: npm run test:e2e:compare -- ${{ matrix.browser }}
 
   pdf:
     name: PDF engine tests
@@ -84,6 +87,8 @@ jobs:
           chmod +x "$RUNNER_TEMP/verapdf"
       - run: npm run test:tables
       - run: npm run test:errors
+        if: success() || failure()
+      - run: npm run test:compare
         if: success() || failure()
       - run: npm run test:layout
       - run: npm run test:compress
