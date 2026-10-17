@@ -19,6 +19,9 @@ export type Column = { x0: number; x1: number; items: Item[] };
 export type Section = { y0: number; y1: number; columns: Column[] };
 export type PageLayout = Layout & {
   figures: Figure[];
+  // Pictures covering most of the page (a scan, a letterhead): they go behind
+  // the text, and the text drawn on them stays text.
+  backgrounds: Figure[];
   sections: Section[];
   // Lines repeated on most pages; Word puts them in the page header and footer.
   header: Line[];
@@ -229,16 +232,21 @@ function withLinks(runs: Run[], links: { rect: Rect; url: string }[]): Run[] {
   return runs.flatMap((run) => pieces(run, inside).map((p) => (p.owner < 0 ? p.run : { ...p.run, link: links[p.owner].url })));
 }
 
-// Images worth keeping: not tiny, not page backgrounds, overlaps merged.
-function figuresOf(images: Rect[], width: number, height: number): Figure[] {
-  const big = images.filter((r) => r.x1 - r.x0 >= 16 && r.y1 - r.y0 >= 16 && (r.x1 - r.x0) * (r.y1 - r.y0) < width * height * 0.6);
-  const out: Figure[] = [];
-  for (const r of big.sort((a, b) => a.y0 - b.y0)) {
-    const hit = out.find((o) => r.x0 <= o.x1 + 2 && r.x1 >= o.x0 - 2 && r.y0 <= o.y1 + 2 && r.y1 >= o.y0 - 2);
-    if (hit) Object.assign(hit, { x0: Math.min(hit.x0, r.x0), y0: Math.min(hit.y0, r.y0), x1: Math.max(hit.x1, r.x1), y1: Math.max(hit.y1, r.y1) });
-    else out.push({ ...r, x0: Math.max(0, r.x0), y0: Math.max(0, r.y0), x1: Math.min(width, r.x1), y1: Math.min(height, r.y1) });
-  }
-  return out;
+// Images worth keeping: not tiny, overlaps merged. Those covering 60% of the
+// page or more are backgrounds rather than figures.
+function figuresOf(images: Rect[], width: number, height: number): { figures: Figure[]; backgrounds: Figure[] } {
+  const merge = (rects: Rect[]) => {
+    const out: Figure[] = [];
+    for (const r of rects.sort((a, b) => a.y0 - b.y0)) {
+      const hit = out.find((o) => r.x0 <= o.x1 + 2 && r.x1 >= o.x0 - 2 && r.y0 <= o.y1 + 2 && r.y1 >= o.y0 - 2);
+      if (hit) Object.assign(hit, { x0: Math.min(hit.x0, r.x0), y0: Math.min(hit.y0, r.y0), x1: Math.max(hit.x1, r.x1), y1: Math.max(hit.y1, r.y1) });
+      else out.push({ ...r });
+    }
+    return out.map((f) => ({ x0: Math.max(0, f.x0), y0: Math.max(0, f.y0), x1: Math.min(width, f.x1), y1: Math.min(height, f.y1) }));
+  };
+  const big = images.filter((r) => r.x1 - r.x0 >= 16 && r.y1 - r.y0 >= 16);
+  const covers = (r: Rect) => (r.x1 - r.x0) * (r.y1 - r.y0) >= width * height * 0.6;
+  return { figures: merge(big.filter((r) => !covers(r))), backgrounds: merge(big.filter(covers)) };
 }
 
 const keyOf = (text: string) => text.replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
@@ -257,7 +265,7 @@ function bodySize(runs: Run[]) {
   return best;
 }
 
-function finish(base: Layout, figures: Figure[], furniture: Set<string>, body: number): PageLayout {
+function finish(base: Layout, { figures, backgrounds }: ReturnType<typeof figuresOf>, furniture: Set<string>, body: number): PageLayout {
   const header: Line[] = [];
   const footer: Line[] = [];
   const skip: Rect[] = [];
@@ -279,7 +287,7 @@ function finish(base: Layout, figures: Figure[], furniture: Set<string>, body: n
     ...figures.map((f): Box => ({ kind: "figure", figure: f, ...f })),
   ];
   return {
-    ...base, figures, header, footer,
+    ...base, figures, backgrounds, header, footer,
     sections: xyCut(boxes, bodySize(runs)),
     content: boxes.length ? extent(boxes) : null,
   };

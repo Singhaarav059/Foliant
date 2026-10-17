@@ -19,6 +19,7 @@
     "test:e2e": "node tests/e2e.mjs",
     "test:tables": "node tests/tables.mjs",
     "test:layout": "node tests/layout.mjs",
+    "test:word": "node tests/word-content.mjs",
     "test:compress": "node tests/compress.mjs",
     "test:ocr": "node tests/ocr.mjs",
     "test:redact": "node tests/redact.mjs",

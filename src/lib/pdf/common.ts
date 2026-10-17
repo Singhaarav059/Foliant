@@ -38,7 +38,9 @@ export async function openPdf(data: ArrayBuffer | Uint8Array, password?: string)
 // Frees the worker-side copy of a document.
 export const closePdf = (doc: PDFDocumentProxy) => doc.loadingTask.destroy();
 
-export async function renderPage(page: PDFPageProxy, scale: number, background = "#ffffff") {
+// `withoutText` leaves out the text-drawing operators: what's left is the
+// page's pictures and vector art.
+export async function renderPage(page: PDFPageProxy, scale: number, background = "#ffffff", withoutText = false) {
   const viewport = page.getViewport({ scale });
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(viewport.width));
@@ -46,9 +48,15 @@ export async function renderPage(page: PDFPageProxy, scale: number, background =
   const ctx = canvas.getContext("2d")!;
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  let operationsFilter: ((i: number, list: { fnArray: number[] }) => boolean) | undefined;
+  if (withoutText) {
+    const { OPS } = await pdfjs();
+    const text = new Set([OPS.showText, OPS.showSpacedText, OPS.nextLineShowText, OPS.nextLineSetSpacingShowText]);
+    operationsFilter = (i, list) => !text.has(list.fnArray[i]);
+  }
   // "print" renders without requestAnimationFrame, which browsers pause in
   // background tabs; a long job keeps going when the user switches away.
-  await page.render({ canvas, canvasContext: ctx, viewport, intent: "print" }).promise;
+  await page.render({ canvas, canvasContext: ctx, viewport, intent: "print", operationsFilter }).promise;
   return canvas;
 }
 
