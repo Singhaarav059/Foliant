@@ -19,6 +19,7 @@
     "test:e2e": "node tests/e2e.mjs",
     "test:e2e:rotate": "node tests/e2e/rotate.mjs",
     "test:tables": "node tests/tables.mjs",
+    "test:organize": "node tests/organize.mjs",
     "test:layout": "node tests/layout.mjs",
     "test:compress": "node tests/compress.mjs",
     "test:ocr": "node tests/ocr.mjs",
