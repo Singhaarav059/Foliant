@@ -222,6 +222,6 @@ export async function paddlePage(image: Gray) {
       return { words: words(r), baseline: { x0: r.rect.x0, y0: base, x1: r.rect.x1, y1: base, has_baseline: true } };
     });
     const conf = reads.length ? reads.reduce((s, r) => s + r.confidence, 0) / reads.length : 0;
-    return { confidence: conf, blocks: [{ paragraphs: [{ lines }] }] };
+    return { confidence: conf, blocks: [{ paragraphs: [{ lines }] }], found: rects.length };
   });
 }

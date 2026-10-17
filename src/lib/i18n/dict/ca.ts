@@ -359,6 +359,7 @@ const d: { [K in DictKey]?: string } = {
   "res.notSmaller": "Aquest fitxer ja estava ben optimitzat. Hem conservat l’original.",
   "res.rebuilt": "El fitxer estava molt danyat, així que les pàgines s’han reconstruït com a imatges. Executa l’OCR perquè el text torni a ser cercable.",
   "res.ocrNone": "No s’ha reconegut cap text. Revisa la llengua del document i prova amb una resolució més alta.",
+  "res.ocrDoubtful": "Algunes pàgines eren difícils de llegir, així que només s’hi han afegit les paraules reconegudes amb seguretat. Un escaneig més net o una resolució més alta hi pot ajudar.",
   "res.continue": "Continua amb",
   "res.startOver": "Torna a començar",
   "res.preview": "Previsualització",

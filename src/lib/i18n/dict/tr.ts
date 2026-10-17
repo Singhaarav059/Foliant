@@ -359,6 +359,7 @@ const d: { [K in DictKey]?: string } = {
   "res.notSmaller": "Bu dosya zaten iyi optimize edilmişti. Orijinali koruduk.",
   "res.rebuilt": "Dosya ağır hasarlıydı, bu yüzden sayfaları görsel olarak yeniden oluşturuldu. Metni yeniden aranabilir yapmak için OCR çalıştırın.",
   "res.ocrNone": "Hiç metin tanınmadı. Belgenin dilini kontrol edin ve daha yüksek bir çözünürlük deneyin.",
+  "res.ocrDoubtful": "Bazı sayfaların okunması zordu, bu yüzden yalnızca güvenle tanınan sözcükler eklendi. Daha temiz bir tarama veya daha yüksek bir çözünürlük yardımcı olabilir.",
   "res.continue": "Şununla devam et",
   "res.startOver": "Baştan başla",
   "res.preview": "Önizleme",

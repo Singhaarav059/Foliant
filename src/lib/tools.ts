@@ -70,8 +70,10 @@ export type Tool = {
 const PDF = ["pdf"];
 const IMAGES = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "heic"];
 
-// Languages PaddleOCR's PP-OCRv5 dictionary covers (Tesseract codes), for high-accuracy OCR.
-export const PADDLE_LANGS = ["eng", "deu", "fra", "ita", "spa", "por", "nld", "swe", "cat", "ind", "msa", "swa", "ell", "chi_sim", "chi_tra", "jpn"];
+// Languages PaddleOCR's PP-OCRv5 model reads at least about as well as Tesseract
+// (Tesseract codes), for high-accuracy OCR. tests/ocr-accuracy.mjs holds each to that.
+// Not Greek (no accented letters or final sigma), French (« » œ ï î) or Portuguese (ã).
+export const PADDLE_LANGS = ["eng", "deu", "ita", "spa", "nld", "swe", "cat", "ind", "msa", "swa", "chi_sim", "chi_tra", "jpn"];
 
 export const OCR_LANGS = [
   "eng", "spa", "fra", "deu", "ita", "por", "jpn", "rus", "kor", "chi_sim",

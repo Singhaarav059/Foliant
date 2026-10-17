@@ -359,6 +359,7 @@ const d: { [K in DictKey]?: string } = {
   "res.notSmaller": "Fail ini sudah dioptimumkan dengan baik. Kami mengekalkan fail asal.",
   "res.rebuilt": "Fail itu rosak teruk, jadi halamannya dibina semula sebagai imej. Jalankan OCR supaya teks boleh dicari semula.",
   "res.ocrNone": "Tiada teks dikenal pasti. Semak bahasa dokumen dan cuba resolusi lebih tinggi.",
+  "res.ocrDoubtful": "Sesetengah halaman sukar dibaca, jadi hanya perkataan yang dikenal pasti dengan yakin telah ditambah. Imbasan yang lebih jelas atau resolusi lebih tinggi mungkin membantu.",
   "res.continue": "Teruskan dengan",
   "res.startOver": "Mula semula",
   "res.preview": "Pratonton",

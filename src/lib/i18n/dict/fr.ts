@@ -359,6 +359,7 @@ const d: { [K in DictKey]?: string } = {
   "res.notSmaller": "Ce fichier était déjà bien optimisé. Nous avons conservé l’original.",
   "res.rebuilt": "Le fichier était très endommagé : ses pages ont été reconstruites en images. Lancez l’OCR pour rendre le texte de nouveau recherchable.",
   "res.ocrNone": "Aucun texte n’a été reconnu. Vérifiez la langue du document et essayez une résolution plus élevée.",
+  "res.ocrDoubtful": "Certaines pages étaient difficiles à lire : seuls les mots reconnus avec certitude ont été ajoutés. Une numérisation plus nette ou une résolution plus élevée peut aider.",
   "res.continue": "Continuer avec",
   "res.startOver": "Recommencer",
   "res.preview": "Aperçu",

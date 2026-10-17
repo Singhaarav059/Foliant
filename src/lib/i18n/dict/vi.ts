@@ -359,6 +359,7 @@ const d: { [K in DictKey]?: string } = {
   "res.notSmaller": "Tệp này đã được tối ưu tốt. Chúng tôi giữ nguyên bản gốc.",
   "res.rebuilt": "Tệp bị hỏng nặng nên các trang đã được dựng lại dưới dạng ảnh. Hãy chạy OCR để tìm kiếm được chữ trở lại.",
   "res.ocrNone": "Không nhận dạng được chữ nào. Hãy kiểm tra ngôn ngữ tài liệu và thử độ phân giải cao hơn.",
+  "res.ocrDoubtful": "Một số trang khó đọc nên chỉ những từ được nhận dạng chắc chắn mới được thêm vào. Bản quét rõ hơn hoặc độ phân giải cao hơn có thể giúp ích.",
   "res.continue": "Tiếp tục với",
   "res.startOver": "Làm lại từ đầu",
   "res.preview": "Xem trước",

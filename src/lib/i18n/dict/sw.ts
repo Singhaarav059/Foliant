@@ -359,6 +359,7 @@ const d: { [K in DictKey]?: string } = {
   "res.notSmaller": "Faili hii tayari ilikuwa imeboreshwa vizuri. Tumebakiza ile asili.",
   "res.rebuilt": "Faili iliharibika sana, kwa hivyo kurasa zake zimejengwa upya kama picha. Endesha OCR ili maandishi yatafutike tena.",
   "res.ocrNone": "Hakuna maandishi yaliyotambuliwa. Kagua lugha ya hati na ujaribu ubora wa juu zaidi.",
+  "res.ocrDoubtful": "Baadhi ya kurasa zilikuwa ngumu kusoma, kwa hivyo maneno yaliyotambuliwa kwa uhakika pekee ndiyo yaliyoongezwa. Skani safi zaidi au ubora wa juu zaidi unaweza kusaidia.",
   "res.continue": "Endelea na",
   "res.startOver": "Anza upya",
   "res.preview": "Onyesho la kukagua",

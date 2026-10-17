@@ -359,6 +359,7 @@ const d: { [K in DictKey]?: string } = {
   "res.notSmaller": "这个文件已经优化得很好，我们保留了原文件。",
   "res.rebuilt": "文件损坏严重，页面已重建为图片。进行文字识别后即可重新搜索文字。",
   "res.ocrNone": "未识别到文字。请检查文档语言，并尝试更高的分辨率。",
+  "res.ocrDoubtful": "部分页面难以辨认，因此只添加了有把握识别的文字。更清晰的扫描或更高的分辨率可能会有帮助。",
   "res.continue": "继续使用",
   "res.startOver": "重新开始",
   "res.preview": "预览",
