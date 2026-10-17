@@ -3,9 +3,9 @@
 // reversed ("noigeR", 980 → 89) or one character per cell.
 //
 //   node tests/rotated-text.mjs
-import { PDFDocument, StandardFonts, degrees } from "pdf-lib";
+import { PDFDocument, PDFName, StandardFonts, degrees, pushGraphicsState, popGraphicsState, concatTransformationMatrix, drawObject } from "pdf-lib";
 import JSZip from "jszip";
-import { load, openPdf, check, eq } from "./lib/load.mjs";
+import { load, openPdf, check, eq, nodeCanvas } from "./lib/load.mjs";
 
 const { pdfToExcel, pdfToWord, pdfToMarkdown } = await load("convert");
 const { rotateAll } = await load("organize");
@@ -124,6 +124,25 @@ await test("turned page: boxes stay where the words are seen (for redaction)", a
   near(run.x + run.w, W - 72, "right");
   near(run.y, 700, "top");
   near(run.y + run.h, 700 + SIZE, "bottom");
+});
+
+await test("scan with a short label up the margin: Word keeps the page as seen", async () => {
+  nodeCanvas();
+  // A portrait scan, dark along its top edge, with a Bates number turned 90°.
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const page = doc.addPage([W, H]);
+  const [w, h] = [61, 79];
+  const px = new Uint8Array(w * h * 3).fill(220).fill(20, 0, w * 10 * 3);
+  page.node.setXObject(PDFName.of("Scan"), doc.context.register(doc.context.flateStream(px, { Type: "XObject", Subtype: "Image", Width: w, Height: h, ColorSpace: "DeviceRGB", BitsPerComponent: 8 })));
+  page.pushOperators(pushGraphicsState(), concatTransformationMatrix(W, 0, 0, H, 0, 0), drawObject("Scan"), popGraphicsState());
+  page.drawText("BATES 000123", { x: 590, y: 300, size: 9, font, rotate: degrees(90) });
+  const [docx] = await pdfToWord(new File([new Uint8Array(await doc.save())], "scan.pdf"), { wordMode: "editable" });
+  const xml = await (await JSZip.loadAsync(await docx.blob.arrayBuffer())).file("word/document.xml").async("string");
+  const size = xml.match(/<w:pgSz w:w="(\d+)" w:h="(\d+)"/);
+  eq(`${size?.[1]}x${size?.[2]}`, "12240x15840", "page size (twips)");
+  const extent = xml.match(/<wp:extent cx="(\d+)" cy="(\d+)"/);
+  eq(Number(extent?.[1]) < Number(extent?.[2]), true, `picture upright (${extent?.[0]})`);
 });
 
 process.exit(results.failed ? 1 : 0);

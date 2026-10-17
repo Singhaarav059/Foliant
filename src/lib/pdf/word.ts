@@ -223,15 +223,20 @@ async function editable(docx: Docx, pdf: PDFDocumentProxy, progress?: Progress) 
     const props = (extra: object) => ({ page: { size, margin }, ...extra });
 
     if (textChars < 20) {
-      // Probably a scan or a picture page: keep it as an image.
+      // Probably a scan or a picture page: keep it as an image, the way the
+      // page is shown. A label up the margin may have turned the layout's view;
+      // its size and margins are then the page's own, not the layout's.
       const page = await pdf.getPage(i + 1);
-      const canvas = await renderPage(page, 1.6, undefined, p.rotation);
+      const shown = (p.rotation ?? page.rotate) === page.rotate;
+      const view = page.getViewport({ scale: 1 });
+      const canvas = await renderPage(page, 1.6);
       const data = await bytesOf(await canvasToBlob(canvas, "image/jpeg", 0.85));
       page.cleanup();
-      const w = Math.min(textWidth, p.width - 36);
+      const w = shown ? Math.min(textWidth, p.width - 36) : view.width - 144;
+      const own = { page: { size: { width: twip(view.width), height: twip(view.height) }, margin: { left: 1440, right: 1440, top: 1440, bottom: 1440 } } };
       sections.push({
-        properties: props({}),
-        children: [new Paragraph({ children: [new ImageRun({ type: "jpg", data, transformation: { width: px(w), height: px((w * p.height) / p.width) } })] })],
+        properties: shown ? props({}) : own,
+        children: [new Paragraph({ children: [new ImageRun({ type: "jpg", data, transformation: { width: px(w), height: px((w * view.height) / view.width) } })] })],
       });
       progress?.(pageCount + i + 1, pageCount * 2);
       continue;
