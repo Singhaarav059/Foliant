@@ -44,7 +44,11 @@ for (const name of engines) {
   // Opens the tool with report.pdf (3 pages) and waits for every thumbnail.
   const ready = async () => {
     await page.goto(base + "/en/rotate-pdf", { waitUntil: "load" });
-    await page.waitForFunction(() => [...document.querySelectorAll("button")].some((b) => Object.keys(b).some((k) => k.startsWith("__reactProps"))), null, { timeout: 20000 });
+    // Hydrated, including the file input: a file set before React listens is lost.
+    await page.waitForFunction(() => {
+      const live = (el) => !!el && Object.keys(el).some((k) => k.startsWith("__reactProps"));
+      return live(document.querySelector("input[type=file]")) && [...document.querySelectorAll("button")].some(live);
+    }, null, { timeout: 20000 });
     await page.locator("input[type=file]").first().setInputFiles(join(fixtures, "report.pdf"));
     await page.waitForFunction(() => {
       const imgs = [...document.querySelectorAll("main ul li img")];
