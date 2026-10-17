@@ -1,11 +1,11 @@
 import "server-only";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { VENDOR } from "./vendor";
+import { LICENSES } from "./vendor";
 
-// The licences scripts/vendor.mjs collects for the licences page: texts next
-// to the vendored files, listed in licenses.json.
-export const LICENSES_URL = `${VENDOR}licenses/`;
+// The licences scripts/vendor.mjs collects for the licences page: texts in a
+// folder named by their own hash (not the engines'), listed in licenses.json.
+export const LICENSES_URL = LICENSES;
 
 type Package = { name: string; version: string; license: string; source: string };
 export type Licenses = {

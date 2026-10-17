@@ -92,6 +92,25 @@ for (const name of engines) {
     return "/ → /fr";
   });
 
+  // GitHub Pages answers every missing path with /404.html, the language
+  // picker. It must stay out of search results once React has hydrated it,
+  // not only in its HTML.
+  await test("site-wide 404 is noindex", async () => {
+    const c = await browser.newContext();
+    const p = await c.newPage();
+    await p.route("**/en/no-such-page", async (route) => route.fulfill({ response: await route.fetch({ url: base + "/404.html" }), status: 404 }));
+    await p.goto(base + "/en/no-such-page", { waitUntil: "networkidle" });
+    await p.waitForFunction(() => [...document.querySelectorAll("a")].some((a) => Object.keys(a).some((k) => k.startsWith("__react"))), null, { timeout: 20000 });
+    const head = await p.evaluate(() => ({
+      canonical: document.querySelectorAll("link[rel=canonical]").length,
+      hreflang: document.querySelectorAll("link[rel=alternate][hreflang]").length,
+      robots: [...document.querySelectorAll("meta[name=robots]")].map((m) => m.content).join(),
+    }));
+    await c.close();
+    if (head.canonical || head.hreflang || !/noindex/.test(head.robots)) throw new Error(JSON.stringify(head));
+    return "noindex, no canonical or translations";
+  });
+
   await test("home lists 31 tools", async () => {
     await open("/en");
     const n = await page.locator("main a[data-tool]").count();

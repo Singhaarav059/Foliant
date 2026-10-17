@@ -24,6 +24,8 @@ const nextConfig: NextConfig = {
   // Both imply partial prerendering, which static exports can't do.
   cacheComponents: !STATIC,
   partialPrefetching: !STATIC,
+  // out/404.html is src/app/global-not-found.static.tsx, the language picker.
+  experimental: { globalNotFound: STATIC },
   pageExtensions: STATIC ? ["tsx", "ts", "static.tsx"] : ["tsx", "ts", "server.ts", "server.tsx"],
   env: { NEXT_PUBLIC_STATIC: STATIC ? "1" : "", NEXT_PUBLIC_REPO_URL: REPO_URL },
   // Server-side conversion libraries stay as plain Node requires.

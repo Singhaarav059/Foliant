@@ -42,7 +42,7 @@ Open http://localhost:3000. `npm install` also copies everything the browser loa
 ## Deploying the static build
 
 ```bash
-npm run build:static
+FOLIANT_RELEASE=1 npm run build:static
 ```
 
 This writes the site to `out/`, including a `_headers` file for security and caching headers, `sitemap.xml`, `robots.txt` and a social card per tool in `out/og/`.
@@ -57,20 +57,22 @@ Before going live, set where the site lives and who runs it when building (in th
 | `NEXT_PUBLIC_OPERATOR_CONTACT` | An email address or an `https://` page. The privacy policy, terms, About page and footer link to it. |
 | `NEXT_PUBLIC_REPO_URL` | Optional. The source code, for the "Source code" and "Report a problem" (GitHub issues) links. Defaults to `repository` in `package.json`. |
 
-Until it is set, pages use the placeholder in `src/lib/brand.ts`. Build with `FOLIANT_RELEASE=1` for the real deployment: the build then stops if any of these settings is missing, so placeholders can't go live. Other builds, CI's included, don't check.
+Until it is set, pages use the placeholder in `src/lib/brand.ts`. `FOLIANT_RELEASE=1` marks the build for the real deployment: it then stops if any of these settings is missing, so placeholders can't go live. Leave it out for local and CI builds, which run with the placeholders.
 
 The PNG and ICO icons in `public/` are drawn from `public/icon.svg` and `public/icon-maskable.svg`; run `node scripts/icons.mjs` after changing either.
 
-**Cloudflare Pages:** build command `npm run build:static`, output directory `out`. Missing pages get the right language's 404 page.
+**Cloudflare Pages:** build command `FOLIANT_RELEASE=1 npm run build:static`, output directory `out`, with the settings above as the project's environment variables. Missing pages get the right language's 404 page.
 
-**GitHub Pages and other static hosts:** upload `out/`. The site must be served from the root of a domain (for example `username.github.io` or a custom domain), not from a sub-path.
+**GitHub Pages and other static hosts:** upload `out/` from a release build, as above. The site must be served from the root of a domain (for example `username.github.io` or a custom domain), not from a sub-path.
 
 ## Running the server build
 
 ```bash
-npm run build
+FOLIANT_RELEASE=1 npm run build
 npm start
 ```
+
+The site settings above apply here too, and `FOLIANT_RELEASE=1` checks them the same way.
 
 | Variable | What it does |
 |---|---|
@@ -138,4 +140,4 @@ GitHub Actions (`.github/workflows/ci.yml`) runs all of this on every push to `m
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE). The libraries Foliant uses keep their own licences: `scripts/vendor.mjs` collects their licence texts into `public/vendor/<hash>/licenses/`, and the site lists them at `/{lang}/licenses`, including where to get LibreOffice's source code (MPL-2.0).
+MIT. See [LICENSE](LICENSE). The libraries Foliant uses keep their own licences: `scripts/vendor.mjs` collects their licence texts into `public/vendor/licenses/<hash>/`, and the site lists them at `/{lang}/licenses`, including where to get LibreOffice's source code (MPL-2.0).

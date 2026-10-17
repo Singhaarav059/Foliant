@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PickerDocument } from "@/components/LanguagePicker";
 import { BRAND, SITE_URL } from "@/lib/brand";
 import { pageMetadata } from "@/lib/seo";
 
@@ -14,9 +15,5 @@ export const metadata: Metadata = {
 };
 
 export default function StartLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="en">
-      <body style={{ margin: 0, font: "16px/1.5 system-ui, sans-serif", background: "#f7f7f5", color: "#191917" }}>{children}</body>
-    </html>
-  );
+  return <PickerDocument>{children}</PickerDocument>;
 }

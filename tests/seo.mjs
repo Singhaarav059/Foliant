@@ -12,7 +12,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const out = join(root, "out");
@@ -142,6 +142,31 @@ await test("sitemap.xml lists every page with its translations", () => {
   ok(!extra.length, `sitemap URLs with no page: ${extra.slice(0, 3).map((u) => u.loc).join(", ")}`);
   const thin = urls.filter((u) => u.links !== locales.length + 1);
   ok(!thin.length, `${thin.length} URLs without ${locales.length + 1} alternates, e.g. ${thin[0]?.loc}`);
+});
+
+// The server build answers "/" with a redirect to a language, so its sitemap
+// leaves "/" out; only the static build has a page there. src/lib/seo.ts
+// runs here directly: Node strips the types, and a hook adds the ".ts" that
+// bundlers let imports leave out.
+const sitemapOf = (build) => {
+  const hook = String.raw`export const resolve = (s, c, next) => next(/^\.\.?\//.test(s) && !/\.\w+$/.test(s) ? s + ".ts" : s, c);`;
+  const code = `import { register } from "node:module";
+register("data:text/javascript,${encodeURIComponent(hook)}");
+const { sitemapXml } = await import(${JSON.stringify(pathToFileURL(join(root, "src/lib/seo.ts")).href)});
+process.stdout.write(sitemapXml());`;
+  const env = { ...process.env, NEXT_PUBLIC_STATIC: build === "static" ? "1" : "" };
+  const run = spawnSync(process.execPath, ["--no-warnings", "--input-type=module", "-e", code], { env, encoding: "utf8", maxBuffer: 1 << 26 });
+  ok(run.status === 0, `src/lib/seo.ts didn't run: ${run.stderr.slice(-300)}`);
+  return run.stdout;
+};
+
+await test("the server build's sitemap lists no redirect", () => {
+  const locs = (xml) => [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => new URL(m[1]).pathname);
+  const server = sitemapOf("server");
+  ok(locs(server).length >= 1040, `${locs(server).length} URLs`);
+  ok(!locs(server).includes("/"), "lists /, which the server redirects");
+  ok(/hreflang="x-default" href="https:\/\/[^/"]+\/"/.test(server), "home pages lost their x-default");
+  ok(locs(sitemapOf("static")).includes("/"), "the static sitemap lost /");
 });
 
 await test("robots.txt allows crawling and names the sitemap", () => {

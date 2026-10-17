@@ -9,8 +9,9 @@
 // The last check starts a release build with no operator set, which must stop
 // at once (it runs the server build, so out/ is left alone even if it doesn't).
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -33,9 +34,36 @@ const text = (path) => read(path).replace(/<script[\s\S]*?<\/script>/g, "").repl
 const hrefs = (path) => [...read(path).matchAll(/<a\b[^>]*\shref="([^"]+)"/g)].map((m) => m[1].replaceAll("&amp;", "&"));
 
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-const vendorDir = readdirSync(join(out, "vendor")).find((d) => /^[0-9a-f]{12}$/.test(d));
-const licDir = join(out, "vendor", vendorDir ?? "-", "licenses");
+// The engines' folder, named by scripts/vendor.mjs after the hash of its files.
+const vendorDir = readFileSync(join(root, "src/lib/vendor.ts"), "utf8").match(/VENDOR_VERSION = "([0-9a-f]{12})"/)?.[1] ?? "-";
+// Wherever under /vendor scripts/vendor.mjs put licenses.json.
+const find = (dir, depth) => existsSync(join(dir, "licenses.json")) ? dir
+  : depth ? readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => find(join(dir, e.name), depth - 1)).find(Boolean) : undefined;
+const licDir = find(join(out, "vendor"), 2) ?? join(out, "vendor", "-");
+const licUrl = `/${licDir.slice(out.length + 1).split(sep).join("/")}/`;
 const manifest = () => JSON.parse(readFileSync(join(licDir, "licenses.json"), "utf8"));
+// The hash scripts/vendor.mjs names a folder after.
+const hashOf = (dir) => {
+  const hash = createHash("sha256");
+  const walk = (d) => readdirSync(d, { withFileTypes: true })
+    .sort((a, b) => (a.name < b.name ? -1 : 1))
+    .forEach((e) => (e.isDirectory() ? walk(join(d, e.name)) : hash.update(join(d, e.name).slice(dir.length)).update(readFileSync(join(d, e.name)))));
+  walk(dir);
+  return hash.digest("hex").slice(0, 12);
+};
+// A licence file's sections by title: "=== name version (licence), source ===".
+const sections = (file) => {
+  const parts = readFileSync(join(licDir, file), "utf8").split(/^=== (.+) ===$/m);
+  return new Map(parts.slice(1).flatMap((title, i) => (i % 2 ? [] : [[title, parts[i + 2]]])));
+};
+const sectionOf = (all, prefix) => [...all].find(([title]) => title.startsWith(prefix))?.[1];
+// The licence and notice files a package ships, read from node_modules
+// rather than trusted to scripts/vendor.mjs.
+const shipped = (name, version) => {
+  const dir = join(root, "node_modules", name);
+  if (!existsSync(join(dir, "package.json")) || JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).version !== version) return null;
+  return readdirSync(dir).filter((f) => /^(licen[cs]e|notice|copying)/i.test(f)).map((f) => [f, readFileSync(join(dir, f), "utf8").trim()]);
+};
 // Every package whose files scripts/vendor.mjs serves from /vendor.
 const vendored = [
   "pdfjs-dist", "@neslinesli93/qpdf-wasm", "@jsquash/jpeg", "@embedpdf/pdfium", "tesseract.js", "tesseract.js-core",
@@ -62,6 +90,45 @@ await test("every vendored package ships its licence", () => {
   ok(components.some((c) => c.name === "Geist" && readFileSync(join(licDir, c.file), "utf8").includes("SIL Open Font License")), "no Geist licence");
 });
 
+// A section header alone isn't a licence: each package's section must hold
+// the texts of the licence and notice files the package itself ships.
+await test("each package's own licence and notice files are reproduced", () => {
+  const { components, libraries, librariesFile } = manifest();
+  const missing = [];
+  const check = (all, p) => {
+    const files = shipped(p.name, p.version);
+    if (!files) return;
+    const body = sectionOf(all, `${p.name} ${p.version} (`) ?? "";
+    for (const [f, text] of files) if (!body.includes(text)) missing.push(`${p.name}/${f}`);
+  };
+  for (const c of components.filter((x) => x.packages.length)) {
+    const all = sections(c.file);
+    c.packages.forEach((p) => check(all, p));
+  }
+  const all = sections(librariesFile);
+  libraries.forEach((p) => check(all, p));
+  ok(!missing.length, `${missing.length} files missing, e.g. ${missing.slice(0, 4).join(", ")}`);
+  const has = (file, text) => readFileSync(join(licDir, file), "utf8").includes(text);
+  for (const file of ["noto.txt", "pdfa-fonts.txt"]) {
+    const fonts = [...sections(file).values()];
+    ok(fonts.every((b) => b.includes("SIL Open Font License")), `${file}: a font without the OFL text`);
+  }
+  ok(has("pdfium.txt", "PDFium Authors"), "pdfium.txt has no LICENSE.pdfium");
+  const codec = readFileSync(join(root, "node_modules/@jsquash/jpeg/codec/LICENSE.codec.md"), "utf8").trim();
+  ok(has("mozjpeg.txt", codec), "mozjpeg.txt has no LICENSE.codec.md");
+});
+
+// The service worker starts a new cache, and the browser downloads every
+// engine again, whenever the engines' folder hash changes. Licence texts
+// change with any library update, so they hash into a folder of their own.
+await test("licence texts don't change the engines' folder", () => {
+  const engines = join(out, "vendor", vendorDir);
+  ok(existsSync(engines), `no out/vendor/${vendorDir}`);
+  ok(!licDir.startsWith(engines + sep), `licence texts are inside /vendor/${vendorDir}/, so any library update renames the engines`);
+  ok(hashOf(engines) === vendorDir, `out/vendor/${vendorDir} holds files outside its hash`);
+  ok(/^[0-9a-f]{12}$/.test(basename(licDir)) && hashOf(licDir) === basename(licDir), `${licUrl} isn't named after the hash of its files (/vendor/* is cached as immutable)`);
+});
+
 await test("compiled-in projects are named with licence and source", () => {
   const includes = manifest().components.flatMap((c) => c.includes ?? []);
   for (const [name, licence] of [["LibreOffice", "MPL-2.0"], ["PDFium", "BSD-3-Clause"], ["qpdf", "Apache-2.0"], ["Tesseract", "Apache-2.0"], ["MozJPEG", ""]]) {
@@ -70,6 +137,14 @@ await test("compiled-in projects are named with licence and source", () => {
   }
   const lo = manifest().components.find((c) => c.includes?.some((i) => i.name === "LibreOffice"));
   ok(readFileSync(join(licDir, lo.file), "utf8").includes("Mozilla Public License Version 2.0"), "no MPL-2.0 text with LibreOffice");
+  // MPL §3.2: the source of the exact build, not of LibreOffice in general.
+  const source = includes.find((i) => i.name === "LibreOffice").source;
+  ok(/^https:\/\/git\.libreoffice\.org\/core\/\+\/[0-9a-f]{40}$/.test(source), `LibreOffice source names no commit: ${source}`);
+  // Notices that a binary distribution must reproduce, not just link to.
+  const included = (file, name) => sectionOf(sections(file), `Includes ${name} (`) ?? "";
+  ok(/Copyright \(C\) 2001-\d{4} Leptonica/.test(included("tesseract.txt", "Leptonica")), "no Leptonica licence text");
+  ok(/Redistributions in binary form must reproduce/.test(included("tesseract.txt", "Leptonica")), "Leptonica licence incomplete");
+  ok(/qpdf is copyright/.test(included("qpdf.txt", "qpdf")) && /Apache License/.test(included("qpdf.txt", "qpdf")), "no qpdf NOTICE with its licence");
 });
 
 await test("every library in the page code is listed with its licence text", () => {
@@ -88,7 +163,7 @@ await test("the licences page lists LibreOffice as MPL-2.0 with its source, in e
   ok(/LibreOffice/.test(page) && /MPL-2\.0/.test(page), "LibreOffice or MPL-2.0 missing");
   const links = hrefs("en/licenses.html");
   ok(links.some((h) => h.startsWith("https://git.libreoffice.org/")), "no LibreOffice source link");
-  ok(links.some((h) => h.startsWith(`/vendor/${vendorDir}/licenses/`)), "no link to licence texts");
+  ok(links.some((h) => h.startsWith(licUrl)), "no link to licence texts");
   const langs = readdirSync(out).filter((d) => existsSync(join(out, d, "404.html")));
   const absent = langs.filter((l) => !existsSync(join(out, l, "licenses.html")));
   ok(!absent.length, `missing in ${absent.join(", ")}`);

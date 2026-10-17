@@ -3,6 +3,7 @@
 import type { Metadata } from "next";
 import { BRAND, SITE_URL } from "./brand";
 import { DEFAULT_LOCALE, LOCALE_CODES, type Locale } from "./i18n/locales";
+import { STATIC } from "./mode";
 import { TOOLS } from "./tools";
 
 // Pages under /{lang}/{slug} that aren't tools.
@@ -41,14 +42,15 @@ export function pageMetadata({ lang, path = "", title, description, image = "hom
 }
 
 // sitemap.xml: every page in every language, each listing its translations,
-// plus the language picker at "/".
+// plus, in the static build, the language picker at "/". The server answers
+// "/" with a redirect to a language, so there it is only the x-default.
 export function sitemapXml() {
   const abs = (path: string) => `${SITE_URL}${path}`;
   const entry = (path: string, url: string) =>
     `<url><loc>${abs(url)}</loc>${Object.entries(languages(path))
       .map(([l, p]) => `<xhtml:link rel="alternate" hreflang="${l}" href="${abs(p)}"/>`)
       .join("")}</url>`;
-  const urls = [entry("", "/"), ...PAGES.flatMap((path) => LOCALE_CODES.map((l) => entry(path, `/${l}${path}`)))];
+  const urls = [...(STATIC ? [entry("", "/")] : []), ...PAGES.flatMap((path) => LOCALE_CODES.map((l) => entry(path, `/${l}${path}`)))];
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
 ${urls.join("\n")}
