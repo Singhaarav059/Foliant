@@ -27,21 +27,42 @@ async function save(doc: PDFDocument) {
 
 const N = (n: string) => PDFName.of(n);
 
-// The pages each annotation sits on (one, unless a file shares them), per
-// source document. Sources are only read while pages are copied from them.
-const annotPages = new WeakMap<PDFDocument, Map<PDFRef, PDFRef[]>>();
-function annotationsByPage(src: PDFDocument) {
-  let map = annotPages.get(src);
-  if (!map) {
-    map = new Map();
-    for (const page of src.getPages()) {
-      for (const a of page.node.lookupMaybe(N("Annots"), PDFArray)?.asArray() ?? []) {
-        if (a instanceof PDFRef) map.set(a, [...(map.get(a) ?? []), page.ref]);
-      }
+// The pages each annotation sits on (one, unless a file shares them) and the
+// form fields, per source document. A field's name is optional, so its keys
+// can't tell a bare { Kids } parent from any other dict: a field is whatever
+// sits above a widget or in the form's field tree. Sources are only read
+// while pages are copied from them.
+const sources = new WeakMap<PDFDocument, { annotPage: Map<PDFRef, PDFRef[]>; fields: Set<PDFDict> }>();
+function indexSource(src: PDFDocument) {
+  let index = sources.get(src);
+  if (index) return index;
+  const annotPage = new Map<PDFRef, PDFRef[]>();
+  const fields = new Set<PDFDict>();
+  const dict = (obj: PDFObject | undefined) => {
+    const found = obj && src.context.lookup(obj);
+    return found instanceof PDFDict ? found : undefined;
+  };
+  for (const page of src.getPages()) {
+    for (const a of page.node.lookupMaybe(N("Annots"), PDFArray)?.asArray() ?? []) {
+      if (!(a instanceof PDFRef)) continue;
+      annotPage.set(a, [...(annotPage.get(a) ?? []), page.ref]);
+      const widget = dict(a);
+      if (widget?.get(N("Subtype")) !== N("Widget")) continue;
+      const chain = new Set<PDFDict>();
+      for (let f = dict(widget.get(N("Parent"))); f && !chain.has(f); f = dict(f.get(N("Parent")))) chain.add(f);
+      chain.forEach((f) => fields.add(f));
     }
-    annotPages.set(src, map);
   }
-  return map;
+  const tree = [...(src.catalog.lookupMaybe(N("AcroForm"), PDFDict)?.lookupMaybe(N("Fields"), PDFArray)?.asArray() ?? [])];
+  while (tree.length) {
+    const f = dict(tree.pop());
+    if (!f || fields.has(f)) continue;
+    fields.add(f);
+    tree.push(...(f.lookupMaybe(N("Kids"), PDFArray)?.asArray() ?? []));
+  }
+  index = { annotPage, fields };
+  sources.set(src, index);
+  return index;
 }
 
 // Copies pages into another document without following links to other pages.
@@ -53,7 +74,8 @@ function annotationsByPage(src: PDFDocument) {
 // Shared fonts and images are copied once per copier.
 //
 // `keep` lists every source page index the caller will take; the returned
-// function takes one page (again for a duplicate) for the caller to add.
+// function takes one page (again for a duplicate, which gets annotations of
+// its own) for the caller to add.
 export function pageCopier(src: PDFDocument, dest: PDFDocument, keep: Iterable<number>) {
   const ctx = dest.context;
   const pages = src.getPages();
@@ -61,8 +83,11 @@ export function pageCopier(src: PDFDocument, dest: PDFDocument, keep: Iterable<n
   const copies = new Map<PDFRef, PDFRef>();
   for (const i of keep) if (!copies.has(pages[i].ref)) copies.set(pages[i].ref, ctx.nextRef());
   const placed = new Set<PDFRef>();
-  const annotPage = annotationsByPage(src);
-  const done = new Map<PDFObject, PDFObject>();
+  const { annotPage, fields } = indexSource(src);
+  const done = new Map<PDFRef, PDFObject>();
+  // While a duplicate is copied: its page and the annotations on it, which
+  // get copies of their own instead of the first copy's.
+  let own: { page: PDFRef; refs: Map<PDFRef, PDFObject> } | undefined;
 
   const isPage = (ref: PDFRef, obj: PDFObject | undefined) => {
     if (allPages.has(ref)) return true;
@@ -70,6 +95,8 @@ export function pageCopier(src: PDFDocument, dest: PDFDocument, keep: Iterable<n
     return type === N("Page") || type === N("Pages") || type === N("Catalog");
   };
   const outside = (ref: PDFRef) => !!annotPage.get(ref)?.every((page) => !copies.has(page));
+  const isField = (obj: PDFObject | undefined) =>
+    obj instanceof PDFDict && (fields.has(obj) || obj.has(N("T")) || obj.has(N("FT")) || obj.has(N("Parent")));
   // A field is kept while one of its widgets sits on a kept page.
   const fieldKept = (obj: PDFObject | undefined, seen = new Set<PDFObject>()): boolean => {
     if (!(obj instanceof PDFRef)) return obj instanceof PDFDict;
@@ -87,43 +114,41 @@ export function pageCopier(src: PDFDocument, dest: PDFDocument, keep: Iterable<n
     return first instanceof PDFArray ? first.get(0) : undefined;
   };
 
+  // Direct objects are copied each time they're reached; indirect ones once.
   const copy = (obj: PDFObject): PDFObject => {
     if (obj instanceof PDFRef) return copyRef(obj);
-    const seen = done.get(obj);
-    if (seen) return seen;
     if (obj instanceof PDFStream) {
       const out = obj.clone(ctx);
-      done.set(obj, out);
       for (const [k, v] of obj.dict.entries()) out.dict.set(k, copy(v));
       return out;
     }
     if (obj instanceof PDFDict) {
       const out = obj.clone(ctx);
-      done.set(obj, out);
-      const field = obj.has(N("T")) || obj.has(N("FT")) || obj.has(N("Parent"));
+      // A field's kids are cut to those still kept. A parent with no name
+      // and no place in the form is known by its kids.
+      const kids = src.context.lookup(obj.get(N("Kids")));
+      const field = kids instanceof PDFArray && (isField(obj) || kids.asArray().some((k) => isField(src.context.lookup(k))));
       for (const [k, v] of obj.entries()) {
-        const kids = field && k === N("Kids") ? src.context.lookup(v) : undefined;
-        if (kids instanceof PDFArray) out.set(k, ctx.obj(kids.asArray().filter((kid) => fieldKept(kid)).map(copy)));
-        else out.set(k, copy(v));
+        out.set(k, field && k === N("Kids") ? ctx.obj(kids.asArray().filter((kid) => fieldKept(kid)).map(copy)) : copy(v));
       }
       return out;
     }
     if (obj instanceof PDFArray) {
       const out = obj.clone(ctx);
-      done.set(obj, out);
       for (let i = 0; i < obj.size(); i++) out.set(i, copy(obj.get(i)));
       return out;
     }
     return obj.clone(ctx);
   };
   const copyRef = (ref: PDFRef): PDFObject => {
-    const seen = done.get(ref);
+    const cache = own && (ref === own.page || annotPage.get(ref)?.includes(own.page)) ? own.refs : done;
+    const seen = cache.get(ref);
     if (seen) return seen;
     const target = src.context.lookup(ref);
     if (isPage(ref, target)) return copies.get(ref) ?? PDFNull;
     if (target === undefined || outside(ref)) return PDFNull;
     const out = ctx.nextRef();
-    done.set(ref, out);
+    cache.set(ref, out);
     ctx.assign(out, copy(target));
     return out;
   };
@@ -146,10 +171,12 @@ export function pageCopier(src: PDFDocument, dest: PDFDocument, keep: Iterable<n
         return !(target instanceof PDFRef && isPage(target, src.context.lookup(target)) && !copies.has(target));
       })));
     }
+    const first = copies.get(original.ref)!;
+    const ref = placed.has(first) ? ctx.nextRef() : first;
+    placed.add(first);
+    own = ref === first ? undefined : { page: original.ref, refs: new Map([[original.ref, ref]]) };
     const node = copy(leaf) as PDFPageLeaf;
-    let ref = copies.get(original.ref)!;
-    if (placed.has(ref)) ref = ctx.nextRef();
-    placed.add(ref);
+    own = undefined;
     ctx.assign(ref, node);
     return PDFPage.of(node, ref, dest);
   };

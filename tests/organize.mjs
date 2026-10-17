@@ -20,7 +20,7 @@ const CHAPTERS = 60;
 // the contents links use /Dest, half a GoTo action. Each chapter also has a
 // "next" button (a GoTo that isn't a link), a form field whose parent is
 // shared by every chapter's field, as in forms exported from layout tools,
-// and a note that replies to the previous chapter's note.
+// and a note, with its pop-up, that replies to the previous chapter's note.
 async function book() {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -50,8 +50,10 @@ async function book() {
     doc.context.lookup(field, PDFDict).lookup(PDFName.of("Kids"), PDFArray).push(widget);
     doc.context.lookup(form, PDFDict).lookup(PDFName.of("Kids"), PDFArray).push(field);
     const reply = doc.context.register(doc.context.obj({ Type: "Annot", Subtype: "Text", Rect: [320, 560, 340, 580], P: page.ref, Contents: PDFString.of(`SECRET-NOTE-${n}`), ...(note ? { IRT: note } : {}) }));
+    const popup = doc.context.register(doc.context.obj({ Type: "Annot", Subtype: "Popup", Rect: [340, 480, 400, 560], P: page.ref, Parent: reply }));
+    doc.context.lookup(reply, PDFDict).set(PDFName.of("Popup"), popup);
     note = reply;
-    page.node.set(PDFName.of("Annots"), doc.context.obj([back, next, widget, reply]));
+    page.node.set(PDFName.of("Annots"), doc.context.obj([back, next, widget, reply, popup]));
   }
   const links = [];
   for (let n = 1; n <= CHAPTERS; n++) {
@@ -184,6 +186,32 @@ await test("split by size counts only the pages in each part", async () => {
   return `${parts.length} parts`;
 });
 
+// /T is optional, so a parent field can be a bare { Kids }. Each page also
+// has a reset button naming that parent, so it's reached before its widgets.
+// Some files leave out the fields' /Parent, and the form's field tree still
+// lists the parent; broken ones list nothing either.
+for (const shape of ["", " (no /Parent)", " (no /Parent, no field list)"]) await test(`a form whose top field has no name still splits page by page${shape}`, async () => {
+  const doc = await PDFDocument.create();
+  const parent = doc.context.register(doc.context.obj({ Kids: [] }));
+  const linked = !shape;
+  if (shape === " (no /Parent)") doc.catalog.set(PDFName.of("AcroForm"), doc.context.obj({ Fields: [parent] }));
+  for (let i = 0; i < 3; i++) {
+    const page = doc.addPage([200, 200]);
+    const field = doc.context.register(doc.context.obj({ FT: PDFName.of("Tx"), T: PDFString.of(`f${i}`), V: PDFString.of(`SECRET-FIELD-${i}`), ...(linked ? { Parent: parent } : {}), Kids: [] }));
+    const widget = doc.context.register(doc.context.obj({ Type: "Annot", Subtype: "Widget", Rect: [0, 0, 50, 20], P: page.ref, Parent: field }));
+    const reset = doc.context.register(doc.context.obj({
+      Type: "Annot", Subtype: "Widget", FT: PDFName.of("Btn"), Ff: 65536, T: PDFString.of(`reset${i}`), Rect: [60, 0, 100, 20], P: page.ref,
+      A: { S: "ResetForm", Fields: [parent] },
+    }));
+    doc.context.lookup(field, PDFDict).lookup(PDFName.of("Kids"), PDFArray).push(widget);
+    doc.context.lookup(parent, PDFDict).lookup(PDFName.of("Kids"), PDFArray).push(field);
+    page.node.set(PDFName.of("Annots"), doc.context.obj([reset, widget]));
+  }
+  const parts = await split(file(await doc.save(), "form.pdf"), { splitMode: "every", every: 1, ranges: "", maxMb: 1, mergeRanges: false });
+  eq(parts.length, 3, "parts");
+  for (let i = 0; i < 3; i++) eq(secrets((await open(parts[i].blob)).doc, "FIELD").join(), `SECRET-FIELD-${i}`, `part ${i + 1} form values`);
+});
+
 await test("a duplicated page is a page of its own", async () => {
   const { doc } = await open(await buildFromPlan([file()], [{ file: 0, page: 3, rotate: 0 }, { file: 0, page: 3, rotate: 180 }]));
   eq(doc.getPageCount(), 2, "pages");
@@ -191,6 +219,17 @@ await test("a duplicated page is a page of its own", async () => {
   eq(doc.getPage(0).getRotation().angle, 0, "first rotation");
   eq(doc.getPage(1).getRotation().angle, 180, "second rotation");
   eq(images(doc), 1, "the shared image is stored once");
+  // Each copy has annotations of its own, on it: a shared one would be
+  // edited or deleted on both pages at once. A note and its pop-up stay a pair.
+  const annots = [0, 1].map((i) => doc.getPage(i).node.lookup(PDFName.of("Annots"), PDFArray).asArray());
+  eq(annots.map((a) => a.length).join(), "4,4", "annotations");
+  eq(annots[0].some((r) => annots[1].includes(r)), false, "annotations shared by both pages");
+  const get = (ref, key) => doc.context.lookup(ref, PDFDict).get(PDFName.of(key));
+  for (const i of [0, 1]) {
+    eq(annots[i].every((r) => get(r, "P") === doc.getPage(i).ref), true, `page ${i + 1} annotations on their page`);
+    const reply = annots[i].find((r) => get(r, "Subtype") === PDFName.of("Text"));
+    eq(annots[i].includes(get(reply, "Popup")) && get(get(reply, "Popup"), "Parent") === reply, true, `page ${i + 1} note and pop-up`);
+  }
 });
 
 await test("merge keeps each file's links inside that file", async () => {
