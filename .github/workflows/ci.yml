@@ -54,3 +54,33 @@ jobs:
           echo "Server did not start" && exit 1
       - name: Run tests
         run: npm run test:e2e -- ${{ matrix.browser }}
+
+  pdf:
+    name: PDF engine tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # veraPDF, the reference PDF/A validator, from its official image.
+      - name: veraPDF
+        run: |
+          docker pull verapdf/cli:v1.30.2
+          # The tests write files under /tmp; the container sees them at the same path.
+          printf '#!/bin/sh\nexec docker run --rm -v /tmp:/tmp verapdf/cli:v1.30.2 "$@"\n' > "$RUNNER_TEMP/verapdf"
+          chmod +x "$RUNNER_TEMP/verapdf"
+      - run: npm run test:tables
+      - run: npm run test:layout
+      - run: npm run test:compress
+      - run: npm run test:ocr
+      - run: npm run test:redact
+      - run: npm run test:office
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+      - run: npm run test:pdfa
+        env:
+          VERAPDF: ${{ runner.temp }}/verapdf

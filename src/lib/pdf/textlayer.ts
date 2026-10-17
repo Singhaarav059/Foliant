@@ -127,21 +127,3 @@ export function addInvisibleText(doc: PDFDocument, page: PDFPage, words: Word[])
   page.pushOperators(endText(), popGraphicsState());
 }
 
-// Maps a box from rendered-viewport pixels (top-left origin) to a baseline word in PDF space.
-export function viewportBoxToWord(
-  text: string,
-  box: { x0: number; y0: number; x1: number; y1: number },
-  toPdf: (x: number, y: number) => number[],
-): Word {
-  const [ax, ay] = toPdf(box.x0, box.y1);
-  const [bx, by] = toPdf(box.x1, box.y1);
-  const [cx, cy] = toPdf(box.x0, box.y0);
-  return {
-    text,
-    x: ax,
-    y: ay,
-    width: Math.hypot(bx - ax, by - ay),
-    height: Math.hypot(cx - ax, cy - ay),
-    angle: Math.atan2(by - ay, bx - ax),
-  };
-}

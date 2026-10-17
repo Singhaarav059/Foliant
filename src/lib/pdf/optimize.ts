@@ -1,36 +1,96 @@
 "use client";
 
-import { PDFDocument, PDFName, PDFRawStream, PDFNumber, PDFRef, PDFArray, PDFDict, decodePDFRawStream } from "pdf-lib";
+import { PDFDocument, PDFName, PDFRawStream, PDFNumber, PDFRef, PDFArray, PDFDict, PDFHexString, decodePDFRawStream, type PDFObject } from "pdf-lib";
+import { zlibSync } from "fflate";
 import { baseName, bytesOf, canvasToBlob, closePdf, openPdf, pdfBlob, renderPage, type Output, type Progress } from "./common";
 import { loadPdf } from "./organize";
 import { runQpdf } from "./qpdf";
-import { VENDOR, VENDOR_VERSION } from "../vendor";
-import { addInvisibleText, viewportBoxToWord, type Word } from "./textlayer";
+import { decodeJpeg, encodeJpeg, jpegComponents } from "./jpeg";
+import { asGray, palette, predictPng, resample, unpredictPng, type Pixels } from "./pixels";
+import { placements } from "./placements";
 
-// ── Compress: re-encode images at a sensible resolution and quality, pack objects.
+// ── Compress
+// Images are downsampled to a target resolution on the page (like
+// Ghostscript's /ebook and /screen settings), re-encoded with MozJPEG, or kept
+// lossless when they have few colours. Identical streams are stored once, and
+// qpdf packs everything into compressed object streams.
 const LEVELS = {
-  extreme: { maxSide: 1100, quality: 0.42 },
-  recommended: { maxSide: 1700, quality: 0.62 },
-  light: { maxSide: 2600, quality: 0.8 },
+  extreme: { dpi: 72, quality: 50, maxSide: 1100 },
+  recommended: { dpi: 150, quality: 70, maxSide: 1700 },
+  light: { dpi: 220, quality: 82, maxSide: 2600 },
 } as const;
 
 function num(d: PDFDict, key: string) {
-  const v = d.get(PDFName.of(key));
+  const v = d.lookup(PDFName.of(key));
   return v instanceof PDFNumber ? v.asNumber() : undefined;
 }
 
 function filterNames(d: PDFDict) {
-  const f = d.get(PDFName.of("Filter"));
+  const f = d.lookup(PDFName.of("Filter"));
   if (f instanceof PDFName) return [f.asString()];
   if (f instanceof PDFArray) return f.asArray().map((x) => String(x));
   return [];
 }
 
+// Decoded samples of the images Compress understands: 8-bit grey or RGB,
+// JPEG or Flate (with or without PNG predictors).
+async function readImage(stream: PDFRawStream, w: number, h: number, ch: 1 | 3): Promise<Pixels | null> {
+  const d = stream.dict;
+  const filters = filterNames(d);
+  if (num(d, "BitsPerComponent") !== 8 && !(filters.length === 1 && filters[0] === "/DCTDecode")) return null;
+  if (filters.length === 1 && filters[0] === "/DCTDecode") {
+    const comps = jpegComponents(stream.contents);
+    if (comps !== ch) return null; // CMYK and odd JPEGs stay as they are
+    const p = await decodeJpeg(stream.contents);
+    return p.w === w && p.h === h ? { ...p, ch } : null;
+  }
+  if (!filters.every((f) => f === "/FlateDecode")) return null;
+  const parms = d.lookup(PDFName.of("DecodeParms"));
+  const predictor = parms instanceof PDFDict ? num(parms, "Predictor") ?? 1 : 1;
+  // Decode without the predictor; pdf-lib doesn't undo it.
+  const raw = decodePDFRawStream(stream).decode();
+  let data: Uint8Array | null = raw;
+  if (predictor >= 10) data = unpredictPng(raw, w * ch, ch, h);
+  else if (predictor !== 1) return null;
+  if (!data || data.length < w * h * ch) return null;
+  return { w, h, ch, data: data.subarray(0, w * h * ch) };
+}
+
+// Points identical streams (fonts, images, colour profiles embedded more than once,
+// as merged files often do) at one copy.
+async function dedupe(doc: PDFDocument) {
+  const ctx = doc.context;
+  const byHash = new Map<string, PDFRef>();
+  const replace = new Map<string, PDFRef>();
+  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFRawStream) || obj.contents.length < 64) continue;
+    const dict = [...obj.dict.entries()].filter(([k]) => k !== PDFName.of("Length")).map(([k, v]) => `${k} ${v}`).sort().join(" ");
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", obj.contents.slice().buffer));
+    const key = `${dict}|${[...digest].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+    const first = byHash.get(key);
+    if (first) replace.set(ref.toString(), first);
+    else byHash.set(key, ref);
+  }
+  if (!replace.size) return 0;
+  const swap = (o: PDFObject): PDFObject => (o instanceof PDFRef ? replace.get(o.toString()) ?? o : o);
+  const visit = (o: PDFObject | undefined) => {
+    if (o instanceof PDFDict) for (const [k, v] of o.entries()) { o.set(k, swap(v)); visit(v); }
+    else if (o instanceof PDFArray) o.asArray().forEach((v, i) => { o.set(i, swap(v)); visit(v); });
+    else if (o instanceof PDFRawStream) visit(o.dict);
+  };
+  for (const [, obj] of ctx.enumerateIndirectObjects()) visit(obj);
+  for (const ref of replace.keys()) ctx.delete(PDFRef.of(Number(ref.split(" ")[0]), Number(ref.split(" ")[1])));
+  return replace.size;
+}
+
 export async function compress(file: File, o: { level: string }, progress?: Progress): Promise<Output[]> {
   const original = await bytesOf(file);
   const doc = await loadPdf(file, file.name);
-  const { maxSide, quality } = LEVELS[o.level as keyof typeof LEVELS] ?? LEVELS.recommended;
+  const { dpi, quality, maxSide } = LEVELS[o.level as keyof typeof LEVELS] ?? LEVELS.recommended;
   const ctx = doc.context;
+
+  await dedupe(doc);
+  const placed = placements(doc);
 
   // Soft masks are alpha channels; JPEG artefacts there show as fringes, so leave them.
   const masks = new Set<string>();
@@ -46,81 +106,108 @@ export async function compress(file: File, o: { level: string }, progress?: Prog
       obj.dict.get(PDFName.of("Subtype")) === PDFName.of("Image") &&
       !masks.has(ref.toString()) &&
       !obj.dict.get(PDFName.of("ImageMask")) &&
-      !obj.dict.get(PDFName.of("Decode")),
+      !obj.dict.get(PDFName.of("Decode")) &&
+      // A colour-key mask matches exact colours, which re-encoding would break.
+      !(obj.dict.lookup(PDFName.of("Mask")) instanceof PDFArray),
   ) as [PDFRef, PDFRawStream][];
 
   let done = 0;
   for (const [ref, stream] of images) {
-    done++;
-    progress?.(done, images.length);
+    progress?.(++done, images.length);
     const d = stream.dict;
     const w = num(d, "Width");
     const h = num(d, "Height");
-    const bpc = num(d, "BitsPerComponent");
-    if (!w || !h || w * h < 200 * 200) continue;
-    const filters = filterNames(d);
-    const cs = d.get(PDFName.of("ColorSpace"));
+    if (!w || !h || w * h < 64 * 64) continue;
+    const cs = d.lookup(PDFName.of("ColorSpace"));
     const csName = cs instanceof PDFName ? cs.asString() : cs instanceof PDFArray ? String(cs.get(0)) : "";
-    const icc = cs instanceof PDFArray && String(cs.get(0)) === "/ICCBased" ? ctx.lookup(cs.get(1)) : undefined;
+    const icc = cs instanceof PDFArray && csName === "/ICCBased" ? ctx.lookup(cs.get(1)) : undefined;
     const iccN = icc instanceof PDFRawStream ? num(icc.dict, "N") : undefined;
-    const rgb = csName === "/DeviceRGB" || iccN === 3;
-    const gray = csName === "/DeviceGray" || iccN === 1;
-    if (!rgb && !gray) continue; // CMYK, Indexed, Lab: leave untouched
+    const ch = csName === "/DeviceRGB" || iccN === 3 ? 3 : csName === "/DeviceGray" || iccN === 1 ? 1 : 0;
+    if (!ch) continue; // CMYK, Indexed, Lab, Separation: leave untouched
 
-    let bitmap: ImageBitmap | null = null;
+    let px: Pixels | null;
     try {
-      if (filters.length === 1 && filters[0] === "/DCTDecode") {
-        bitmap = await createImageBitmap(new Blob([stream.contents as BlobPart], { type: "image/jpeg" }));
-      } else if (filters.every((f) => f === "/FlateDecode") && bpc === 8 && !d.get(PDFName.of("DecodeParms"))) {
-        const raw = decodePDFRawStream(stream).decode();
-        const ch = rgb ? 3 : 1;
-        if (raw.length < w * h * ch) continue;
-        const img = new ImageData(w, h);
-        for (let p = 0, q = 0; p < w * h; p++, q += ch) {
-          img.data[p * 4] = raw[q];
-          img.data[p * 4 + 1] = raw[q + (ch === 3 ? 1 : 0)];
-          img.data[p * 4 + 2] = raw[q + (ch === 3 ? 2 : 0)];
-          img.data[p * 4 + 3] = 255;
-        }
-        bitmap = await createImageBitmap(img);
-      } else continue;
+      px = await readImage(stream, w, h, ch);
     } catch {
-      continue;
+      px = null;
     }
-    const s = Math.min(1, maxSide / Math.max(w, h));
-    const nw = Math.max(1, Math.round(w * s));
-    const nh = Math.max(1, Math.round(h * s));
-    const canvas = document.createElement("canvas");
-    canvas.width = nw;
-    canvas.height = nh;
-    const c2 = canvas.getContext("2d")!;
-    c2.imageSmoothingQuality = "high";
-    c2.drawImage(bitmap, 0, 0, nw, nh);
-    bitmap.close();
-    // Browsers only encode RGB JPEGs, so greyscale images become RGB-tagged JPEGs.
-    const jpg = await bytesOf(await canvasToBlob(canvas, "image/jpeg", quality));
-    canvas.width = canvas.height = 0;
-    if (jpg.length >= stream.contents.length) continue;
+    if (!px) continue;
+
+    // Target size from the resolution it's drawn at; images never drawn on a page fall back to a pixel cap.
+    const place = placed.get(ref.toString());
+    const s = place && place.w > 0 && place.h > 0
+      ? Math.min(1, Math.max((place.w / 72) * dpi / w, (place.h / 72) * dpi / h))
+      : Math.min(1, maxSide / Math.max(w, h));
+    // Shrinking by less than a fifth costs sharpness for little gain.
+    if (s < 0.8) px = resample(px, Math.max(1, Math.round(w * s)), Math.max(1, Math.round(h * s)));
+    const gray = asGray(px);
+    if (gray) px = gray;
+
+    const wasJpeg = filterNames(d).includes("/DCTDecode");
+    // Keep the ICC profile when the channel count still matches it.
+    const space = iccN === px.ch ? cs! : PDFName.of(px.ch === 1 ? "DeviceGray" : "DeviceRGB");
+    const candidates: { bytes: Uint8Array; set: (nd: PDFDict) => void }[] = [];
+
+    const jpg = await encodeJpeg(px, quality);
+    candidates.push({ bytes: jpg, set: (nd) => {
+      nd.set(PDFName.of("Filter"), PDFName.of("DCTDecode"));
+      nd.set(PDFName.of("ColorSpace"), space);
+      nd.set(PDFName.of("BitsPerComponent"), PDFNumber.of(8));
+    } });
+
+    if (!wasJpeg) {
+      // Lossless options for images that were lossless: a palette, or predicted Flate.
+      const pal = palette(px);
+      const lossless = pal
+        ? { bytes: zlibSync(predictPng(pal.data, pal.data.length / px.h, 1, px.h), { level: 9 }), bits: pal.bits, colors: px.ch, rowBytes: pal.data.length / px.h }
+        : { bytes: zlibSync(predictPng(px.data, px.w * px.ch, px.ch, px.h), { level: 9 }), bits: 8, colors: px.ch, rowBytes: px.w * px.ch };
+      const set = (nd: PDFDict) => {
+        nd.set(PDFName.of("Filter"), PDFName.of("FlateDecode"));
+        nd.set(PDFName.of("BitsPerComponent"), PDFNumber.of(lossless.bits));
+        nd.set(PDFName.of("DecodeParms"), ctx.obj({ Predictor: 15, Colors: pal ? 1 : px!.ch, BitsPerComponent: lossless.bits, Columns: px!.w }));
+        nd.set(PDFName.of("ColorSpace"), pal
+          ? ctx.obj([PDFName.of("Indexed"), space, pal.colors.length / px!.ch - 1, PDFHexString.of([...pal.colors].map((b) => b.toString(16).padStart(2, "0")).join(""))])
+          : space);
+      };
+      // Photos go to JPEG; graphics and text stay sharp unless JPEG is far smaller.
+      if (pal || jpg.length > lossless.bytes.length * 0.5) candidates.unshift({ bytes: lossless.bytes, set });
+    }
+
+    const best = candidates[0];
+    if (best.bytes.length >= stream.contents.length) continue;
     const nd = d.clone(ctx);
-    nd.set(PDFName.of("Filter"), PDFName.of("DCTDecode"));
     nd.delete(PDFName.of("DecodeParms"));
-    nd.set(PDFName.of("Width"), PDFNumber.of(nw));
-    nd.set(PDFName.of("Height"), PDFNumber.of(nh));
-    nd.set(PDFName.of("BitsPerComponent"), PDFNumber.of(8));
-    nd.set(PDFName.of("ColorSpace"), PDFName.of("DeviceRGB"));
-    ctx.assign(ref, PDFRawStream.of(nd, jpg));
+    nd.delete(PDFName.of("Length"));
+    nd.set(PDFName.of("Width"), PDFNumber.of(px.w));
+    nd.set(PDFName.of("Height"), PDFNumber.of(px.h));
+    best.set(nd);
+    ctx.assign(ref, PDFRawStream.of(nd, best.bytes));
   }
 
-  // Drop metadata bloat that viewers never show.
+  // Recompress plain Flate streams (fonts, page content) at the highest level.
+  // qpdf's --recompress-flate would do this too but drops PNG predictors on the way.
+  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFRawStream) || obj.contents.length < 256) continue;
+    const f = filterNames(obj.dict);
+    if (f.length !== 1 || f[0] !== "/FlateDecode" || obj.dict.get(PDFName.of("DecodeParms"))) continue;
+    try {
+      const packed = zlibSync(decodePDFRawStream(obj).decode(), { level: 9 });
+      if (packed.length < obj.contents.length) ctx.assign(ref, PDFRawStream.of(obj.dict, packed));
+    } catch {
+      /* leave streams pdf-lib can't decode */
+    }
+  }
+
+  // Drop data viewers never show.
   doc.catalog.delete(PDFName.of("PieceInfo"));
   for (const page of doc.getPages()) {
     page.node.delete(PDFName.of("PieceInfo"));
     page.node.delete(PDFName.of("Thumb"));
   }
   let out = await doc.save({ useObjectStreams: true });
-  // qpdf's object stream generation and stream recompression usually shaves a bit more.
+  // qpdf drops unreferenced objects and packs the rest into compressed object streams.
   try {
-    const packed = (await runQpdf(out, (i, o) => ["--object-streams=generate", "--recompress-flate", "--compression-level=9", i, o])).output;
+    const packed = (await runQpdf(out, (i, o) => ["--object-streams=generate", "--compression-level=9", i, o])).output;
     if (packed.length < out.length) out = packed;
   } catch {
     /* keep pdf-lib output */
@@ -174,62 +261,5 @@ export async function repair(file: File): Promise<Output[]> {
   }
 }
 
-// ── OCR
-type TessWord = { text: string; confidence: number; bbox: { x0: number; y0: number; x1: number; y1: number } };
-type TessBlock = { paragraphs: { lines: { words: TessWord[] }[] }[] };
-
-export async function ocr(file: File, o: { ocrLang: string; dpi: string }, progress?: Progress): Promise<Output[]> {
-  const { createWorker } = await import("tesseract.js");
-  const bytes = await bytesOf(file);
-  const src = await openPdf(bytes);
-  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
-  const pages = doc.getPages();
-  // Engine and language data are served from /vendor (scripts/vendor.mjs),
-  // never from the tesseract.js CDN defaults. Absolute URLs: the worker
-  // resolves them against its own script URL.
-  const vendor = new URL(VENDOR, location.origin).href;
-  const worker = await createWorker(o.ocrLang, undefined, {
-    workerPath: `${vendor}tesseract/worker.min.js`,
-    workerBlobURL: false,
-    corePath: `${vendor}tesseract/`,
-    langPath: `${vendor}tessdata`,
-    // tesseract.js caches language data in IndexedDB by this path; a new
-    // vendor version mustn't reuse data cached for an old one.
-    cachePath: `tessdata-${VENDOR_VERSION}`,
-  });
-  const scale = Number(o.dpi) / 72;
-  let recognised = 0;
-  try {
-    for (let i = 1; i <= src.numPages; i++) {
-      const page = await src.getPage(i);
-      // Pages that already carry real text don't need OCR.
-      const existing = await page.getTextContent();
-      const chars = existing.items.reduce((s, it) => s + ("str" in it ? it.str.trim().length : 0), 0);
-      if (chars > 40) {
-        progress?.(i, src.numPages);
-        continue;
-      }
-      const viewport = page.getViewport({ scale });
-      const canvas = await renderPage(page, scale);
-      const { data } = await worker.recognize(canvas, {}, { blocks: true });
-      const words: Word[] = [];
-      for (const block of (data.blocks ?? []) as unknown as TessBlock[])
-        for (const para of block.paragraphs)
-          for (const line of para.lines)
-            for (const w of line.words) {
-              if (!w.text.trim() || w.confidence < 25) continue;
-              words.push(viewportBoxToWord(w.text, w.bbox, (x, y) => viewport.convertToPdfPoint(x, y)));
-            }
-      if (words.length) recognised++;
-      addInvisibleText(doc, pages[i - 1], words);
-      canvas.width = canvas.height = 0;
-      page.cleanup();
-      progress?.(i, src.numPages);
-    }
-  } finally {
-    await worker.terminate();
-    await closePdf(src);
-  }
-  const note = recognised === 0 ? "ocrNone" : undefined;
-  return [{ name: `${baseName(file.name)}-ocr.pdf`, blob: pdfBlob(await doc.save({ useObjectStreams: true })), note }];
-}
+// ── OCR (in ./ocr.ts)
+export { ocr } from "./ocr";

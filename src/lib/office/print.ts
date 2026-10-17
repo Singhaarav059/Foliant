@@ -8,7 +8,14 @@ export async function printable(file: File, o: { orientation?: string; pageSize?
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
   const office = await import("./html");
   let html: string;
-  if (ext === "docx") html = await office.docxHtml(data);
+  if (ext === "docx") {
+    // docx-preview keeps the layout; mammoth is the fallback for files it can't render.
+    try {
+      html = await (await import("./docx")).docxPreviewHtml(data);
+    } catch {
+      html = await office.docxHtml(data);
+    }
+  }
   else if (ext === "pptx") html = await office.pptxHtml(data);
   else if (ext === "xlsx" || ext === "csv") html = await office.sheetHtml(data, ext, o.orientation ?? "auto");
   else if (ext === "html" || ext === "htm") html = intoHead(new TextDecoder().decode(data), pageSize(o));

@@ -1,14 +1,17 @@
 "use client";
 
-import { PDFDocument, PDFName, PDFRawStream, PDFNumber, PDFHexString, PDFString, decodePDFRawStream } from "pdf-lib";
+import { PDFDict, PDFDocument, PDFName, PDFRawStream, PDFNumber, PDFHexString, PDFString, decodePDFRawStream } from "pdf-lib";
 import {
   baseName, bytesOf, canvasToBlob, normaliseImage, closePdf, openPdf, pdfBlob, renderPage, loadImage,
   type Output, type Progress,
 } from "./common";
-import { pageText, documentText, blocks, bodySizeOf, type PageText, type Line, type Run } from "./text";
+import { pageText, blocks, bodySizeOf, spans, dropChars, type Line, type Run, type Span } from "./text";
+import { allLines, flow, grid, type Layout, type Table } from "./tables";
+import { documentLayout, type PageLayout } from "./layout";
 import { addInvisibleText } from "./textlayer";
 import { srgbProfile } from "./icc";
 import { withoutText } from "./strip";
+import { loadPdf } from "./organize";
 
 const SIZES = { a4: [595.28, 841.89], letter: [612, 792] } as const;
 const MARGINS = { none: 0, small: 20, large: 50 } as const;
@@ -243,37 +246,58 @@ function asNumber(text: string): number | null {
 export async function pdfToExcel(file: File, o: { sheetPer: string }, progress?: Progress): Promise<Output[]> {
   const ExcelJS = (await import("exceljs")).default;
   const doc = await openPdf(await file.arrayBuffer());
-  const pages = await documentText(doc, (i) => progress?.(i, doc.numPages));
+  const layouts = await documentLayout(doc, (i) => progress?.(i, doc.numPages));
   await closePdf(doc);
   const wb = new ExcelJS.Workbook();
   wb.creator = "Foliant";
-  const writeRows = (ws: import("exceljs").Worksheet, lines: Line[]) => {
-    const grid = toGrid(lines);
+  const thin = { style: "thin" as const };
+  const write = (ws: import("exceljs").Worksheet, layout: Layout) => {
     const widths: number[] = [];
-    grid.forEach((row) => {
-      const values = row.map((c) => (c ? asNumber(c.text) ?? c.text : null));
-      const added = ws.addRow(values);
-      row.forEach((c, k) => {
-        if (!c) return;
-        widths[k] = Math.max(widths[k] ?? 8, Math.min(60, c.text.length + 2));
-        if (c.bold) added.getCell(k + 1).font = { bold: true };
-        const v = values[k];
-        if (typeof v === "number" && /%\)?$/.test(c.text)) added.getCell(k + 1).numFmt = "0.##%";
-      });
-    });
+    const fit = (k: number, chars: number) => (widths[k] = Math.max(widths[k] ?? 8, Math.min(60, chars + 2)));
+    const put = (cell: import("exceljs").Cell, text: string, bold: boolean) => {
+      const v = asNumber(text);
+      cell.value = v ?? text;
+      if (bold) cell.font = { bold: true };
+      if (v !== null && /%\)?$/.test(text)) cell.numFmt = "0.##%";
+    };
+    for (const part of flow(layout)) {
+      if (part.kind === "lines") {
+        for (const row of toGrid(part.lines)) {
+          const added = ws.addRow([]);
+          row.forEach((c, k) => {
+            if (!c) return;
+            put(added.getCell(k + 1), c.text, c.bold);
+            fit(k, c.text.length);
+          });
+        }
+        continue;
+      }
+      // Detected tables keep their cells, merges and borders.
+      const t = part.table;
+      const top = ws.rowCount + 1;
+      for (let r = 0; r < t.rows; r++) ws.addRow([]);
+      for (const c of t.cells) {
+        const cell = ws.getCell(top + c.row, c.col + 1);
+        if (c.text) put(cell, c.text, c.bold);
+        if (t.ruled) cell.border = { top: thin, left: thin, bottom: thin, right: thin };
+        else if (c.row === 0) cell.border = { top: thin, bottom: thin };
+        else if (c.row + c.rowSpan === t.rows) cell.border = { bottom: thin };
+        if (c.lines.length > 1) cell.alignment = { wrapText: true, vertical: "top" };
+        if (c.rowSpan > 1 || c.colSpan > 1) ws.mergeCells(top + c.row, c.col + 1, top + c.row + c.rowSpan - 1, c.col + c.colSpan);
+        if (c.colSpan === 1) fit(c.col, Math.max(...c.lines.map((l) => l.text.length), 0));
+      }
+      ws.addRow([]);
+    }
     widths.forEach((w, k) => (ws.getColumn(k + 1).width = w));
   };
   if (o.sheetPer === "document") {
     const ws = wb.addWorksheet(baseName(file.name).slice(0, 31) || "Sheet1");
-    pages.forEach((p, i) => {
-      writeRows(ws, p.lines);
-      if (i < pages.length - 1) ws.addRow([]);
+    layouts.forEach((l, i) => {
+      write(ws, l);
+      if (i < layouts.length - 1) ws.addRow([]);
     });
   } else {
-    pages.forEach((p, i) => {
-      const ws = wb.addWorksheet(`Page ${i + 1}`);
-      writeRows(ws, p.lines);
-    });
+    layouts.forEach((l, i) => write(wb.addWorksheet(`Page ${i + 1}`), l));
   }
   const buf = await wb.xlsx.writeBuffer();
   return [{
@@ -296,34 +320,63 @@ function tableMd(lines: Line[]) {
   return [head, sep, ...rows.slice(1).map((r) => `| ${r.join(" | ")} |`)].join("\n");
 }
 
-export function pagesToMarkdown(pages: PageText[], pageBreaks: boolean) {
-  const body = bodySizeOf(pages);
+function detectedTableMd(t: Table) {
+  const cell = (c: { text: string } | null) => mdEscape(c?.text ?? "").replace(/\n/g, " ");
+  const rows = grid(t).map((r) => `| ${r.map(cell).join(" | ")} |`);
+  return [rows[0], `| ${new Array(t.cols).fill("---").join(" | ")} |`, ...rows.slice(1)].join("\n");
+}
+
+// Bold, italics and links; spaces stay outside the markers so they parse.
+function inlineMd(list: Span[], plainBold = false) {
+  return list.map((sp) => {
+    if (sp.br) return "  \n";
+    const [, lead, core, trail] = sp.text.match(/^(\s*)(.*?)(\s*)$/)!;
+    if (!core) return sp.text;
+    let t = mdEscape(core);
+    if (sp.italic) t = `*${t}*`;
+    if (sp.bold && !plainBold) t = `**${t}**`;
+    if (sp.link) t = `[${t}](${sp.link.replace(/[()\s]/g, encodeURIComponent)})`;
+    return lead + t + trail;
+  }).join("");
+}
+
+function linesMd(lines: Line[], body: number, chunks: string[]) {
+  // Runs of 3+ lines with 3+ aligned cells become tables.
+  let i = 0;
+  while (i < lines.length) {
+    let j = i;
+    while (j < lines.length && lineCells(lines[j]).length >= 3) j++;
+    if (j - i >= 3) {
+      chunks.push(tableMd(lines.slice(i, j)));
+      i = j;
+      continue;
+    }
+    let k = i;
+    while (k < lines.length && !(lineCells(lines[k]).length >= 3 && k + 2 < lines.length && lineCells(lines[k + 1]).length >= 3 && lineCells(lines[k + 2]).length >= 3)) k++;
+    if (k === i) k = i + 1;
+    for (const b of blocks(lines.slice(i, k), body)) {
+      const list = spans(b.lines);
+      if (b.kind === "heading") chunks.push(`${"#".repeat(b.level ?? 2)} ${inlineMd(list, true)}`);
+      else if (b.kind === "list") {
+        const m = b.text.match(/^([•◦▪●○■\-–*]|\d{1,3}[.)]|[a-z][.)])\s+(.*)$/i);
+        const ordered = m && /\d/.test(m[1]);
+        const text = inlineMd(m ? dropChars(list, b.text.length - m[2].length) : list);
+        chunks.push(`${ordered ? `${m![1].replace(")", ".")}` : "-"} ${text}`);
+      } else chunks.push(inlineMd(list));
+    }
+    i = k;
+  }
+}
+
+// Headers and footers are left out; columns are read one after the other.
+export function pagesToMarkdown(layouts: PageLayout[], pageBreaks: boolean) {
+  const body = bodySizeOf(layouts.map((l) => ({ lines: allLines(l) })));
   const parts: string[] = [];
-  pages.forEach((p, pi) => {
-    // Runs of 3+ lines with 3+ aligned cells become tables.
-    const lines = p.lines;
-    let i = 0;
+  layouts.forEach((layout, pi) => {
     const chunks: string[] = [];
-    while (i < lines.length) {
-      let j = i;
-      while (j < lines.length && lineCells(lines[j]).length >= 3) j++;
-      if (j - i >= 3) {
-        chunks.push(tableMd(lines.slice(i, j)));
-        i = j;
-        continue;
-      }
-      let k = i;
-      while (k < lines.length && !(lineCells(lines[k]).length >= 3 && k + 2 < lines.length && lineCells(lines[k + 1]).length >= 3 && lineCells(lines[k + 2]).length >= 3)) k++;
-      if (k === i) k = i + 1;
-      for (const b of blocks(lines.slice(i, k), body)) {
-        if (b.kind === "heading") chunks.push(`${"#".repeat(b.level ?? 2)} ${mdEscape(b.text)}`);
-        else if (b.kind === "list") {
-          const m = b.text.match(/^([•◦▪●○■\-–*]|\d{1,3}[.)]|[a-z][.)])\s+(.*)$/i);
-          const ordered = m && /\d/.test(m[1]);
-          chunks.push(`${ordered ? `${m![1].replace(")", ".")}` : "-"} ${mdEscape(m ? m[2] : b.text)}`);
-        } else chunks.push(b.bold ? `**${mdEscape(b.text)}**` : mdEscape(b.text));
-      }
-      i = k;
+    for (const item of layout.sections.flatMap((s) => s.columns.flatMap((c) => c.items))) {
+      if (item.kind === "table") chunks.push(detectedTableMd(item.table));
+      else if (item.kind === "lines") linesMd(item.lines, body, chunks);
     }
     // Consecutive list items sit together; everything else is separated by a blank line.
     let md = chunks.join("\n\n");
@@ -332,98 +385,22 @@ export function pagesToMarkdown(pages: PageText[], pageBreaks: boolean) {
       md = md.replace(/(^|\n)((?:- |\d+\. )[^\n]*)\n\n(?=(?:- |\d+\. ))/g, "$1$2\n");
     }
     parts.push(md);
-    if (pageBreaks && pi < pages.length - 1) parts.push(`\n---\n<!-- page ${pi + 2} -->`);
+    if (pageBreaks && pi < layouts.length - 1) parts.push(`\n---\n<!-- page ${pi + 2} -->`);
   });
   return parts.join("\n\n").trim() + "\n";
 }
 
 export async function pdfToMarkdown(file: File, o: { pageBreaks: boolean }, progress?: Progress): Promise<Output[]> {
   const doc = await openPdf(await file.arrayBuffer());
-  const pages = await documentText(doc, (i) => progress?.(i, doc.numPages));
+  const layouts = await documentLayout(doc, (i) => progress?.(i, doc.numPages));
   await closePdf(doc);
-  const md = pagesToMarkdown(pages, o.pageBreaks);
+  const md = pagesToMarkdown(layouts, o.pageBreaks);
   if (!md.trim()) throw new Error("No text found. If this is a scan, run OCR first.");
   return [{ name: `${baseName(file.name)}.md`, blob: new Blob([md], { type: "text/markdown" }) }];
 }
 
-// ── PDF → Word
-export async function pdfToWord(file: File, o: { wordMode: string }, progress?: Progress): Promise<Output[]> {
-  const docx = await import("docx");
-  const { Document, Packer, Paragraph, TextRun, HeadingLevel, ImageRun, AlignmentType } = docx;
-  const pdf = await openPdf(await file.arrayBuffer());
-  const first = await pdf.getPage(1);
-  const vp = first.getViewport({ scale: 1 });
-  const twip = (pt: number) => Math.round(pt * 20);
-  const sections: import("docx").ISectionOptions[] = [];
-
-  if (o.wordMode === "exact") {
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const v = page.getViewport({ scale: 1 });
-      const canvas = await renderPage(page, 2);
-      const data = await bytesOf(await canvasToBlob(canvas, "image/jpeg", 0.88));
-      sections.push({
-        properties: { page: { size: { width: twip(v.width), height: twip(v.height) }, margin: { top: 0, bottom: 0, left: 0, right: 0 } } },
-        children: [new Paragraph({ children: [new ImageRun({ type: "jpg", data, transformation: { width: v.width * 1.333, height: v.height * 1.333 } })] })],
-      });
-      page.cleanup();
-      progress?.(i, pdf.numPages);
-    }
-  } else {
-    const pages: PageText[] = [];
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      pages.push(await pageText(page));
-      page.cleanup();
-    }
-    const body = bodySizeOf(pages);
-    const children: InstanceType<typeof Paragraph>[] = [];
-    for (let i = 0; i < pages.length; i++) {
-      const p = pages[i];
-      const textChars = p.lines.reduce((s, l) => s + l.text.length, 0);
-      if (textChars < 20) {
-        // Probably a scan or a picture page: keep it as an image.
-        const page = await pdf.getPage(i + 1);
-        const canvas = await renderPage(page, 1.6);
-        const data = await bytesOf(await canvasToBlob(canvas, "image/jpeg", 0.85));
-        const maxW = vp.width - 72 * 2;
-        const ratio = p.height / p.width;
-        children.push(new Paragraph({
-          pageBreakBefore: i > 0,
-          children: [new ImageRun({ type: "jpg", data, transformation: { width: maxW * 1.333, height: maxW * ratio * 1.333 } })],
-        }));
-        page.cleanup();
-      } else {
-        blocks(p.lines, body).forEach((b, bi) => {
-          const pageBreakBefore = i > 0 && bi === 0;
-          const center = b.lines.every((l) => Math.abs(l.x + l.w / 2 - p.width / 2) < p.width * 0.06) && b.text.length < 120;
-          if (b.kind === "heading") {
-            const heading = b.level === 1 ? HeadingLevel.HEADING_1 : b.level === 2 ? HeadingLevel.HEADING_2 : HeadingLevel.HEADING_3;
-            children.push(new Paragraph({ heading, pageBreakBefore, alignment: center ? AlignmentType.CENTER : undefined, children: [new TextRun({ text: b.text })] }));
-          } else if (b.kind === "list") {
-            const m = b.text.match(/^([•◦▪●○■\-–*]|\d{1,3}[.)]|[a-z][.)])\s+(.*)$/i);
-            children.push(new Paragraph({ pageBreakBefore, bullet: { level: 0 }, children: [new TextRun({ text: m ? m[2] : b.text, size: Math.round(b.size * 2) })] }));
-          } else {
-            children.push(new Paragraph({
-              pageBreakBefore,
-              alignment: center ? AlignmentType.CENTER : undefined,
-              spacing: { after: 120 },
-              children: [new TextRun({ text: b.text, bold: b.bold, size: Math.round(Math.min(28, Math.max(16, b.size * 2))) })],
-            }));
-          }
-        });
-      }
-      progress?.(i + 1, pages.length);
-    }
-    sections.push({
-      properties: { page: { size: { width: twip(vp.width), height: twip(vp.height) }, margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 } } },
-      children,
-    });
-  }
-  await closePdf(pdf);
-  const blob = await Packer.toBlob(new Document({ creator: "Foliant", sections }));
-  return [{ name: `${baseName(file.name)}.docx`, blob }];
-}
+// ── PDF → Word (in ./word.ts)
+export { pdfToWord } from "./word";
 
 // ── PDF → PowerPoint
 export async function pdfToPpt(file: File, o: { pptText: boolean }, progress?: Progress): Promise<Output[]> {
@@ -476,38 +453,41 @@ function blobToDataUrl(blob: Blob) {
 }
 
 // ── PDF → PDF/A-2b
-// Pages are rebuilt as images (so every font and colour problem disappears),
-// with the original text kept as an invisible searchable layer.
+// Pages stay as they are (real text, vector graphics); pdfa.ts fixes what the
+// standard forbids. Only pages it can't fix are rendered as images, with their
+// text kept as an invisible searchable layer.
 export async function pdfToPdfa(file: File, o: { pdfaDpi: string; keepText: boolean }, progress?: Progress): Promise<Output[]> {
-  const src = await openPdf(await file.arrayBuffer());
-  const out = await PDFDocument.create({ updateMetadata: false });
-  const scale = Number(o.pdfaDpi) / 72;
-  let title = baseName(file.name);
-  try {
-    const meta = await src.getMetadata();
-    const info = meta.info as { Title?: string };
-    if (info?.Title) title = info.Title;
-  } catch {
-    /* untitled */
-  }
-  for (let i = 1; i <= src.numPages; i++) {
-    const page = await src.getPage(i);
-    const v = page.getViewport({ scale: 1 });
-    const canvas = await renderPage(page, scale);
-    const jpg = await out.embedJpg(await bytesOf(await canvasToBlob(canvas, "image/jpeg", 0.88)));
-    const p = out.addPage([v.width, v.height]);
-    p.drawImage(jpg, { x: 0, y: 0, width: v.width, height: v.height });
-    if (o.keepText) {
-      const t = await pageText(page);
-      addInvisibleText(out, p, runsToWords(t.items, v.height));
+  const bytes = await bytesOf(file);
+  const doc = await loadPdf(file, file.name);
+  const { fixForPdfA } = await import("./pdfa");
+  const { raster } = await fixForPdfA(doc);
+  if (raster.size) {
+    const src = await openPdf(bytes);
+    const scale = Number(o.pdfaDpi) / 72;
+    let done = 0;
+    for (const i of [...raster].sort((a, b) => a - b)) {
+      const view = await src.getPage(i + 1);
+      const v = view.getViewport({ scale: 1 });
+      const canvas = await renderPage(view, scale);
+      const jpg = await doc.embedJpg(await bytesOf(await canvasToBlob(canvas, "image/jpeg", 0.88)));
+      canvas.width = canvas.height = 0;
+      // The same page object, so bookmarks and links into it still work.
+      const page = doc.getPage(i);
+      const node = page.node;
+      for (const k of ["Annots", "CropBox", "BleedBox", "TrimBox", "ArtBox", "Group"]) node.delete(PDFName.of(k));
+      node.set(PDFName.of("Contents"), doc.context.obj([]));
+      node.set(PDFName.of("Resources"), doc.context.obj({}));
+      node.set(PDFName.of("MediaBox"), doc.context.obj([0, 0, v.width, v.height]));
+      node.set(PDFName.of("Rotate"), PDFNumber.of(0));
+      page.drawImage(jpg, { x: 0, y: 0, width: v.width, height: v.height });
+      if (o.keepText) addInvisibleText(doc, page, runsToWords((await pageText(view)).items, v.height));
+      view.cleanup();
+      progress?.(++done, raster.size);
     }
-    canvas.width = canvas.height = 0;
-    page.cleanup();
-    progress?.(i, src.numPages);
+    await closePdf(src);
   }
-  await closePdf(src);
-  makePdfA(out, title);
-  return [{ name: `${baseName(file.name)}-pdfa.pdf`, blob: pdfBlob(await out.save({ useObjectStreams: false })) }];
+  makePdfA(doc, doc.getTitle() || baseName(file.name));
+  return [{ name: `${baseName(file.name)}-pdfa.pdf`, blob: pdfBlob(await doc.save({ useObjectStreams: false })) }];
 }
 
 export function runsToWords(items: Run[], pageHeight: number) {
@@ -523,6 +503,12 @@ function xmlEscape(s: string) {
 function makePdfA(doc: PDFDocument, title: string) {
   const now = new Date();
   const iso = now.toISOString().replace(/\.\d{3}Z$/, "Z");
+  // The Info dictionary and the XMP must say the same things.
+  const author = doc.getAuthor();
+  const subject = doc.getSubject();
+  const keywords = doc.getKeywords();
+  const info = doc.context.lookup(doc.context.trailerInfo.Info);
+  if (info instanceof PDFDict) info.delete(PDFName.of("Trapped"));
   doc.setTitle(title);
   doc.setProducer("Foliant");
   doc.setCreator("Foliant");
@@ -537,7 +523,10 @@ function makePdfA(doc: PDFDocument, title: string) {
     xmlns:pdf="http://ns.adobe.com/pdf/1.3/"
     xmlns:pdfaid="http://www.aiim.org/pdfa/ns/id/">
    <dc:format>application/pdf</dc:format>
-   <dc:title><rdf:Alt><rdf:li xml:lang="x-default">${xmlEscape(title)}</rdf:li></rdf:Alt></dc:title>
+   <dc:title><rdf:Alt><rdf:li xml:lang="x-default">${xmlEscape(title)}</rdf:li></rdf:Alt></dc:title>${author ? `
+   <dc:creator><rdf:Seq><rdf:li>${xmlEscape(author)}</rdf:li></rdf:Seq></dc:creator>` : ""}${subject ? `
+   <dc:description><rdf:Alt><rdf:li xml:lang="x-default">${xmlEscape(subject)}</rdf:li></rdf:Alt></dc:description>` : ""}${keywords ? `
+   <pdf:Keywords>${xmlEscape(keywords)}</pdf:Keywords>` : ""}
    <xmp:CreateDate>${iso}</xmp:CreateDate>
    <xmp:ModifyDate>${iso}</xmp:ModifyDate>
    <xmp:MetadataDate>${iso}</xmp:MetadataDate>

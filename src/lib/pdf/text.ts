@@ -7,7 +7,11 @@ import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import type { TextItem } from "pdfjs-dist/types/src/display/api";
 
 // `xs` (when known) holds each character's left edge plus the run's right edge, for exact boxes.
-export type Run = { text: string; x: number; y: number; w: number; h: number; size: number; bold: boolean; italic: boolean; xs?: number[] };
+// `font` is a family name ("Times New Roman"), `color` a hex fill ("#cc1a1a"), `link` a URL.
+export type Run = {
+  text: string; x: number; y: number; w: number; h: number; size: number; bold: boolean; italic: boolean;
+  xs?: number[]; font?: string; color?: string; link?: string;
+};
 export type Line = { runs: Run[]; text: string; x: number; y: number; w: number; size: number; bold: boolean };
 export type PageText = { width: number; height: number; lines: Line[]; items: Run[] };
 
@@ -65,14 +69,28 @@ const asMatrix = (a: unknown[]): M => {
 const apply = (m: M, x: number, y: number) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
 
 type Glyph = { unicode?: string; width?: number; isSpace?: boolean } | number | null;
-type FontObj = { fontMatrix?: number[]; name?: string; loadedName?: string; bold?: boolean; black?: boolean; italic?: boolean; vertical?: boolean };
+type FontObj = {
+  fontMatrix?: number[]; name?: string; loadedName?: string; fallbackName?: string;
+  bold?: boolean; black?: boolean; italic?: boolean; vertical?: boolean;
+};
+
+const GENERIC: Record<string, string> = { serif: "Times New Roman", "sans-serif": "Arial", monospace: "Courier New" };
+const RENAME: Record<string, string> = { Helvetica: "Arial", Times: "Times New Roman", "Times Roman": "Times New Roman", Courier: "Courier New" };
+
+// "ABCDEF+TimesNewRomanPS-BoldMT" → "Times New Roman"; standard fonts fall back to a generic family.
+export function fontFamily(font: FontObj): string | undefined {
+  const raw = (font.name ?? "").replace(/^[A-Z]{6}\+/, "").split(/[-,]/)[0].replace(/(PSMT|PS|MT)$/, "");
+  const name = raw.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\s*(Bold|Italic|Oblique|Regular|Light|Medium|Semibold|Black)$/i, "").trim();
+  if (name && !/^g_d\d/.test(name)) return RENAME[name] ?? name;
+  return GENERIC[font.fallbackName ?? ""];
+}
 
 async function glyphRuns(page: PDFPageProxy, viewport: ReturnType<PDFPageProxy["getViewport"]>): Promise<Run[]> {
   const { OPS } = await import("pdfjs-dist");
   const list = await page.getOperatorList();
   const runs: Run[] = [];
-  type GS = { ctm: M; font: FontObj | null; size: number; cs: number; ws: number; hs: number; lead: number; rise: number };
-  let gs: GS = { ctm: [1, 0, 0, 1, 0, 0], font: null, size: 0, cs: 0, ws: 0, hs: 1, lead: 0, rise: 0 };
+  type GS = { ctm: M; font: FontObj | null; size: number; cs: number; ws: number; hs: number; lead: number; rise: number; fill: string };
+  let gs: GS = { ctm: [1, 0, 0, 1, 0, 0], font: null, size: 0, cs: 0, ws: 0, hs: 1, lead: 0, rise: 0, fill: "#000000" };
   const stack: GS[] = [];
   let tm: M = [1, 0, 0, 1, 0, 0];
   let tlm: M = [1, 0, 0, 1, 0, 0];
@@ -82,7 +100,7 @@ async function glyphRuns(page: PDFPageProxy, viewport: ReturnType<PDFPageProxy["
     if (cur && cur.text.trim()) {
       const text = cur.text.replace(/\s+$/, "");
       const xs = [...(cur.xs ?? []).slice(0, text.length), cur.endX];
-      runs.push({ text, x: cur.x, y: cur.y, w: cur.endX - cur.x, h: cur.h, size: cur.size, bold: cur.bold, italic: cur.italic, xs });
+      runs.push({ text, x: cur.x, y: cur.y, w: cur.endX - cur.x, h: cur.h, size: cur.size, bold: cur.bold, italic: cur.italic, xs, font: cur.font, color: cur.color });
     }
     cur = null;
   };
@@ -94,6 +112,8 @@ async function glyphRuns(page: PDFPageProxy, viewport: ReturnType<PDFPageProxy["
     const name = `${font.name ?? ""} ${font.loadedName ?? ""}`.toLowerCase();
     const bold = Boolean(font.bold || font.black) || /bold|black|heavy|semibold/.test(name);
     const italic = Boolean(font.italic) || /italic|oblique/.test(name);
+    const family = fontFamily(font);
+    const color = gs.fill;
     let x = 0;
     for (const g of glyphs) {
       if (g === null) continue;
@@ -123,9 +143,11 @@ async function glyphRuns(page: PDFPageProxy, viewport: ReturnType<PDFPageProxy["
       const right = Math.max(vx, vex);
       const gap = cur ? left - cur.endX : 0;
       const sameLine = cur && Math.abs(vy - cur.baseY) < size * 0.35 && Math.abs(size - cur.size) < size * 0.25;
-      if (!cur || !sameLine || gap > size * 1.0 || gap < -size * 0.5 || cur.bold !== bold) {
+      const restyled = cur && (cur.bold !== bold || cur.italic !== italic || cur.color !== color || cur.font !== family);
+      if (!cur || !sameLine || gap > size * 1.0 || gap < -size * 0.5 || restyled) {
+        // groupLines puts the space back between restyled runs from the gap.
         flush();
-        cur = { text: "", x: left, y: vy - size, w: 0, h: size, size, bold, italic, endX: left, baseY: vy, xs: [] };
+        cur = { text: "", x: left, y: vy - size, w: 0, h: size, size, bold, italic, endX: left, baseY: vy, xs: [], font: family, color };
       } else if (gap > size * 0.22 && !cur.text.endsWith(" ")) {
         cur.text += " ";
         cur.xs!.push(cur.endX);
@@ -160,6 +182,8 @@ async function glyphRuns(page: PDFPageProxy, viewport: ReturnType<PDFPageProxy["
         break;
       }
       case OPS.setCharSpacing: gs.cs = a[0] as number; break;
+      // pdf.js turns every fill colour space into an RGB hex string.
+      case OPS.setFillRGBColor: if (typeof a[0] === "string") gs.fill = a[0]; break;
       case OPS.setWordSpacing: gs.ws = a[0] as number; break;
       case OPS.setHScale: gs.hs = (a[0] as number) / 100; break;
       case OPS.setLeading: gs.lead = a[0] as number; break;
@@ -252,7 +276,7 @@ export function blocks(lines: Line[], bodySize: number): Block[] {
   return out;
 }
 
-export function bodySizeOf(pages: PageText[]) {
+export function bodySizeOf(pages: { lines: Line[] }[]) {
   const counts = new Map<number, number>();
   for (const p of pages)
     for (const l of p.lines) {
@@ -278,4 +302,55 @@ export async function documentText(doc: PDFDocumentProxy, onPage?: (i: number) =
 
 export function plainText(p: PageText) {
   return p.lines.map((l) => l.text).join("\n");
+}
+
+// ── Styled text for Word and Markdown
+
+export type Span = { text: string; bold: boolean; italic: boolean; size: number; font?: string; color?: string; link?: string; br?: boolean };
+
+// Joins lines into styled spans: neighbouring runs with the same style merge,
+// lines join with a space (or a line break when `breaks`), and words broken
+// with a hyphen at a line end are put back together.
+export function spans(lines: Line[], breaks = false): Span[] {
+  const out: Span[] = [];
+  const same = (a: Span, r: Run) =>
+    !a.br && a.bold === r.bold && a.italic === r.italic && a.font === r.font && a.color === r.color && a.link === r.link && Math.abs(a.size - r.size) < 0.6;
+  lines.forEach((l, li) => {
+    let lastEnd = -Infinity;
+    l.runs.forEach((r, ri) => {
+      const last = out[out.length - 1];
+      let text = r.text;
+      if (ri === 0 && li > 0 && last) {
+        if (breaks) out.push({ ...last, text: "", br: true, link: undefined });
+        else if (/[a-z]-$/.test(last.text) && /^[a-z]/.test(text)) last.text = last.text.slice(0, -1);
+        else if (!last.text.endsWith(" ")) last.text += " ";
+      } else if (ri > 0 && last && r.x - lastEnd > r.size * 0.18 && !last.text.endsWith(" ") && !text.startsWith(" ")) {
+        // The space goes on the run before, so a link doesn't start with one.
+        last.text += " ";
+      }
+      lastEnd = r.x + r.w;
+      const tail = out[out.length - 1];
+      if (tail && same(tail, r)) tail.text += text;
+      else {
+        if (!out.length) text = text.trimStart();
+        out.push({ text, bold: r.bold, italic: r.italic, size: r.size, font: r.font, color: r.color, link: r.link });
+      }
+    });
+  });
+  for (const s of out) s.text = s.text.replace(/\s+/g, " ");
+  if (out.length) out[out.length - 1].text = out[out.length - 1].text.trimEnd();
+  return out.filter((s) => s.text || s.br);
+}
+
+// Removes the first `n` characters (a list marker) from spans.
+export function dropChars(list: Span[], n: number): Span[] {
+  const out = list.map((s) => ({ ...s }));
+  for (const s of out) {
+    if (n <= 0) break;
+    const take = Math.min(n, s.text.length);
+    s.text = s.text.slice(take);
+    n -= take;
+  }
+  if (out[0]) out[0].text = out[0].text.trimStart();
+  return out.filter((s) => s.text || s.br);
 }

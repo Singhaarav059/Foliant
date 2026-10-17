@@ -25,6 +25,8 @@ export async function openPdf(data: ArrayBuffer | Uint8Array, password?: string)
   return lib.getDocument({
     data: bytes,
     password,
+    // Font names ("Helvetica-Bold"), so converters can tell bold, italic and the family.
+    fontExtraProperties: true,
     // Copied by scripts/vendor.mjs.
     cMapUrl: `${VENDOR}pdfjs/cmaps/`,
     standardFontDataUrl: `${VENDOR}pdfjs/standard_fonts/`,

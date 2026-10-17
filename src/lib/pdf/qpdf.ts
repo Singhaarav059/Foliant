@@ -9,13 +9,16 @@ type QpdfModule = {
   callMain(args: string[]): number;
 };
 
+// Tests point this at the file on disk.
+export const qpdfWasm = { url: () => `${VENDOR}qpdf.wasm` };
+
 export async function runQpdf(input: Uint8Array, args: (inPath: string, outPath: string) => string[]) {
   const createModule = (await import("@neslinesli93/qpdf-wasm")).default as unknown as (
     o: Record<string, unknown>,
   ) => Promise<QpdfModule>;
   const errors: string[] = [];
   const qpdf = await createModule({
-    locateFile: () => `${VENDOR}qpdf.wasm`,
+    locateFile: () => qpdfWasm.url(),
     noInitialRun: true,
     print: () => {},
     printErr: (line: string) => errors.push(line),

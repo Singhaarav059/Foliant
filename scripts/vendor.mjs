@@ -23,8 +23,22 @@ const pkgDir = (name) => dirname(require.resolve(`${name}/package.json`));
 const files = [
   [join(pkgDir("pdfjs-dist"), "build", "pdf.worker.min.mjs"), "pdf.worker.min.mjs"],
   [join(pkgDir("@neslinesli93/qpdf-wasm"), "dist", "qpdf.wasm"), "qpdf.wasm"],
+  // MozJPEG for Compress (src/lib/pdf/jpeg.ts).
+  [join(pkgDir("@jsquash/jpeg"), "codec", "enc", "mozjpeg_enc.wasm"), "mozjpeg_enc.wasm"],
+  [join(pkgDir("@jsquash/jpeg"), "codec", "dec", "mozjpeg_dec.wasm"), "mozjpeg_dec.wasm"],
+  // PDFium (EmbedPDF's build, with redaction) for Redact (src/lib/pdf/pdfium.ts).
+  [require.resolve("@embedpdf/pdfium/pdfium.wasm"), "pdfium.wasm"],
   [join(pkgDir("tesseract.js"), "dist", "worker.min.js"), "tesseract/worker.min.js"],
 ];
+// Metric-compatible stand-ins for fonts a PDF names but doesn't embed, which
+// PDF/A requires embedded (src/lib/pdf/pdfa.ts): Arimo for Arial/Helvetica,
+// Tinos for Times, Cousine for Courier, Carlito for Calibri, Caladea for Cambria.
+for (const family of ["arimo", "tinos", "cousine", "carlito", "caladea"])
+  for (const weight of [400, 700])
+    for (const style of ["normal", "italic"]) {
+      const file = `${family}-latin-${weight}-${style}.woff`;
+      files.push([join(pkgDir(`@fontsource/${family}`), "files", file), `pdfa-fonts/${file}`]);
+    }
 // Tesseract picks one of these by the browser's SIMD support. OCR runs the
 // LSTM engine only, so the legacy-engine builds aren't needed.
 for (const f of ["tesseract-core-lstm.wasm.js", "tesseract-core-simd-lstm.wasm.js", "tesseract-core-relaxedsimd-lstm.wasm.js"]) {
