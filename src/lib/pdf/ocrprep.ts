@@ -244,3 +244,33 @@ export function grayPng(g: Gray): Uint8Array {
   for (const p of parts) { out.set(p, o); o += p.length; }
   return out;
 }
+
+// ── Noise
+
+// Standard deviation of the noise (Immerkær 1996: one pass of a Laplacian-difference kernel).
+export function noiseLevel(g: Gray): number {
+  let sum = 0;
+  for (let y = 1; y < g.h - 1; y++)
+    for (let x = 1; x < g.w - 1; x++) {
+      const i = y * g.w + x, d = g.data;
+      sum += Math.abs(
+        d[i - g.w - 1] - 2 * d[i - g.w] + d[i - g.w + 1] - 2 * d[i - 1] + 4 * d[i] - 2 * d[i + 1] + d[i + g.w - 1] - 2 * d[i + g.w] + d[i + g.w + 1],
+      );
+    }
+  return (Math.sqrt(Math.PI / 2) * sum) / (6 * (g.w - 2) * (g.h - 2));
+}
+
+// 3×3 median: removes speckle while keeping the edges of strokes.
+export function median3(g: Gray): Gray {
+  const out = new Uint8Array(g.data.length);
+  const v = new Uint8Array(9);
+  for (let y = 0; y < g.h; y++)
+    for (let x = 0; x < g.w; x++) {
+      let k = 0;
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) v[k++] = g.data[Math.min(g.h - 1, Math.max(0, y + dy)) * g.w + Math.min(g.w - 1, Math.max(0, x + dx))];
+      v.sort();
+      out[y * g.w + x] = v[4];
+    }
+  return { w: g.w, h: g.h, data: out };
+}

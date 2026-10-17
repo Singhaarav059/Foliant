@@ -46,7 +46,7 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
     }
     case "ocr": {
       const { ocr } = await import("./optimize");
-      return each(files, progress, (f, p) => ocr(f, { ocrLang: s(o.ocrLang), dpi: s(o.dpi) }, p));
+      return each(files, progress, (f, p) => ocr(f, { ocrLang: s(o.ocrLang), dpi: s(o.dpi), ocrEngine: s(o.ocrEngine) }, p));
     }
     case "jpgToPdf": {
       const { imagesToPdf } = await import("./convert");

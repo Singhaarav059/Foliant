@@ -26,7 +26,8 @@ const upright = { w: W, h: H, data: new Uint8Array(W * H).map((_, i) => (rgb[i *
 const scheduler = createScheduler();
 const cache = mkdtempSync(join(tmpdir(), "tess-"));
 for (let i = 0; i < 2; i++) scheduler.addWorker(await createWorker("eng", undefined, { langPath: join(vendorDir, "tessdata"), cachePath: cache }));
-const recognise = async (png) => (await scheduler.addJob("recognize", Buffer.from(png), {}, { blocks: true })).data;
+const { grayPng } = await load("ocrprep");
+const recognise = async (image) => (await scheduler.addJob("recognize", Buffer.from(grayPng(image)), {}, { blocks: true })).data;
 
 const deg = Math.PI / 180;
 const shadow = (g) => ({ ...g, data: g.data.map((v, i) => Math.round(v * (0.42 + 0.58 * ((i % g.w) / g.w)))) });

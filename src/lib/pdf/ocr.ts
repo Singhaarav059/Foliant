@@ -9,13 +9,17 @@ import type { PageViewport } from "pdfjs-dist";
 import { baseName, bytesOf, closePdf, openPdf, pdfBlob, renderPage, type Output, type Progress } from "./common";
 import { VENDOR, VENDOR_VERSION } from "../vendor";
 import { addInvisibleText, type Word } from "./textlayer";
-import { deskew, estimateSkew, flattenBackground, grayOf, grayPng, looksSideways, rotate90, unmapper, type Gray, type Unmap } from "./ocrprep";
+import { PADDLE_LANGS, paddlePage } from "./paddle";
+import { deskew, estimateSkew, flattenBackground, grayOf, grayPng, looksSideways, median3, noiseLevel, rotate90, unmapper, type Gray, type Unmap } from "./ocrprep";
+
+// Noise level (grey levels, Immerkær) above which a page gets a median filter.
+const NOISY = 4;
 
 type Box = { x0: number; y0: number; x1: number; y1: number };
 type TessWord = { text: string; confidence: number; bbox: Box };
 type TessLine = { words: TessWord[]; baseline?: Box & { has_baseline?: boolean } };
 type TessPage = { confidence: number; blocks: { paragraphs: { lines: TessLine[] }[] }[] | null };
-export type Recognise = (png: Uint8Array) => Promise<TessPage>;
+export type Recognise = (image: Gray) => Promise<TessPage>;
 
 // Tests replace this with workers that read language data from disk.
 export const engine = {
@@ -37,8 +41,8 @@ export const engine = {
     })));
     for (const w of workers) scheduler.addWorker(w);
     return {
-      recognise: async (png) =>
-        (await scheduler.addJob("recognize", new Blob([png as BlobPart], { type: "image/png" }), {}, { blocks: true })).data as unknown as TessPage,
+      recognise: async (image) =>
+        (await scheduler.addJob("recognize", new Blob([grayPng(image) as BlobPart], { type: "image/png" }), {}, { blocks: true })).data as unknown as TessPage,
       stop: () => scheduler.terminate(),
     };
   },
@@ -62,7 +66,8 @@ const wordCount = (page: TessPage) =>
 // image (baseline start, baseline end, top of the start) and the clockwise
 // quarter turns that make the page upright.
 export async function readPage(recognise: Recognise, image: Gray) {
-  const clean = flattenBackground(image);
+  // Speckle (phone photos, fax-grade scans) first, before flattening the background amplifies it.
+  const clean = flattenBackground(noiseLevel(image) > NOISY ? median3(image) : image);
   const thin = (0.3 * Math.PI) / 180; // below a third of a degree, resampling costs more than it gains
   // Try the likeliest orientation first; upside-down or sideways text reads as
   // low-confidence noise, so keep turning until a reading is confident.
@@ -73,7 +78,7 @@ export async function readPage(recognise: Recognise, image: Gray) {
     const found = estimateSkew(g);
     const skew = Math.abs(found) > thin ? found : 0;
     if (skew) g = deskew(g, skew);
-    const page = await recognise(grayPng(g));
+    const page = await recognise(g);
     const s = score(page);
     if (!best || s > best.score) best = { page, score: s, turns: turns % 4, skew };
     // Confident, or almost nothing to read (a photo, a blank page): stop turning.
@@ -103,7 +108,7 @@ export function toWord(text: string, corners: [number, number][], viewport: Page
   return { text, x: ax, y: ay, width: Math.hypot(bx - ax, by - ay), height: Math.hypot(cx - ax, cy - ay), angle: Math.atan2(by - ay, bx - ax) };
 }
 
-export async function ocr(file: File, o: { ocrLang: string; dpi: string }, progress?: Progress): Promise<Output[]> {
+export async function ocr(file: File, o: { ocrLang: string; dpi: string; ocrEngine?: string }, progress?: Progress): Promise<Output[]> {
   const bytes = await bytesOf(file);
   const src = await openPdf(bytes);
   const doc = await PDFDocument.load(bytes, { updateMetadata: false });
@@ -121,11 +126,13 @@ export async function ocr(file: File, o: { ocrLang: string; dpi: string }, progr
 
   // One worker per two cores, up to four: each holds its own copy of the language model.
   const cores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
-  const count = Math.max(1, Math.min(4, Math.floor(cores / 2), todo.length));
+  // High accuracy (PaddleOCR) reads one page at a time; it only covers some languages.
+  const accurate = o.ocrEngine === "accurate" && PADDLE_LANGS.includes(o.ocrLang);
+  const count = accurate ? 1 : Math.max(1, Math.min(4, Math.floor(cores / 2), todo.length));
   let recognised = 0;
   let done = src.numPages - todo.length;
   progress?.(done, src.numPages);
-  const ocrEngine = todo.length ? await engine.create(o.ocrLang, count) : null;
+  const ocrEngine = !todo.length ? null : accurate ? { recognise: paddlePage as Recognise, stop: async () => {} } : await engine.create(o.ocrLang, count);
   try {
     // Render the next page while the workers read the last ones, holding at most count + 1 pages.
     let next = 0;

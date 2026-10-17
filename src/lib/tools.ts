@@ -70,6 +70,9 @@ export type Tool = {
 const PDF = ["pdf"];
 const IMAGES = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "heic"];
 
+// Languages PaddleOCR's PP-OCRv5 dictionary covers (Tesseract codes), for high-accuracy OCR.
+export const PADDLE_LANGS = ["eng", "deu", "fra", "ita", "spa", "por", "nld", "swe", "cat", "ind", "msa", "swa", "ell", "chi_sim", "chi_tra", "jpn"];
+
 export const OCR_LANGS = [
   "eng", "spa", "fra", "deu", "ita", "por", "jpn", "rus", "kor", "chi_sim",
   "chi_tra", "ara", "bul", "cat", "nld", "ell", "hin", "ind", "msa", "pol",
@@ -130,6 +133,8 @@ const ALL: Tool[] = [
     runtime: "browser", accept: PDF, multiple: false, chainable: true,
     options: [
       { key: "ocrLang", type: "select", choices: OCR_LANGS, default: "eng" },
+      // PaddleOCR (src/lib/pdf/paddle.ts); downloads about 36 MB the first time.
+      { key: "ocrEngine", type: "select", choices: ["standard", "accurate"], default: "standard", when: { key: "ocrLang", is: PADDLE_LANGS } },
       { key: "dpi", type: "select", choices: ["150", "200", "300"], default: "200" },
     ],
   },

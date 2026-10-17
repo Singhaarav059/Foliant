@@ -39,6 +39,16 @@ for (const family of ["arimo", "tinos", "cousine", "carlito", "caladea"])
       const file = `${family}-latin-${weight}-${style}.woff`;
       files.push([join(pkgDir(`@fontsource/${family}`), "files", file), `pdfa-fonts/${file}`]);
     }
+// High-accuracy OCR (src/lib/pdf/paddle.ts): ONNX Runtime Web's CPU build and
+// PaddleOCR's PP-OCRv5 mobile models. Fetched only when that mode is used.
+files.push(
+  [require.resolve("onnxruntime-web/ort-wasm-simd-threaded.wasm"), "paddle/ort-wasm-simd-threaded.wasm"],
+  [require.resolve("onnxruntime-web/ort-wasm-simd-threaded.mjs"), "paddle/ort-wasm-simd-threaded.mjs"],
+  [join(pkgDir("pdfmarkdown-ppocrv5-models"), "detection", "PP-OCRv5_mobile_det_infer.ort"), "paddle/det.ort"],
+  [join(pkgDir("pdfmarkdown-ppocrv5-models"), "recognition", "PP-OCRv5_mobile_rec_infer.onnx"), "paddle/rec.onnx"],
+  [join(pkgDir("pdfmarkdown-ppocrv5-models"), "recognition", "ppocrv5_dict.txt"), "paddle/dict.txt"],
+  [join(pkgDir("pdfmarkdown-ppocrv5-models"), "LICENSE"), "paddle/LICENSE"],
+);
 // Tesseract picks one of these by the browser's SIMD support. OCR runs the
 // LSTM engine only, so the legacy-engine builds aren't needed.
 for (const f of ["tesseract-core-lstm.wasm.js", "tesseract-core-simd-lstm.wasm.js", "tesseract-core-relaxedsimd-lstm.wasm.js"]) {
