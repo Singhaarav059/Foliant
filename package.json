@@ -26,7 +26,8 @@
     "test:pdfa": "node tests/pdfa.mjs",
     "test:ocr-accuracy": "node tests/ocr-accuracy.mjs",
     "test:libreoffice": "node tests/libreoffice.mjs",
-    "test:robust": "node tests/robustness/run.mjs"
+    "test:robust": "node tests/robustness/run.mjs",
+    "test:static": "node tests/static-extras.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
