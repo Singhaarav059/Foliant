@@ -17,6 +17,7 @@
     "i18n:check": "node scripts/i18n-check.mjs",
     "serve:static": "node scripts/serve-static.mjs out 3202",
     "test:e2e": "node tests/e2e.mjs",
+    "test:e2e-office": "node tests/e2e-office.mjs",
     "test:tables": "node tests/tables.mjs",
     "test:layout": "node tests/layout.mjs",
     "test:word": "node tests/word-content.mjs",
@@ -24,6 +25,7 @@
     "test:ocr": "node tests/ocr.mjs",
     "test:redact": "node tests/redact.mjs",
     "test:office": "node tests/office.mjs",
+    "test:office-route": "node tests/office-route.mjs",
     "test:pdfa": "node tests/pdfa.mjs",
     "test:ocr-accuracy": "node tests/ocr-accuracy.mjs",
     "test:libreoffice": "node tests/libreoffice.mjs"

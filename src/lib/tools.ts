@@ -296,11 +296,12 @@ const ALL: Tool[] = [
   },
 ];
 
-// Without a server, Office and HTML files are laid out in the browser and
-// saved through its print dialog, so those tools take fewer formats and options.
-// High fidelity runs LibreOffice in the browser (src/lib/office/libreoffice.ts),
-// which also reads the formats the light renderers can't; those always use it.
-const FIDELITY: OptionDef = { key: "fidelity", type: "select", choices: ["standard", "high"], default: "standard" };
+// Without a server, Office files go through LibreOffice in the browser
+// (src/lib/office/libreoffice.ts), which writes a real PDF and reads every
+// format; Standard lays them out in the browser and saves them through its
+// print dialog. Automatic uses LibreOffice where the device can take it
+// (src/lib/office/route.ts). HTML files always print.
+const FIDELITY: OptionDef = { key: "fidelity", type: "select", choices: ["auto", "standard", "high"], default: "auto" };
 export const LIGHT_OFFICE = ["docx", "pptx", "xlsx", "csv"];
 const IN_BROWSER: Partial<Record<ToolId, Partial<Tool>>> = {
   wordToPdf: { accept: ["docx", "doc", "odt", "rtf"], options: [FIDELITY] },

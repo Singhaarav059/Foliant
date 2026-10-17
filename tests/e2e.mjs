@@ -211,6 +211,8 @@ for (const name of engines) {
     await test(`${file} print preview`, async () => {
       await open(`/en/${slug}`);
       await pick([file]);
+      // Automatic makes a real PDF with LibreOffice (tests/e2e-office.mjs); Standard prints.
+      await page.getByRole("radio", { name: /^Standard/ }).click();
       await page.getByRole("button", { name: "Convert to PDF", exact: true }).click();
       await page.frameLocator("iframe").getByText(needle).first().waitFor({ timeout: 30000 });
       if ((await page.evaluate(() => typeof document.querySelector("iframe")?.contentWindow?.print)) !== "function") throw new Error("print() not reachable");
