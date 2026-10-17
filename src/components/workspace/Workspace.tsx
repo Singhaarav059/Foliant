@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowRight, Loader2 } from "lucide-react";
 import { useI18n } from "../I18n";
 import { useUser, postJson } from "../User";
-import { Dropzone } from "./Dropzone";
+import { Dropzone, useFileIntake } from "./Dropzone";
 import { FileBoard, type Item } from "./FileBoard";
 import { Options } from "./Options";
 import { PageBoard, type PageItem } from "./PageBoard";
@@ -49,7 +49,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
     fetch("/api/capabilities").then((r) => r.json()).then(setCaps).catch(() => setCaps(null));
   }, [tool.runtime]);
 
-  const addFiles = useCallback(async (incoming: File[]) => {
+  const addFiles = useCallback(async (incoming: File[], base?: Item[]) => {
     setError(null);
     const ok: File[] = [];
     for (const f of incoming) {
@@ -66,7 +66,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
       ok.push(f);
     }
     if (!ok.length) return;
-    const next = tool.multiple ? [...items, ...ok.map((file) => ({ id: uid(), file }))] : [{ id: uid(), file: ok[0] }];
+    const next = tool.multiple ? [...(base ?? items), ...ok.map((file) => ({ id: uid(), file }))] : [{ id: uid(), file: ok[0] }];
     const maxFiles = tool.mode === "compare" ? 2 : LIMITS.files;
     if (next.length > maxFiles) {
       setError({ text: t("ws.tooMany", { n: maxFiles }) });
@@ -128,6 +128,21 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
     setUrl("");
     setStage("select");
   };
+
+  // Files dropped or pasted anywhere, at any stage. On the result screen
+  // they start a new run; while one is running they're ignored.
+  const over = useFileIntake((incoming) => {
+    if (stage === "busy") return;
+    if (stage === "done") {
+      reset();
+      void addFiles(incoming, []);
+    } else void addFiles(incoming);
+  });
+  const dropHint = over && (
+    <div className="pointer-events-none fixed inset-0 z-50 grid place-items-center bg-[color-mix(in_oklab,var(--bg)_70%,transparent)]">
+      <p className="rounded-xl border border-dashed border-ink bg-surface px-6 py-4 text-[16px] font-medium shadow-card">{t("ws.dropActive")}</p>
+    </div>
+  );
 
   const fail = (e: unknown) => {
     // Typed errors (src/lib/pdf/errors.ts) name the file; a lone file is the one to blame otherwise.
@@ -242,7 +257,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
           <button className="btn btn-lg btn-primary">{t("tool.htmlToPdf.action")}</button>
         </form>
         <p className="my-6 text-center text-[14px] text-muted">{t("ws.orHtmlFile")}</p>
-        <Dropzone tool={tool} onFiles={addFiles} />
+        <Dropzone tool={tool} onFiles={addFiles} over={over} />
       </div>
     );
   }
@@ -257,7 +272,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
             <Scanner onCapture={(f) => addFiles([f])} />
           </div>
         )}
-        <Dropzone tool={tool} onFiles={addFiles} />
+        <Dropzone tool={tool} onFiles={addFiles} over={over} />
       </div>
     );
   }
@@ -266,6 +281,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   if (tool.mode === "compare") {
     return (
       <div>
+        {dropHint}
         {errorBox}
         <FileBoard items={items} onChange={(n) => { setItems(n); if (!n.length) setStage("select"); }} sortable>
           {items.length < 2 && <Dropzone tool={tool} onFiles={addFiles} compact />}
@@ -278,6 +294,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   if (tool.mode === "editor") {
     return (
       <div>
+        {dropHint}
         {errorBox}
         {tool.options.length > 0 && (
           <div className="mb-4 max-w-[420px]"><Options defs={tool.options} values={options} onChange={(k, v) => setOptions((o) => ({ ...o, [k]: v }))} /></div>
@@ -306,6 +323,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
 
   return (
     <div>
+      {dropHint}
       {warn}
       {errorBox}
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">

@@ -27,7 +27,8 @@
     "test:ocr-accuracy": "node tests/ocr-accuracy.mjs",
     "test:libreoffice": "node tests/libreoffice.mjs",
     "test:errors": "node tests/errors.mjs",
-    "test:e2e:errors": "node tests/e2e/errors.mjs"
+    "test:e2e:errors": "node tests/e2e/errors.mjs",
+    "test:e2e:intake": "node tests/e2e/intake.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -57,6 +57,9 @@ jobs:
       - name: Error messages
         if: success() || failure()
         run: npm run test:e2e:errors -- ${{ matrix.browser }}
+      - name: File intake
+        if: success() || failure()
+        run: npm run test:e2e:intake -- ${{ matrix.browser }}
 
   pdf:
     name: PDF engine tests

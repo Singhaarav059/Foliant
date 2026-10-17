@@ -6,7 +6,7 @@ import { useI18n } from "./I18n";
 import { useUser, postJson } from "./User";
 import { ToolIcon } from "./ToolIcon";
 import { Options } from "./workspace/Options";
-import { Dropzone } from "./workspace/Dropzone";
+import { Dropzone, useFileIntake } from "./workspace/Dropzone";
 import { Results } from "./workspace/Results";
 import { ErrorBox, useProblem, type Problem } from "./workspace/ErrorBox";
 import { defaultOptions, TOOLS, toolById, type ToolId } from "@/lib/tools";
@@ -56,6 +56,9 @@ export function Workflows() {
   const [error, setError] = useState<Problem | null>(null);
   const say = (text: string) => setError({ text });
   const [outputs, setOutputs] = useState<Output[] | null>(null);
+  const addFiles = (f: File[]) => setFiles((list) => [...list, ...f.filter((x) => /\.pdf$/i.test(x.name))]);
+  // Dropped or pasted anywhere on the page.
+  const over = useFileIntake(addFiles);
 
   const load = useCallback(async () => {
     if (user) {
@@ -209,7 +212,7 @@ export function Workflows() {
 
           <div className="mt-8 border-t border-line pt-6">
             {files.length === 0 ? (
-              <Dropzone tool={{ ...pdfTool, multiple: true }} onFiles={(f) => setFiles(f.filter((x) => /\.pdf$/i.test(x.name)))} />
+              <Dropzone tool={{ ...pdfTool, multiple: true }} onFiles={addFiles} over={over} />
             ) : (
               <div className="flex flex-wrap items-center gap-2">
                 {files.map((f) => <span key={f.name + f.size} className="rounded-md bg-surface-2 px-2.5 py-1 text-[13px]">{f.name}</span>)}
