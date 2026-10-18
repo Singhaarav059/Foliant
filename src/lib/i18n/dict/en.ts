@@ -550,6 +550,20 @@ const en = {
   "sec.b3": "Passwords are stored as bcrypt hashes. Sessions use signed, HTTP-only cookies. We store your email, name, saved workflows and a short list of tool names and file names you used.",
   "sec.h4": "Passwords for PDFs",
   "sec.b4": "Passwords you type into Protect or Unlock stay in your browser and are never saved, including in workflows.",
+  "sec.checkTitle": "Check it yourself",
+  "sec.check1": "Every page tells your browser to refuse connections to other sites, with a Content-Security-Policy you can read in the page's response headers. Your browser enforces it, not our code.",
+  "sec.check2": "Open your browser's developer tools, choose Network, and run a tool marked “Runs on your device”. No request carries your file, and none goes to another site.",
+  "sec.check3": "Or open a tool, disconnect from the internet or switch on airplane mode, and run it. On-device tools work the same without a connection.",
+  "sec.check4": "The chip on each tool page counts, live, the bytes the page has uploaded, the requests it made to other sites and the requests your browser blocked. The numbers come from your browser's own records of the page's traffic.",
+
+  // Privacy chip on tool pages (src/components/workspace/PrivacyChip.tsx)
+  "privacy.zero": "0 bytes uploaded",
+  "privacy.sent": "{size} uploaded",
+  "privacy.offsite": "Other sites: {n}",
+  "privacy.blocked": "Blocked: {n}",
+  "privacy.check": "Check it yourself",
+  "privacy.how": "Counted live by your browser since this page opened: bytes uploaded, requests to other sites and requests the browser blocked.",
+  "privacy.howPage": "Counted live by your browser since this page opened: requests to other sites and requests the browser blocked. Uploads are measured too once the offline cache is running.",
 
   "about.title": "About",
   "about.b1": "{brand} is a set of PDF tools built around one idea: your documents are yours. Wherever the work can happen on your own device, it does.",

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ShieldCheck, Server, ArrowRight } from "lucide-react";
 import { Workspace } from "@/components/workspace/Workspace";
+import { PrivacyChip } from "@/components/workspace/PrivacyChip";
 import { ToolIcon } from "@/components/ToolIcon";
 import { getDictionary, format, type Dict, type DictKey } from "@/lib/i18n/dictionary";
 import { hasLocale, LOCALE_CODES } from "@/lib/i18n/locales";
@@ -90,6 +91,7 @@ function ToolPage({ tool, t, lang }: { tool: Tool; t: Dict; lang: string }) {
           <Badge size={14} strokeWidth={1.75} className={tool.runtime === "browser" ? "text-success" : ""} />
           {tool.runtime === "browser" ? t["home.privateBadge"] : t["home.serverBadge"]}
         </p>
+        <div className="mt-3"><PrivacyChip /></div>
       </header>
 
       <Workspace toolId={tool.id} />
@@ -173,6 +175,12 @@ function InfoPage({ slug, t, lang }: { slug: Info; t: Dict; lang: string }) {
             <p className="mt-2 text-[16px] leading-relaxed text-ink-2">{k(`sec.b${n}`)}</p>
           </section>
         ))}
+        <section id="check" className="scroll-mt-24">
+          <h2 className="text-[18px] font-medium tracking-[-0.015em]">{t["sec.checkTitle"]}</h2>
+          <ol className="mt-2 list-decimal space-y-2 ps-5 text-[16px] leading-relaxed text-ink-2">
+            {[1, 2, 3, 4].map((n) => <li key={n}>{k(`sec.check${n}`)}</li>)}
+          </ol>
+        </section>
       </div>
     ), t["sec.subtitle"]);
   }

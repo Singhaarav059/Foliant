@@ -98,8 +98,10 @@ For the most faithful Office conversions, install LibreOffice and the fonts your
 ## Privacy notes
 
 - On-device tools never send files anywhere. Server tools (server build only) delete files as soon as the result is returned.
-- Everything, including OCR and fonts, is served from your own site. Nothing is loaded from a CDN.
+- Everything, including OCR and fonts, is served from your own site. Nothing is loaded from a CDN, and the static build fails if a page or stylesheet loads anything from another site.
 - No analytics, ads or tracking cookies.
+- The browser enforces it: every response carries a Content-Security-Policy (`security-headers.json`) that allows connections, scripts, images, fonts and frames only from the site itself (plus `blob:` and `data:`). The static build also puts a `<meta>` copy in every page for hosts that ignore `_headers`. LibreOffice's worker scripts get the same policy plus `'unsafe-eval'`, which its WebAssembly glue needs; a worker's policy comes from its own response, so pages don't get it. That rule uses Cloudflare's `! Header` syntax to replace the site-wide policy; on hosts without it, LibreOffice fails and Office files fall back to printing.
+- Each tool page shows a live count of what it has sent: bytes uploaded (measured by the service worker), requests to other sites (Resource Timing) and requests the policy blocked. `/{lang}/security#check` explains how to check it yourself.
 
 The privacy policy, terms and cookie pages in `src/lib/legal.ts` are drafts. They name the operator from the settings above; have them reviewed before going live.
 

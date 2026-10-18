@@ -5,14 +5,17 @@
 // (404.html is rendered by Next from src/app/global-not-found.static.tsx;
 // missing pages inside a language get /{lang}/404.html on hosts that look for
 // the nearest one. sitemap.xml and robots.txt come from route handlers.)
+// - A <meta> copy of the Content-Security-Policy in every page, for hosts
+//   that ignore _headers.
 // - .nojekyll: GitHub Pages otherwise runs Jekyll, which drops every path
 //   that starts with "_", including all of _next/.
 // - sw-manifest.json: what the service worker (public/sw.js) precaches for
 //   offline use: the app shell every page loads, plus the full list of build
 //   files so it can drop old ones. sw.js gets this build's id, so a deploy
 //   installs a fresh worker.
-// Then it fails the build if the site wouldn't deploy to Cloudflare Pages'
-// free plan (20,000 files, 25 MiB per file), with some headroom.
+// Then it fails the build if a page loads anything from another site, or if
+// the site wouldn't deploy to Cloudflare Pages' free plan (20,000 files,
+// 25 MiB per file), with some headroom.
 // Usage: node scripts/static-extras.mjs [dir=out]
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -23,8 +26,14 @@ const out = resolve(process.argv[2] ?? "out");
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const security = JSON.parse(readFileSync(join(root, "security-headers.json"), "utf8"));
 
+// LibreOffice's glue (embind) builds functions from strings, which the
+// policy forbids. A worker's policy comes from its own response, so its
+// scripts, and nothing else, get a copy that allows eval (see next.config.ts).
+const csp = security.find((h) => h.key === "Content-Security-Policy")?.value;
+if (!csp) throw new Error("security-headers.json: no Content-Security-Policy");
 const rules = [
   ["/*", security.map((h) => `${h.key}: ${h.value}`)],
+  ["/vendor/:build/libreoffice/*", ["! Content-Security-Policy", `Content-Security-Policy: ${csp.replace("script-src 'self'", "script-src 'self' 'unsafe-eval'")}`]],
   ["/sw.js", ["Cache-Control: no-cache"]],
   ["/sw-manifest.json", ["Cache-Control: no-cache"]],
   ["/_next/static/*", ["Cache-Control: public, max-age=31536000, immutable"]],
@@ -36,6 +45,41 @@ writeFileSync(join(out, ".nojekyll"), "");
 
 const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)]));
 const urlOf = (file) => "/" + relative(out, file).split(sep).join("/");
+
+// The Content-Security-Policy as a <meta> tag too, first in every page's
+// <head>, for hosts that ignore _headers (GitHub Pages). Browsers ignore
+// frame-ancestors there, so it's left out; framing stays the header's job.
+const metaCsp = `<meta http-equiv="Content-Security-Policy" content="${csp.split(/;\s*/).filter((d) => !d.startsWith("frame-ancestors")).join("; ")}"/>`;
+const pages = walk(out).filter((f) => f.endsWith(".html"));
+for (const file of pages) {
+  const html = readFileSync(file, "utf8");
+  const head = html.match(/<head(?:\s[^>]*)?>/i) ?? html.match(/^<!doctype html>/i);
+  const at = head ? head.index + head[0].length : 0;
+  writeFileSync(file, html.slice(0, at) + metaCsp + html.slice(at));
+}
+
+// Nothing the pages load may come from another site (the policy would block
+// it anyway): scripts, images, frames, stylesheets and preloads in the HTML,
+// and url()s in the CSS. Links and canonical URLs are only addresses.
+const offsite = [];
+const absolute = /^(?:https?:)?\/\//i;
+for (const file of pages) {
+  const html = readFileSync(file, "utf8");
+  for (const [tag] of html.matchAll(/<(?:script|img|iframe|source|video|audio|embed|link)\b[^>]*>/gi)) {
+    const attr = (name) => tag.match(new RegExp(`\\s${name}=["']?([^"'\\s>]+)`, "i"))?.[1];
+    if (/^<link/i.test(tag) && !/^(?:stylesheet|preload|modulepreload|icon|apple-touch-icon|manifest)$/i.test(attr("rel") ?? "")) continue;
+    for (const url of [attr("src"), attr("href"), ...(attr("srcset")?.split(",").map((s) => s.trim().split(/\s/)[0]) ?? [])]) {
+      if (url && absolute.test(url)) offsite.push(`${relative(out, file)}: ${url}`);
+    }
+  }
+}
+for (const file of walk(out).filter((f) => f.endsWith(".css"))) {
+  for (const [, url] of readFileSync(file, "utf8").matchAll(/url\(\s*["']?([^"')\s]+)/gi)) {
+    if (absolute.test(url)) offsite.push(`${relative(out, file)}: ${url}`);
+  }
+}
+for (const o of offsite) console.error(`static: loads from another site: ${o}`);
+if (offsite.length) process.exit(1);
 
 // Every build file, and the ones the pages themselves reference: their
 // scripts, stylesheets and preloaded fonts. Fonts for other scripts (CJK,

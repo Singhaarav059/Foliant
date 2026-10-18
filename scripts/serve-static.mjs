@@ -20,6 +20,7 @@ const isFile = (p) => existsSync(p) && statSync(p).isFile();
 // _headers: a path pattern on its own line, then indented "Name: value"
 // lines. "*" matches anything and ":name" one path segment. Every matching
 // rule applies, and a header set by several rules gets their values joined.
+// "! Name" drops what earlier rules set for that header (Cloudflare's detach).
 function parseHeaders(text) {
   const rules = [];
   for (const line of text.split("\n")) {
@@ -27,6 +28,8 @@ function parseHeaders(text) {
     if (!/^\s/.test(line)) {
       const source = line.trim().replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/:\w+/g, "[^/]+");
       rules.push({ match: new RegExp(`^${source}$`), headers: [] });
+    } else if (rules.length && line.trim().startsWith("!")) {
+      rules.at(-1).headers.push([line.trim().slice(1).trim(), null]);
     } else if (rules.length) {
       const at = line.indexOf(":");
       if (at > 0) rules.at(-1).headers.push([line.slice(0, at).trim(), line.slice(at + 1).trim()]);
@@ -35,7 +38,10 @@ function parseHeaders(text) {
   return (path) => {
     const out = {};
     for (const rule of rules.filter((r) => r.match.test(path))) {
-      for (const [name, value] of rule.headers) out[name] = out[name] ? `${out[name]}, ${value}` : value;
+      for (const [name, value] of rule.headers) {
+        if (value === null) delete out[name];
+        else out[name] = out[name] ? `${out[name]}, ${value}` : value;
+      }
     }
     return out;
   };

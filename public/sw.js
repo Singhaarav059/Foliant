@@ -104,9 +104,24 @@ function keep(event, req, res) {
   event.waitUntil(caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {}));
 }
 
+// The privacy chip (src/lib/egress.ts): tells the site's open tabs about
+// every request, the page's or one of its workers', that goes to another
+// site or carries a body, with the body's size. Reading a copy of the body
+// leaves the request itself as it was.
+function report(event, req, url) {
+  const offsite = url.origin !== location.origin && /^(?:https?|wss?):$/.test(url.protocol);
+  const body = req.method !== "GET" && req.method !== "HEAD";
+  if (!offsite && !body) return;
+  event.waitUntil((async () => {
+    const bytes = body ? await req.clone().arrayBuffer().then((b) => b.byteLength, () => 0) : 0;
+    for (const client of await self.clients.matchAll({ type: "window" })) client.postMessage({ type: "nopload:egress", url: req.url, bytes });
+  })());
+}
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   const url = new URL(req.url);
+  report(event, req, url);
   if (req.method !== "GET" || url.origin !== location.origin || url.pathname.startsWith("/api/")) return;
   // OCR language files are large and tesseract.js keeps its own IndexedDB copy.
   if (url.pathname.startsWith("/vendor/") && url.pathname.includes("/tessdata/")) return;

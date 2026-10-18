@@ -20,6 +20,16 @@ if (process.env.NOPLOAD_RELEASE === "1" && releaseGaps().length) {
 // Source code and issue links, from package.json unless set.
 const REPO_URL = process.env.NEXT_PUBLIC_REPO_URL || pkg.repository.url.replace(/^git\+/, "").replace(/\.git$/, "");
 
+// The Content-Security-Policy, allowing eval: for next dev, which runs React's
+// debugging code through it, and for LibreOffice's worker scripts, whose glue
+// (embind) builds functions from strings. A worker's policy comes from its
+// own response, so pages stay without it (scripts/static-extras.mjs does the
+// same for static hosts).
+const withEval = securityHeaders.map((h) =>
+  h.key === "Content-Security-Policy" ? { ...h, value: h.value.replace("script-src 'self'", "script-src 'self' 'unsafe-eval'") } : h,
+);
+const evalCsp = withEval.filter((h) => h.key === "Content-Security-Policy");
+
 const nextConfig: NextConfig = {
   // Both imply partial prerendering, which static exports can't do.
   cacheComponents: !STATIC,
@@ -52,7 +62,9 @@ const nextConfig: NextConfig = {
     : {
         async headers() {
           return [
-            { source: "/:path*", headers: securityHeaders },
+            { source: "/:path*", headers: process.env.NODE_ENV === "development" ? withEval : securityHeaders },
+            // Last, so it replaces the policy above (Next keeps the last value per header).
+            { source: "/vendor/:build/libreoffice/:file*", headers: evalCsp },
             { source: "/sw.js", headers: [{ key: "Cache-Control", value: "no-cache" }] },
           ];
         },

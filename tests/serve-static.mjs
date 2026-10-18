@@ -33,7 +33,7 @@ mkdirSync(join(out, "en"));
 writeFileSync(join(out, "en.html"), "english");
 writeFileSync(join(out, "en", "404.html"), "english 404");
 writeFileSync(join(out, "404.html"), "404");
-writeFileSync(join(out, "_headers"), "/*\n  Cross-Origin-Opener-Policy: same-origin\n/en/*\n  X-Lang: en\n");
+writeFileSync(join(out, "_headers"), "/*\n  Cross-Origin-Opener-Policy: same-origin\n/en/*\n  X-Lang: en\n/en/:part/own/*\n  ! X-Lang\n  X-Lang: own\n");
 
 // Port 0: the system picks a free one, and the server says which.
 const server = spawn(process.execPath, [join(root, "scripts/serve-static.mjs"), out, "0"], { stdio: ["ignore", "pipe", "pipe"] });
@@ -70,6 +70,14 @@ await test("a missing page gets the nearest 404.html and its path's headers", as
   eq(r.status, 404, "status");
   eq(r.body, "english 404", "body");
   eq(r.headers["x-lang"], "en", "X-Lang");
+});
+
+// "! Name" drops a header earlier rules set (Cloudflare Pages' detach), so a
+// later rule can replace it instead of having its value joined on.
+await test("a rule can detach a header and set its own", async () => {
+  const r = await get("/en/x/own/no-such-file");
+  eq(r.headers["x-lang"], "own", "X-Lang");
+  eq(r.headers["cross-origin-opener-policy"], "same-origin", "COOP kept");
 });
 
 for (const path of ["//", "/%E0%A4%A"]) {
