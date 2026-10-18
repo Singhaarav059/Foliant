@@ -275,6 +275,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "Dat wachtwoord klopt niet. Controleer het en probeer het opnieuw.",
   "ws.officeReload": "Hoge getrouwheid vraagt om een vers geladen pagina. Laad de pagina opnieuw en probeer het nog eens.",
   "ws.officeMemory": "Dit apparaat heeft niet genoeg vrij geheugen voor hoge getrouwheid. Probeer Standaard of een computer.",
+  "ws.officeStalled": "Hoge getrouwheid reageert niet meer in deze browser. Probeer Standaard of een andere browser.",
   "ws.officeConsentTitle": "Eenmalige download voor een echt pdf-bestand",
   "ws.officeConsentBody": "LibreOffice maakt de pdf hier in je browser. De eerste keer wordt 79 MB gedownload, daarna blijft het op dit apparaat. Je bestand verlaat het nooit.",
   "ws.officeConsentYes": "Downloaden en converteren",

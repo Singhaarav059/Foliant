@@ -275,6 +275,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "Ce mot de passe est incorrect. Vérifiez-le et réessayez.",
   "ws.officeReload": "La haute fidélité nécessite de recharger la page. Rechargez-la puis réessayez.",
   "ws.officeMemory": "Cet appareil n’a pas assez de mémoire libre pour la haute fidélité. Essayez Standard ou un ordinateur.",
+  "ws.officeStalled": "La haute fidélité ne répond plus dans ce navigateur. Essayez Standard ou un autre navigateur.",
   "ws.officeConsentTitle": "Téléchargement unique pour un vrai fichier PDF",
   "ws.officeConsentBody": "LibreOffice crée le PDF directement dans votre navigateur. 79 Mo sont téléchargés la première fois, puis restent sur cet appareil. Votre fichier ne le quitte jamais.",
   "ws.officeConsentYes": "Télécharger et convertir",

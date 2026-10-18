@@ -275,6 +275,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "Nieprawidłowe hasło. Sprawdź je i spróbuj ponownie.",
   "ws.officeReload": "Wysoka wierność wymaga ponownego wczytania strony. Odśwież stronę i spróbuj jeszcze raz.",
   "ws.officeMemory": "To urządzenie nie ma dość wolnej pamięci na wysoką wierność. Wybierz standardową albo użyj komputera.",
+  "ws.officeStalled": "Wysoka wierność przestała odpowiadać w tej przeglądarce. Wybierz standardową albo użyj innej przeglądarki.",
   "ws.officeConsentTitle": "Jednorazowe pobranie, by dostać prawdziwy plik PDF",
   "ws.officeConsentBody": "LibreOffice tworzy PDF bezpośrednio w przeglądarce. Za pierwszym razem pobiera 79 MB, które zostają na tym urządzeniu. Twój plik nigdy go nie opuszcza.",
   "ws.officeConsentYes": "Pobierz i konwertuj",

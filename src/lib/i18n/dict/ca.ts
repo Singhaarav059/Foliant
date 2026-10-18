@@ -275,6 +275,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "La contrasenya no és correcta. Revisa-la i torna-ho a provar.",
   "ws.officeReload": "L’alta fidelitat necessita tornar a carregar la pàgina. Torna-la a carregar i prova-ho de nou.",
   "ws.officeMemory": "Aquest dispositiu no té prou memòria lliure per a l’alta fidelitat. Prova l’estàndard o un ordinador.",
+  "ws.officeStalled": "L’alta fidelitat ha deixat de respondre en aquest navegador. Prova l’estàndard o un altre navegador.",
   "ws.officeConsentTitle": "Baixada única per obtenir un fitxer PDF de veritat",
   "ws.officeConsentBody": "El LibreOffice crea el PDF aquí mateix, al navegador. La primera vegada es baixen 79 MB, que es queden en aquest dispositiu. El fitxer no en surt mai.",
   "ws.officeConsentYes": "Baixa i converteix",

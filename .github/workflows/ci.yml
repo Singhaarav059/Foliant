@@ -86,6 +86,9 @@ jobs:
         env:
           CHROME_PATH: /usr/bin/google-chrome
       - run: npm run test:office-route
+      - run: npm run test:office-run
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
       - run: npm run test:libreoffice
       - run: npm run test:ocr-accuracy
         env:

@@ -275,6 +275,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "Nenosiri si sahihi. Likague kisha ujaribu tena.",
   "ws.officeReload": "Uaminifu wa juu unahitaji kupakia ukurasa upya. Pakia upya kisha ujaribu tena.",
   "ws.officeMemory": "Kifaa hiki hakina kumbukumbu ya kutosha kwa uaminifu wa juu. Jaribu Kawaida au tumia kompyuta.",
+  "ws.officeStalled": "Uaminifu wa juu umeacha kujibu katika kivinjari hiki. Jaribu Kawaida au kivinjari kingine.",
   "ws.officeConsentTitle": "Upakuaji wa mara moja kwa faili halisi la PDF",
   "ws.officeConsentBody": "LibreOffice hutengeneza PDF hapa hapa kwenye kivinjari chako. Mara ya kwanza MB 79 hupakuliwa, kisha hubaki kwenye kifaa hiki. Faili lako haliondoki kamwe.",
   "ws.officeConsentYes": "Pakua na ubadilishe",

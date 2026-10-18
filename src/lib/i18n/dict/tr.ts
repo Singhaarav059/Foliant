@@ -275,6 +275,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "Parola yanlış. Kontrol edip yeniden deneyin.",
   "ws.officeReload": "Yüksek uygunluk için sayfanın yeniden yüklenmesi gerekir. Sayfayı yenileyip tekrar deneyin.",
   "ws.officeMemory": "Bu cihazda yüksek uygunluk için yeterli boş bellek yok. Standart’ı deneyin ya da bir bilgisayar kullanın.",
+  "ws.officeStalled": "Yüksek uygunluk bu tarayıcıda yanıt vermeyi durdurdu. Standart’ı deneyin ya da başka bir tarayıcı kullanın.",
   "ws.officeConsentTitle": "Gerçek bir PDF dosyası için tek seferlik indirme",
   "ws.officeConsentBody": "LibreOffice PDF'yi doğrudan tarayıcınızda oluşturur. İlk seferde 79 MB indirilir ve bu cihazda kalır. Dosyanız cihazdan hiç çıkmaz.",
   "ws.officeConsentYes": "İndir ve dönüştür",

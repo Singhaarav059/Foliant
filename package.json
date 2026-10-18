@@ -26,6 +26,7 @@
     "test:redact": "node tests/redact.mjs",
     "test:office": "node tests/office.mjs",
     "test:office-route": "node tests/office-route.mjs",
+    "test:office-run": "node tests/office-run.mjs",
     "test:pdfa": "node tests/pdfa.mjs",
     "test:ocr-accuracy": "node tests/ocr-accuracy.mjs",
     "test:libreoffice": "node tests/libreoffice.mjs"

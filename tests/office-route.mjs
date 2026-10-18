@@ -16,7 +16,7 @@ const { officeRoute } = await import(pathToFileURL(join(out, "office/route.js"))
 const results = { failed: 0 };
 const test = check(results);
 
-const desktop = { isolated: false, worker: true, reloaded: false, phone: false, memory: 8 };
+const desktop = { isolated: false, worker: true, reloaded: false, phone: false, webkit: false, memory: 8 };
 const route = (fidelity, names, env = {}) => officeRoute(fidelity, names, { ...desktop, ...env });
 
 await test("automatic makes a real PDF on a computer", () => {
@@ -28,6 +28,14 @@ await test("automatic makes a real PDF on a computer", () => {
 await test("automatic prints on phones and small devices", () => {
   eq(route("auto", ["plan.pptx"], { phone: true, isolated: true }), "print", "phone");
   eq(route("auto", ["budget.xlsx"], { memory: 2, isolated: true }), "print", "2 GB");
+  eq(route("auto", ["budget.xlsx"], { memory: 4, isolated: true }), "libreoffice", "4 GB is enough");
+});
+
+// LibreOffice doesn't start in WebKit yet: Automatic doesn't wait on it there.
+await test("automatic prints in Safari, high still tries LibreOffice", () => {
+  eq(route("auto", ["brief.docx"], { webkit: true, isolated: true }), "print", "automatic");
+  eq(route("high", ["brief.docx"], { webkit: true, isolated: true }), "libreoffice", "high");
+  eq(route("auto", ["old.doc"], { webkit: true, isolated: true }), "libreoffice", "a .doc");
 });
 
 await test("automatic prints where LibreOffice can't run", () => {

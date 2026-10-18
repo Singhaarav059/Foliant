@@ -275,6 +275,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "비밀번호가 틀렸습니다. 확인 후 다시 시도하세요.",
   "ws.officeReload": "높은 충실도를 쓰려면 페이지를 새로 불러와야 합니다. 새로 고친 뒤 다시 시도하세요.",
   "ws.officeMemory": "이 기기에는 높은 충실도에 필요한 여유 메모리가 부족합니다. 표준을 쓰거나 컴퓨터를 이용하세요.",
+  "ws.officeStalled": "이 브라우저에서 높은 충실도가 응답하지 않습니다. 표준을 쓰거나 다른 브라우저를 이용하세요.",
   "ws.officeConsentTitle": "실제 PDF 파일을 위한 한 번의 다운로드",
   "ws.officeConsentBody": "LibreOffice가 브라우저 안에서 바로 PDF를 만듭니다. 처음 한 번 79MB를 다운로드하고, 이후에는 이 기기에 저장됩니다. 파일은 기기 밖으로 나가지 않습니다.",
   "ws.officeConsentYes": "다운로드 후 변환",

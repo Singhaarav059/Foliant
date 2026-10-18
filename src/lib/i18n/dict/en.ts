@@ -290,6 +290,7 @@ const en = {
   "ws.wrongPassword": "That password is wrong. Check it and try again.",
   "ws.officeReload": "High fidelity needs a fresh page load. Reload the page and try again.",
   "ws.officeMemory": "This device doesn't have enough free memory for high fidelity. Try Standard, or use a computer.",
+  "ws.officeStalled": "High fidelity stopped responding in this browser. Try Standard, or another browser.",
   "ws.officeConsentTitle": "One-time download for a real PDF file",
   "ws.officeConsentBody": "LibreOffice makes the PDF right here in your browser. It's a 79 MB download the first time, then it stays on this device. Your file never leaves it.",
   "ws.officeConsentYes": "Download and convert",

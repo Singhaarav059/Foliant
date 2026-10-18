@@ -275,6 +275,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "Kata laluan itu salah. Semak dan cuba lagi.",
   "ws.officeReload": "Ketepatan tinggi perlukan halaman dimuat semula. Muat semula halaman dan cuba lagi.",
   "ws.officeMemory": "Peranti ini tiada memori kosong yang cukup untuk ketepatan tinggi. Cuba Standard atau guna komputer.",
+  "ws.officeStalled": "Ketepatan tinggi berhenti bertindak balas dalam pelayar ini. Cuba Standard atau pelayar lain.",
   "ws.officeConsentTitle": "Muat turun sekali untuk fail PDF sebenar",
   "ws.officeConsentBody": "LibreOffice membuat PDF terus dalam pelayar anda. Kali pertama, 79 MB dimuat turun dan kekal pada peranti ini. Fail anda tidak pernah meninggalkannya.",
   "ws.officeConsentYes": "Muat turun dan tukar",

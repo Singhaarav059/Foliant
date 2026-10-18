@@ -275,6 +275,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "Fel lösenord. Kontrollera det och försök igen.",
   "ws.officeReload": "Hög återgivning kräver att sidan laddas om. Ladda om sidan och försök igen.",
   "ws.officeMemory": "Enheten har inte tillräckligt med ledigt minne för hög återgivning. Prova Standard eller en dator.",
+  "ws.officeStalled": "Hög återgivning slutade svara i den här webbläsaren. Prova Standard eller en annan webbläsare.",
   "ws.officeConsentTitle": "Engångsnedladdning för en riktig PDF-fil",
   "ws.officeConsentBody": "LibreOffice skapar PDF:en direkt i webbläsaren. Första gången laddas 79 MB ned, sedan ligger det kvar på enheten. Din fil lämnar den aldrig.",
   "ws.officeConsentYes": "Ladda ned och konvertera",

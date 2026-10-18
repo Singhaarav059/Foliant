@@ -275,6 +275,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "密碼不正確，請確認後再試一次。",
   "ws.officeReload": "高還原度需要重新載入頁面。請重新整理頁面後再試一次。",
   "ws.officeMemory": "此裝置的可用記憶體不足以使用高還原度。請改用標準模式或使用電腦。",
+  "ws.officeStalled": "高還原度在此瀏覽器中停止回應。請改用標準模式或其他瀏覽器。",
   "ws.officeConsentTitle": "一次性下載，產生真正的 PDF 檔案",
   "ws.officeConsentBody": "LibreOffice 直接在瀏覽器中產生 PDF。首次需下載 79 MB，之後會保存在此裝置上。你的檔案始終不會離開裝置。",
   "ws.officeConsentYes": "下載並轉換",

@@ -35,9 +35,14 @@ async function tx<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => ID
 
 export const saveJob = (job: Omit<Job, "at">) => tx("readwrite", (s) => s.put({ ...job, at: Date.now() }, job.tool)).then(() => undefined);
 
+// The job saved for `tool`, if it's fresh; it stays until clearJob. Stale jobs,
+// this tool's or any other's (a tab closed mid-reload), are deleted on the way:
+// the user's files don't stay behind on the computer.
 export async function peekJob(tool: string): Promise<Job | null> {
-  const job = (await tx("readonly", (s) => s.get(tool))) as Job | undefined;
-  return job && Date.now() - job.at < FRESH_MS ? job : null;
+  const jobs = (await tx("readonly", (s) => s.getAll())) as Job[];
+  const stale = jobs.filter((j) => !(Date.now() - j.at < FRESH_MS));
+  await Promise.all(stale.map((j) => clearJob(j.tool)));
+  return jobs.find((j) => j.tool === tool && !stale.includes(j)) ?? null;
 }
 
 export const clearJob = (tool: string) => tx("readwrite", (s) => s.delete(tool)).then(() => undefined);

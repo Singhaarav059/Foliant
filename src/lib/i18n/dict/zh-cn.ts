@@ -275,6 +275,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "密码不正确，请检查后重试。",
   "ws.officeReload": "高还原度需要重新加载页面。请刷新页面后再试。",
   "ws.officeMemory": "此设备的可用内存不足以使用高还原度。请改用标准模式或使用电脑。",
+  "ws.officeStalled": "高还原度在此浏览器中停止响应。请改用标准模式或其他浏览器。",
   "ws.officeConsentTitle": "一次性下载，生成真正的 PDF 文件",
   "ws.officeConsentBody": "LibreOffice 直接在浏览器中生成 PDF。首次需下载 79 MB，之后保存在此设备上。你的文件始终不会离开设备。",
   "ws.officeConsentYes": "下载并转换",

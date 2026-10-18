@@ -275,6 +275,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "パスワードが違います。確認してもう一度お試しください。",
   "ws.officeReload": "高忠実度にはページの再読み込みが必要です。再読み込みしてからもう一度お試しください。",
   "ws.officeMemory": "この端末には高忠実度に必要な空きメモリーがありません。標準を使うか、パソコンでお試しください。",
+  "ws.officeStalled": "このブラウザーでは高忠実度が応答しなくなりました。標準を使うか、別のブラウザーでお試しください。",
   "ws.officeConsentTitle": "本物の PDF ファイルのための初回のみのダウンロード",
   "ws.officeConsentBody": "LibreOffice がブラウザー内で PDF を作成します。初回のみ 79 MB をダウンロードし、以後はこの端末に保存されます。ファイルが外部に送られることはありません。",
   "ws.officeConsentYes": "ダウンロードして変換",

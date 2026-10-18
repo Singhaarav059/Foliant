@@ -275,6 +275,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "La password non è corretta. Controllala e riprova.",
   "ws.officeReload": "L’alta fedeltà richiede di ricaricare la pagina. Ricaricala e riprova.",
   "ws.officeMemory": "Questo dispositivo non ha abbastanza memoria libera per l’alta fedeltà. Prova Standard o usa un computer.",
+  "ws.officeStalled": "L’alta fedeltà ha smesso di rispondere in questo browser. Prova Standard o un altro browser.",
   "ws.officeConsentTitle": "Download una tantum per un vero file PDF",
   "ws.officeConsentBody": "LibreOffice crea il PDF direttamente nel browser. La prima volta scarica 79 MB, che restano su questo dispositivo. Il tuo file non lo lascia mai.",
   "ws.officeConsentYes": "Scarica e converti",

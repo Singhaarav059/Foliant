@@ -275,6 +275,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "Kata sandi salah. Periksa lalu coba lagi.",
   "ws.officeReload": "Ketepatan tinggi perlu halaman dimuat ulang. Muat ulang halaman lalu coba lagi.",
   "ws.officeMemory": "Memori kosong di perangkat ini tidak cukup untuk ketepatan tinggi. Coba Standar atau gunakan komputer.",
+  "ws.officeStalled": "Ketepatan tinggi berhenti merespons di browser ini. Coba Standar atau browser lain.",
   "ws.officeConsentTitle": "Unduhan sekali untuk file PDF sungguhan",
   "ws.officeConsentBody": "LibreOffice membuat PDF langsung di browser Anda. Pertama kali, 79 MB diunduh lalu disimpan di perangkat ini. File Anda tidak pernah keluar dari perangkat.",
   "ws.officeConsentYes": "Unduh dan konversi",

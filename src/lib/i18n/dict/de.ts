@@ -275,6 +275,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "Das Passwort ist falsch. Prüfe es und versuche es erneut.",
   "ws.officeReload": "Hohe Genauigkeit braucht ein frisches Laden der Seite. Laden Sie die Seite neu und versuchen Sie es erneut.",
   "ws.officeMemory": "Auf diesem Gerät ist nicht genug Speicher frei. Nutzen Sie „Standard“ oder einen Computer.",
+  "ws.officeStalled": "Die hohe Wiedergabetreue reagiert in diesem Browser nicht mehr. Nutzen Sie „Standard“ oder einen anderen Browser.",
   "ws.officeConsentTitle": "Einmaliger Download für eine echte PDF-Datei",
   "ws.officeConsentBody": "LibreOffice erstellt die PDF direkt in deinem Browser. Beim ersten Mal werden 79 MB geladen, danach bleibt es auf diesem Gerät. Deine Datei verlässt es nie.",
   "ws.officeConsentYes": "Herunterladen und umwandeln",

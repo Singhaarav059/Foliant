@@ -275,6 +275,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "Mật khẩu không đúng. Hãy kiểm tra và thử lại.",
   "ws.officeReload": "Độ trung thực cao cần tải lại trang. Hãy tải lại trang rồi thử lại.",
   "ws.officeMemory": "Thiết bị này không đủ bộ nhớ trống cho độ trung thực cao. Hãy thử Tiêu chuẩn hoặc dùng máy tính.",
+  "ws.officeStalled": "Độ trung thực cao đã ngừng phản hồi trên trình duyệt này. Hãy thử Tiêu chuẩn hoặc trình duyệt khác.",
   "ws.officeConsentTitle": "Tải một lần để có tệp PDF thật",
   "ws.officeConsentBody": "LibreOffice tạo PDF ngay trong trình duyệt của bạn. Lần đầu cần tải 79 MB, sau đó được giữ trên thiết bị này. Tệp của bạn không bao giờ rời khỏi máy.",
   "ws.officeConsentYes": "Tải về và chuyển đổi",

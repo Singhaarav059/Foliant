@@ -275,6 +275,7 @@ const d: { [K in DictKey]?: string } = {
   "ws.wrongPassword": "La contraseña no es correcta. Revísala e inténtalo de nuevo.",
   "ws.officeReload": "La alta fidelidad necesita recargar la página. Recárgala e inténtalo de nuevo.",
   "ws.officeMemory": "Este dispositivo no tiene memoria libre suficiente para alta fidelidad. Prueba Estándar o usa un ordenador.",
+  "ws.officeStalled": "La alta fidelidad dejó de responder en este navegador. Prueba Estándar u otro navegador.",
   "ws.officeConsentTitle": "Descarga única para un archivo PDF de verdad",
   "ws.officeConsentBody": "LibreOffice crea el PDF aquí mismo, en tu navegador. La primera vez se descargan 79 MB, que se quedan en este dispositivo. Tu archivo nunca sale de él.",
   "ws.officeConsentYes": "Descargar y convertir",
