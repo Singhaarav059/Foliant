@@ -10,6 +10,7 @@ const d: { [K in DictKey]?: string } = {
   "nav.language": "Ngôn ngữ",
   "nav.menu": "Menu",
   "nav.close": "Đóng",
+  "handoff.pick": "Đã mở {name}. Hãy chọn một công cụ.",
   "nav.skip": "Chuyển đến nội dung",
   "home.title": "Mọi công cụ PDF bạn cần, ở cùng một nơi",
   "home.subtitle": "Gộp, tách, nén, chuyển đổi, ký và chỉnh sửa PDF. Hầu hết công cụ chạy hoàn toàn trong trình duyệt, nên tệp của bạn không bao giờ rời khỏi thiết bị.",

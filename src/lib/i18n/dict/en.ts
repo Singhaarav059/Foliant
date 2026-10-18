@@ -11,6 +11,7 @@ const en = {
   "nav.language": "Language",
   "nav.menu": "Menu",
   "nav.close": "Close",
+  "handoff.pick": "{name} is open. Pick a tool for it.",
   "nav.skip": "Skip to content",
 
   // Home

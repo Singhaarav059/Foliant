@@ -32,10 +32,12 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   const { t, tOr } = useI18n();
   const problem = useProblem();
   const { user } = useUser();
-  // Files handed over from the previous tool's result start the workspace pre-filled.
-  const [items, setItems] = useState<Item[]>(() => (peekHandoff() ?? []).map((file) => ({ id: uid(), file })));
+  // Files handed over from the previous tool's result, or from the browser
+  // add-on, start the workspace pre-filled, when this tool takes them.
+  const handed = () => (peekHandoff() ?? []).filter((f) => tool.accept.includes(fileExt(f.name)));
+  const [items, setItems] = useState<Item[]>(() => handed().map((file) => ({ id: uid(), file })));
   const [options, setOptions] = useState<Record<string, unknown>>(() => defaultOptions(tool));
-  const [stage, setStage] = useState<Stage>(() => (peekHandoff()?.length ? "work" : "select"));
+  const [stage, setStage] = useState<Stage>(() => (handed().length ? "work" : "select"));
   const [progress, setProgress] = useState<{ value: number; label?: string }>({ value: 0 });
   const [outputs, setOutputs] = useState<Output[]>([]);
   const [error, setError] = useState<Problem | null>(null);

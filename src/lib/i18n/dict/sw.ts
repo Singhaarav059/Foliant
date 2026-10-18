@@ -10,6 +10,7 @@ const d: { [K in DictKey]?: string } = {
   "nav.language": "Lugha",
   "nav.menu": "Menyu",
   "nav.close": "Funga",
+  "handoff.pick": "{name} imefunguliwa. Chagua zana ya kuitumia.",
   "nav.skip": "Ruka hadi maudhui",
   "home.title": "Kila zana ya PDF unayohitaji, mahali pamoja",
   "home.subtitle": "Unganisha, gawanya, punguza ukubwa, badilisha, tia sahihi na hariri PDF. Zana nyingi hufanya kazi ndani ya kivinjari chako kabisa, kwa hivyo faili zako hazitoki kwenye kifaa chako.",

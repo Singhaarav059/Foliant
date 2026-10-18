@@ -10,6 +10,7 @@ const d: { [K in DictKey]?: string } = {
   "nav.language": "언어",
   "nav.menu": "메뉴",
   "nav.close": "닫기",
+  "handoff.pick": "{name} 파일을 열었습니다. 사용할 도구를 선택하세요.",
   "nav.skip": "본문으로 건너뛰기",
   "home.title": "필요한 모든 PDF 도구를 한곳에서",
   "home.subtitle": "PDF를 합치고, 나누고, 압축하고, 변환하고, 서명하고, 편집하세요. 대부분의 도구가 브라우저 안에서만 동작하므로 파일이 기기를 떠나지 않습니다.",

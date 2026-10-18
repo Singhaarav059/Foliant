@@ -10,6 +10,7 @@ const d: { [K in DictKey]?: string } = {
   "nav.language": "Dil",
   "nav.menu": "Menü",
   "nav.close": "Kapat",
+  "handoff.pick": "{name} açıldı. Bunun için bir araç seçin.",
   "nav.skip": "İçeriğe geç",
   "home.title": "İhtiyacınız olan tüm PDF araçları tek bir yerde",
   "home.subtitle": "PDF’leri birleştirin, bölün, sıkıştırın, dönüştürün, imzalayın ve düzenleyin. Araçların çoğu tamamen tarayıcınızda çalışır, böylece dosyalarınız cihazınızdan hiç çıkmaz.",

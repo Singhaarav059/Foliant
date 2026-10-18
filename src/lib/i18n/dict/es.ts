@@ -10,6 +10,7 @@ const d: { [K in DictKey]?: string } = {
   "nav.language": "Idioma",
   "nav.menu": "Menú",
   "nav.close": "Cerrar",
+  "handoff.pick": "{name} está abierto. Elige una herramienta para él.",
   "nav.skip": "Ir al contenido",
   "home.title": "Todas las herramientas PDF que necesitas, en un solo lugar",
   "home.subtitle": "Une, divide, comprime, convierte, firma y edita PDF. La mayoría de las herramientas funcionan por completo en tu navegador, así que tus archivos nunca salen de tu dispositivo.",

@@ -10,6 +10,7 @@ const d: { [K in DictKey]?: string } = {
   "nav.language": "Bahasa",
   "nav.menu": "Menu",
   "nav.close": "Tutup",
+  "handoff.pick": "{name} telah dibuka. Pilih alat untuknya.",
   "nav.skip": "Langkau ke kandungan",
   "home.title": "Semua alat PDF yang anda perlukan, di satu tempat",
   "home.subtitle": "Gabung, pisah, mampat, tukar, tandatangan dan edit PDF. Kebanyakan alat berjalan sepenuhnya dalam pelayar anda, jadi fail anda tidak pernah meninggalkan peranti.",

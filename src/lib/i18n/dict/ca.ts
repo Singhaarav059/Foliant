@@ -10,6 +10,7 @@ const d: { [K in DictKey]?: string } = {
   "nav.language": "Llengua",
   "nav.menu": "Menú",
   "nav.close": "Tanca",
+  "handoff.pick": "S'ha obert {name}. Tria una eina per a aquest fitxer.",
   "nav.skip": "Vés al contingut",
   "home.title": "Totes les eines PDF que necessites, en un sol lloc",
   "home.subtitle": "Uneix, divideix, comprimeix, converteix, signa i edita PDF. La majoria d’eines funcionen del tot al navegador, de manera que els fitxers mai no surten del teu dispositiu.",

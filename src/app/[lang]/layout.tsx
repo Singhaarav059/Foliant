@@ -7,6 +7,7 @@ import { UserProvider } from "@/components/User";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { ServiceWorker } from "@/components/ServiceWorker";
+import { ExtensionHandoff } from "@/components/ExtensionHandoff";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { hasLocale, isRtl, LOCALE_CODES } from "@/lib/i18n/locales";
 import { BRAND, SITE_URL } from "@/lib/brand";
@@ -57,7 +58,10 @@ export default async function RootLayout({ children, params }: LayoutProps<"/[la
               {dict["nav.skip"]}
             </a>
             <Header />
-            <main id="main" className="flex-1">{children}</main>
+            <main id="main" className="flex-1">
+              <ExtensionHandoff />
+              {children}
+            </main>
             <Footer />
             <ServiceWorker />
           </UserProvider>

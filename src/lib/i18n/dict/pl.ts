@@ -10,6 +10,7 @@ const d: { [K in DictKey]?: string } = {
   "nav.language": "Język",
   "nav.menu": "Menu",
   "nav.close": "Zamknij",
+  "handoff.pick": "Otwarto {name}. Wybierz narzędzie.",
   "nav.skip": "Przejdź do treści",
   "home.title": "Wszystkie potrzebne narzędzia PDF w jednym miejscu",
   "home.subtitle": "Łącz, dziel, kompresuj, konwertuj, podpisuj i edytuj pliki PDF. Większość narzędzi działa w całości w przeglądarce, więc pliki nigdy nie opuszczają Twojego urządzenia.",
