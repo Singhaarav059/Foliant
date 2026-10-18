@@ -98,6 +98,31 @@ for (const [name, pages] of [["garbage-prefix.pdf", 3], ["deep-tree.pdf", 1], ["
   });
 }
 
+// The same with object streams, as pdf-lib and most writers save by
+// default: pdf-lib can't rebuild an encrypted one, so Unlock decrypts it
+// before any repair.
+await test("Unlock takes a damaged protected file that keeps its objects in object streams", async () => {
+  const { PDFDocument, StandardFonts } = await import("pdf-lib");
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  for (let i = 0; i < 3; i++) doc.addPage([300, 300]).drawText(`PAGE${i}`, { x: 20, y: 150, size: 20, font });
+  const [out] = await protect(file(await doc.save({ useObjectStreams: true }), "streams.pdf"), { password: "pw", ...options });
+  const bytes = new Uint8Array(await out.blob.arrayBuffer());
+  eq(Buffer.from(bytes).includes("/ObjStm"), true, "object streams in the protected file");
+  for (const [damage, broken] of [
+    ["junk before the header", new Uint8Array([...new TextEncoder().encode("JUNK ".repeat(300)), ...bytes])],
+    ["a wrong startxref", (() => {
+      const text = Buffer.from(bytes).toString("latin1");
+      return Buffer.from(`${text.slice(0, text.lastIndexOf("startxref"))}startxref\n99999999\n%%EOF\n`, "latin1");
+    })()],
+    ["a damaged cross-reference stream", Buffer.from(Buffer.from(bytes).toString("latin1").replace("/Type /XRef", "/Type /XRxx"), "latin1")],
+  ]) {
+    eq(await opens(broken, "pw"), 3, `${damage}: pdf.js opens it with the password`);
+    const [open] = await unlock(file(broken, "locked.pdf"), { password: "pw" });
+    eq(await opens(await open.blob.arrayBuffer()), 3, `${damage}: unlocked pages without a password`);
+  }
+});
+
 // ── Permissions (P1-12): seven restrictions, an owner password of one's own,
 // restrictions without an open password, AES-256 by default.
 const { qpdfReport } = await load("qpdf");

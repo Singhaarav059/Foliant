@@ -17,7 +17,8 @@ const ENGINES: Partial<Record<ToolId, string[]>> = {
   compress: ["mozjpeg_enc.wasm", "mozjpeg_dec.wasm", "qpdf.wasm"],
   repair: ["qpdf.wasm"],
   protect: ["qpdf.wasm"],
-  unlock: ["qpdf.wasm"],
+  // PDFium decrypts a damaged file qpdf gives up on.
+  unlock: ["qpdf.wasm", "pdfium.wasm"],
   redact: ["pdfium.wasm"],
 };
 

@@ -10,7 +10,7 @@ import { charBox, lineChars, pageText, type PageText } from "./text";
 import { addInvisibleText } from "./textlayer";
 import { runsToWords } from "./convert";
 import { visualFrame, type FracRect } from "./edit";
-import { preparePdfium, redactInPlace, type Box } from "./pdfium";
+import { decryptedCopy, preparePdfium, redactInPlace, type Box } from "./pdfium";
 import { MAX_PASSWORD_BYTES, passwordTooLong, type Permissions } from "./password";
 import { openForEdit, rebuilt } from "./open";
 
@@ -36,21 +36,64 @@ export class ProtectUnverifiedError extends Error {
 
 // qpdf gives up on some damage every reader gets past (junk before the
 // header, a broken cross-reference stream, a page tree thousands of levels
-// deep): then it runs again on a copy pdf-lib rebuilt. A wrong password is
+// deep): then it runs again on repaired copies. First the file from its
+// header on, with its last cross-reference section found by searching; then
+// what `repair` writes (Unlock: PDFium, which decrypts); last a copy pdf-lib
+// rebuilt, which can't read encrypted object streams. A wrong password is
 // not damage.
-async function qpdfOrRebuilt(bytes: Uint8Array, args: Parameters<typeof runQpdf>[1]) {
+async function qpdfOrRebuilt(bytes: Uint8Array, args: Parameters<typeof runQpdf>[1], repair?: (bytes: Uint8Array) => Promise<Uint8Array>) {
   try {
     return await runQpdf(bytes, args);
   } catch (e) {
     if (e instanceof QpdfError && e.wrongPassword) throw e;
-    let copy: Uint8Array;
-    try {
-      copy = await rebuilt(bytes);
-    } catch {
-      throw e;
+    const header = headerAt(bytes);
+    const body = header > 0 ? bytes.subarray(header) : bytes;
+    const found = withFoundXref(body);
+    const copies = [
+      ...(body !== bytes ? [body] : []),
+      ...(found ? [found] : []),
+      ...(repair ? [() => repair(bytes), ...(found ? [() => repair(found)] : [])] : []),
+      () => rebuilt(bytes),
+    ];
+    for (const copy of copies) {
+      try {
+        return await runQpdf(copy instanceof Uint8Array ? copy : await copy(), args);
+      } catch (again) {
+        if (again instanceof QpdfError && again.wrongPassword) throw again;
+      }
     }
-    return runQpdf(copy, args);
+    throw e;
   }
+}
+
+// Where "%PDF-" starts, or -1.
+function headerAt(bytes: Uint8Array) {
+  const sig = [0x25, 0x50, 0x44, 0x46, 0x2d];
+  for (let i = 0; i + sig.length <= bytes.length; i++) if (sig.every((b, k) => bytes[i + k] === b)) return i;
+  return -1;
+}
+
+// The file with its startxref pointing at its last cross-reference table or
+// stream, found by searching; undefined when it has none.
+function withFoundXref(bytes: Uint8Array) {
+  const text = new TextDecoder("latin1").decode(bytes);
+  const table = Math.max(text.lastIndexOf("\nxref"), text.lastIndexOf("\rxref"));
+  let at = table >= 0 ? table + 1 : -1;
+  const stream = text.lastIndexOf("/XRef");
+  if (stream > at) {
+    const before = text.slice(Math.max(0, stream - 4096), stream);
+    const objs = [...before.matchAll(/(?:^|[^\d])(\d+\s+\d+\s+obj)\b/g)];
+    const last = objs[objs.length - 1];
+    if (last?.index !== undefined) at = Math.max(at, stream - before.length + last.index + last[0].length - last[1].length);
+  }
+  if (at < 0) return undefined;
+  const end = text.lastIndexOf("startxref");
+  const keep = end > at ? bytes.subarray(0, end) : bytes;
+  const tail = new TextEncoder().encode(`\nstartxref\n${at}\n%%EOF\n`);
+  const out = new Uint8Array(keep.length + tail.length);
+  out.set(keep);
+  out.set(tail, keep.length);
+  return out;
 }
 
 function randomPassword() {
@@ -105,7 +148,7 @@ export async function unlock(file: File, o: { password: string }): Promise<Outpu
     if ((e as { name?: string }).name === "PasswordException") throw new WrongPasswordError(file.name);
   }
   try {
-    const { output } = await qpdfOrRebuilt(await bytesOf(file), (i, out) => [`--password=${o.password}`, "--decrypt", i, out]);
+    const { output } = await qpdfOrRebuilt(await bytesOf(file), (i, out) => [`--password=${o.password}`, "--decrypt", i, out], (b) => decryptedCopy(b, o.password));
     return [{ name: `${baseName(file.name)}-unlocked.pdf`, blob: pdfBlob(output) }];
   } catch (e) {
     if (e instanceof QpdfError && e.wrongPassword) throw new WrongPasswordError(file.name);
