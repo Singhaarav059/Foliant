@@ -549,6 +549,32 @@ await test("a part keeps what a Type 3 font's glyphs draw from the page's resour
   eq(images((await open(await buildFromPlan([file(bytes, "t3.pdf")], [{ file: 0, page: 1, rotate: 0 }]))).doc), 1, "organized page images");
 });
 
+// A soft mask's group and an annotation's appearance with no /Resources of
+// their own draw with the page's (ISO 32000-1, 7.8.3), so what they name stays.
+await test("a part keeps what a soft mask and an annotation's appearance draw from the page's resources", async () => {
+  const doc = await PDFDocument.create();
+  const ctx = doc.context;
+  const image = (gray) => ctx.register(ctx.stream(new Uint8Array(4).fill(gray), { Type: "XObject", Subtype: "Image", Width: 2, Height: 2, ColorSpace: "DeviceGray", BitsPerComponent: 8 }));
+  const group = ctx.register(ctx.stream("q 300 0 0 300 0 0 cm /MaskImg Do Q", { Type: "XObject", Subtype: "Form", BBox: [0, 0, 300, 300], Group: { S: "Transparency", CS: "DeviceGray" } }));
+  const res = ctx.register(ctx.obj({
+    XObject: { Im: image(200), MaskImg: image(255), AnnImg: image(100), Unused: image(50) },
+    ExtGState: { GS1: { Type: "ExtGState", SMask: { Type: "Mask", S: "Luminosity", G: group } } },
+  }));
+  for (let i = 0; i < 2; i++) {
+    const p = doc.addPage([300, 300]);
+    p.node.set(PDFName.of("Resources"), res);
+    p.node.set(PDFName.of("Contents"), ctx.register(ctx.stream("q /GS1 gs 300 0 0 300 0 0 cm /Im Do Q")));
+    const look = ctx.register(ctx.stream("q 20 0 0 20 0 0 cm /AnnImg Do Q", { Type: "XObject", Subtype: "Form", BBox: [0, 0, 20, 20] }));
+    p.node.set(PDFName.of("Annots"), ctx.obj([ctx.register(ctx.obj({ Type: "Annot", Subtype: "Stamp", Rect: [10, 10, 30, 30], AP: { N: look } }))]));
+  }
+  const parts = await split(file(await doc.save(), "mask.pdf"), { splitMode: "every", every: 1, ranges: "", maxMb: 1, mergeRanges: false });
+  for (let i = 0; i < parts.length; i++) {
+    const { doc: out } = await open(parts[i].blob);
+    const names = out.getPage(0).node.Resources().lookup(PDFName.of("XObject"), PDFDict).keys().map(String).sort().join();
+    eq(names, "/AnnImg,/Im,/MaskImg", `part ${i + 1} images`);
+  }
+});
+
 // Bookmarks nested thousands deep (a chain, each the only child of the last).
 async function deepOutline(depth) {
   const doc = await PDFDocument.create();
