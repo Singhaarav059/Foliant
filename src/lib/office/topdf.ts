@@ -41,6 +41,11 @@ function familyOf(list: string): Family {
 type Kit = ReturnType<typeof fontkit.create>;
 type Face = { font: PDFFont; kit: Kit; ascent: number; descent: number };
 
+// A face that can't be fetched (offline before the fonts were cached) would
+// leave every run in it out of the PDF. It stops the drawing instead, so the
+// caller falls back to printing with the browser's own fonts.
+export class FontUnavailable extends Error {}
+
 class Fonts {
   private faces = new Map<string, Promise<Face>>();
   constructor(private doc: PDFDocument) {
@@ -51,9 +56,14 @@ class Fonts {
     let p = this.faces.get(file);
     if (!p) {
       p = (async () => {
-        const r = await fetch(fontUrl(file));
-        if (!r.ok) throw new Error(`Font ${file} unavailable`);
-        const bytes = new Uint8Array(await r.arrayBuffer());
+        let bytes: Uint8Array;
+        try {
+          const r = await fetch(fontUrl(file));
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          bytes = new Uint8Array(await r.arrayBuffer());
+        } catch (e) {
+          throw new FontUnavailable(`Font ${file} unavailable: ${e instanceof Error ? e.message : e}`);
+        }
         const kit = fontkit.create(bytes) as Kit;
         // WOFF: only the subsetting embedder re-encodes it as TrueType.
         const font = await this.doc.embedFont(bytes, { subset: true });
@@ -276,8 +286,9 @@ export async function paint(sheets: Sheet[], title?: string): Promise<Uint8Array
       if (b.x + b.w <= box.x || b.x >= box.x + box.w) continue;
       try {
         await draw(page, item, X, Y, k, doc, fonts, images);
-      } catch {
-        // One thing that can't be drawn doesn't cost the whole document.
+      } catch (e) {
+        // One thing that can't be drawn doesn't cost the whole document; a missing font would cost all its text.
+        if (e instanceof FontUnavailable) throw e;
       }
     }
     page.pushOperators(popGraphicsState());

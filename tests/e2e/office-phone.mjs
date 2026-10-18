@@ -90,5 +90,34 @@ await suite(async ({ name, browser, test }) => {
     return `${pages.length} pages, "Hosting" found`;
   });
 
+  // Offline before the fonts were cached: a PDF with no text is worse than
+  // the print dialog, which still has the browser's own fonts.
+  await test("Word → PDF with the fonts unavailable: text, or the print preview", async () => {
+    const noFonts = await browser.newContext({ ...(name === "firefox" ? firefoxSafe : { ...firefoxSafe, isMobile }), acceptDownloads: true, locale: "en-US", serviceWorkers: "block" });
+    try {
+      await noFonts.route(/pdfa-fonts\//, (route) => route.abort());
+      const page = await noFonts.newPage();
+      await page.addInitScript(() => {
+        window.print = () => {};
+      });
+      await open(page, "/en/word-to-pdf");
+      await pick(page, ["brief.docx"]);
+      const preview = page.getByRole("heading", { name: "Ready to save as PDF" });
+      const shown = preview.waitFor({ timeout: 120000 }).then(() => "preview");
+      const saved = Promise.all([page.waitForEvent("download", { timeout: 120000 }), page.getByRole("button", { name: "Convert to PDF", exact: true }).click()]).then(([dl]) => dl);
+      shown.catch(() => {});
+      saved.catch(() => {});
+      const outcome = await Promise.race([shown, saved]);
+      if (outcome === "preview") return "print preview";
+      const out = join(downloads, `${name}-nofonts-${outcome.suggestedFilename()}`);
+      await outcome.saveAs(out);
+      const text = (await pdfPages(out)).join(" ");
+      if (!text.includes("Project brief")) throw new Error(`a PDF without its text: ${JSON.stringify(text.slice(0, 80))}`);
+      return "PDF with text";
+    } finally {
+      await noFonts.close();
+    }
+  });
+
   await ctx.close();
 });
