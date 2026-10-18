@@ -11,10 +11,11 @@ import {
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { execFileSync } from "node:child_process";
-import { writeFileSync, mkdtempSync } from "node:fs";
+import { writeFileSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { load, openPdf, check, eq, nodeCanvas } from "./lib/load.mjs";
+import { pathToFileURL } from "node:url";
+import { load, openPdf, check, eq, nodeCanvas, root } from "./lib/load.mjs";
 
 nodeCanvas();
 const { pdfToPdfa } = await load("convert");
@@ -442,6 +443,19 @@ await test("PDF/A-1b: a shading pattern whose graphics state fades renders the p
   const bytes = await d.save();
   eq([...(await fixForPdfA(await PDFDocument.load(bytes), "1b")).raster].join(","), "0", "1b renders the page");
   eq([...(await fixForPdfA(await PDFDocument.load(bytes), "2b")).raster].join(","), "", "2b keeps it as vectors");
+});
+
+await test("render options show in a workflow step, where no preflight runs", async () => {
+  // Node strips tools.ts's types itself; its one import (mode.ts, plain JavaScript) needs an extension.
+  const dir = mkdtempSync(join(tmpdir(), "tools-"));
+  writeFileSync(join(dir, "mode.mjs"), readFileSync(join(root, "src/lib/mode.ts")));
+  writeFileSync(join(dir, "tools.ts"), readFileSync(join(root, "src/lib/tools.ts"), "utf8").replace('from "./mode"', 'from "./mode.mjs"'));
+  const { TOOLS, defaultOptions, optionVisible } = await import(pathToFileURL(join(dir, "tools.ts")).href);
+  const tool = TOOLS.find((t) => t.id === "pdfToPdfa");
+  const shown = (values) => tool.options.filter((o) => optionVisible(o, values)).map((o) => o.key).join(",");
+  eq(shown(defaultOptions(tool)), "pdfaLevel,pdfaDpi,keepText", "workflow step (no preflight)");
+  eq(shown({ ...defaultOptions(tool), pdfaRaster: false }), "pdfaLevel", "preflight: no page becomes an image");
+  eq(shown({ ...defaultOptions(tool), pdfaRaster: true }), "pdfaLevel,pdfaDpi,keepText", "preflight: some page becomes an image");
 });
 
 await test("render-options preflight: one file at a time, stops at the first that needs rendering, skips huge files", async () => {

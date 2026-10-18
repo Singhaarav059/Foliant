@@ -41,7 +41,8 @@ export type OptionDef =
   | { key: string; type: "image"; when?: Cond };
 
 // Show an option only when another option has one of these values.
-export type Cond = { key: string; is: (string | boolean)[] };
+// unset: also met while nothing has set the key (a value no option holds, like pdfaRaster).
+export type Cond = { key: string; is: (string | boolean)[]; unset?: boolean };
 
 export type ToolId =
   | "merge" | "split" | "extract" | "remove" | "organize" | "scan"
@@ -204,9 +205,10 @@ const ALL: Tool[] = [
     runtime: "browser", accept: PDF, multiple: true, chainable: true,
     options: [
       { key: "pdfaLevel", type: "select", choices: ["1b", "2b", "2u", "3b", "3u"], default: "2b" },
-      // pdfaRaster isn't an option: the workspace sets it once it knows some page must become an image.
-      { key: "pdfaDpi", type: "select", choices: ["150", "200", "300"], default: "200", when: { key: "pdfaRaster", is: [true] } },
-      { key: "keepText", type: "toggle", default: true, when: { key: "pdfaRaster", is: [true] } },
+      // pdfaRaster isn't an option: the workspace sets it once it knows whether some page must become an image.
+      // Workflow steps never set it, and show both.
+      { key: "pdfaDpi", type: "select", choices: ["150", "200", "300"], default: "200", when: { key: "pdfaRaster", is: [true], unset: true } },
+      { key: "keepText", type: "toggle", default: true, when: { key: "pdfaRaster", is: [true], unset: true } },
     ],
   },
   {
@@ -337,7 +339,9 @@ export function defaultOptions(tool: Tool): Record<string, unknown> {
 }
 
 export function optionVisible(o: OptionDef, values: Record<string, unknown>) {
-  return !o.when || o.when.is.includes(values[o.when.key] as string | boolean);
+  if (!o.when) return true;
+  const v = values[o.when.key];
+  return (v === undefined && !!o.when.unset) || o.when.is.includes(v as string | boolean);
 }
 
 // Per task. On-device tools are bounded mainly by the device's memory.
