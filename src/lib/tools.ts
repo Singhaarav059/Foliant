@@ -227,7 +227,7 @@ const ALL: Tool[] = [
   // ── Edit
   {
     id: "rotate", slug: "rotate-pdf", category: "edit", icon: "RotateCw", mode: "pages",
-    runtime: "browser", accept: PDF, multiple: false, chainable: true,
+    runtime: "browser", accept: PDF, multiple: true, chainable: true,
     // 0 leaves the turning to the per-page arrows.
     options: [{ key: "angle", type: "select", choices: ["0", "90", "180", "270"], default: "90" }],
   },
