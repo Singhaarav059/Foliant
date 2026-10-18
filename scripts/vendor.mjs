@@ -273,12 +273,15 @@ const licOut = join(licRoot, "staging");
       name: "LibreOffice", file: "libreoffice.txt", packages: [["@matbee/libreoffice-converter"]],
       includes: [["LibreOffice", "MPL-2.0", `https://git.libreoffice.org/core${loCommit ? `/+/${loCommit}` : ""}`, ["MPL-2.0.txt"]]],
     },
-    // LGPL-3.0: the source of the exact versions compiled in.
+    // LGPL-3.0: the source of the exact versions compiled in, their copyright
+    // notices, and (§4(b)) the GNU GPL-3.0 text as well as the LGPL's.
+    // libheif-wasm/LICENSE is libheif's own COPYING (LGPL-3.0, GPL-3.0, MIT).
+    // Update the NOTICE files and libde265-COPYING.txt with HEIF_VERSIONS.
     {
-      name: "libheif", file: "libheif.txt", packages: [["libheif-js"]],
+      name: "libheif", file: "libheif.txt", packages: [["libheif-js", ["libheif-wasm/LICENSE"]]],
       includes: [
-        ["libheif", "LGPL-3.0", `https://github.com/strukturag/libheif/tree/v${HEIF_VERSIONS.libheif}`],
-        ["libde265", "LGPL-3.0", `https://github.com/strukturag/libde265/tree/v${HEIF_VERSIONS.libde265}`],
+        ["libheif", "LGPL-3.0", `https://github.com/strukturag/libheif/tree/v${HEIF_VERSIONS.libheif}`, ["libheif-NOTICE.txt"]],
+        ["libde265", "LGPL-3.0", `https://github.com/strukturag/libde265/tree/v${HEIF_VERSIONS.libde265}`, ["libde265-NOTICE.txt", "libde265-COPYING.txt"]],
       ],
     },
     { name: "Noto Sans", file: "noto.txt", packages: fonts(Object.keys(fontGroups).map((g) => fontGroups[g][0])) },

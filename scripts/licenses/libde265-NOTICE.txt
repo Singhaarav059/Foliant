@@ -1,0 +1,8 @@
+libde265 1.0.15 (notice from README.md at that tag)
+
+Copyright (c) 2013-2014 Struktur AG
+Copyright (c) 2013-2023 Dirk Farin
+
+libde265 is distributed under the terms of the GNU Lesser General Public
+License, version 3. Its COPYING file at that tag, with the GNU LGPL-3.0 and
+the GNU GPL-3.0, follows.
