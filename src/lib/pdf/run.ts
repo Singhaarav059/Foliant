@@ -90,9 +90,13 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
     }
     case "pageNumbers": {
       const { pageNumbers } = await import("./edit");
+      // Bates numbers run on from one file to the next.
+      const counter = { next: n(o.startAt) };
       return each(files, progress, (f) => pageNumbers(f, {
         position: s(o.position), numberFormat: s(o.numberFormat), startAt: n(o.startAt), pageRange: s(o.pageRange),
-        skipFirst: b(o.skipFirst), fontSize: n(o.fontSize), color: s(o.color), facing: b(o.facing),
+        skipFirst: n(o.skipFirstPages), skipLast: n(o.skipLastPages), fontSize: n(o.fontSize), color: s(o.color), facing: b(o.facing),
+        template: s(o.template), numberStyle: s(o.numberStyle), margin: s(o.margin), font: s(o.font),
+        batesPrefix: s(o.batesPrefix), batesDigits: n(o.batesDigits), counter,
         labels,
       }));
     }
@@ -101,7 +105,8 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
       return each(files, progress, (f) => watermark(f, {
         markType: s(o.markType), markText: s(o.markText), markImage: o.markImage as File | undefined,
         fontSize: n(o.fontSize), color: s(o.color), imageScale: n(o.imageScale), position: s(o.position),
-        mosaic: b(o.mosaic), opacity: n(o.opacity), rotation: s(o.rotation), layer: s(o.layer), pageRange: s(o.pageRange),
+        mosaic: b(o.mosaic), opacity: n(o.opacity), rotation: n(o.rotation), layer: s(o.layer), pageRange: s(o.pageRange),
+        font: s(o.font), markBox: b(o.markBox), tileSpacing: n(o.tileSpacing),
       }));
     }
     case "protect": {

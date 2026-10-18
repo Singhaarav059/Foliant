@@ -22,6 +22,16 @@ type Kit = ReturnType<typeof fontkit.create>;
 export type TextRun = { font: PDFFont; text: string; x: number };
 export type LaidOut = { width: number; runs: TextRun[] };
 
+// Latin families a user can pick for added text (page numbers, watermarks),
+// all OFL: Arimo (Arial/Helvetica metrics), Tinos (Times) and Cousine
+// (Courier). scripts/vendor.mjs copies their Latin WOFFs to pdfa-fonts/.
+// Characters they lack still come from Noto.
+export type Family = "arimo" | "tinos" | "cousine";
+export const FAMILIES: readonly Family[] = ["arimo", "tinos", "cousine"];
+const familyFace = (family: Family, weight: number): Face => ({
+  file: `${VENDOR}pdfa-fonts/${family}-latin-${weight}-normal.woff`, weight, ranges: [0, 0x10ffff],
+});
+
 const BASE = `${VENDOR}fonts/`;
 let manifest: Promise<Manifest> | null = null;
 const bytes = new Map<string, Promise<Uint8Array>>();
@@ -40,7 +50,7 @@ function loadManifest() {
 function fontBytes(file: string) {
   let p = bytes.get(file);
   if (!p) {
-    p = fetch(BASE + file).then(async (r) => {
+    p = fetch(file.startsWith("/") ? file : BASE + file).then(async (r) => {
       if (!r.ok) throw new Error(`Font ${file} unavailable`);
       return new Uint8Array(await r.arrayBuffer());
     });
@@ -156,12 +166,14 @@ function reorder<T extends { level: number }>(segs: T[]) {
   return out;
 }
 
-// Lays out one line. Returns null if some character has no bundled glyph,
-// so the caller can fall back to an image of the text.
-export async function layoutText(doc: PDFDocument, text: string, size: number, bold = false): Promise<LaidOut | null> {
+// Lays out one line, in `family` where it has the glyphs and Noto elsewhere.
+// Returns null if some character has no bundled glyph, so the caller can fall
+// back to an image of the text.
+export async function layoutText(doc: PDFDocument, text: string, size: number, bold = false, family?: Family): Promise<LaidOut | null> {
   const chars = Array.from(text);
   if (!chars.length) return { width: 0, runs: [] };
-  const faces = faceOrder(await loadManifest(), text, bold ? 700 : 400);
+  const weight = bold ? 700 : 400;
+  const faces = [...(family ? [familyFace(family, weight)] : []), ...faceOrder(await loadManifest(), text, weight)];
   const levels = bidiLevels(chars);
 
   // Assign a slice to each character, keeping marks and joiners with their base.
