@@ -438,9 +438,12 @@ export async function pdfToPpt(file: File, o: { pptText: boolean }, progress?: P
           crop.width = w;
           crop.height = h;
           crop.getContext("2d")!.drawImage(shown, Math.round(f.x0 * SCALE), Math.round(f.y0 * SCALE), w, h, 0, 0, w, h);
-          // Small pictures (logos, charts) stay sharp as PNG; photos go to JPEG.
+          // Flat pictures (logos, charts) stay sharp as PNG; photos, where PNG
+          // comes out much larger, go to JPEG.
+          const png = await imageData(crop, "png");
+          const jpg = await imageData(crop, "jpg");
           slide.addImage({
-            data: await imageData(crop, w * h < 600_000 ? "png" : "jpg"),
+            data: png.length <= jpg.length * 2 ? png : jpg,
             x: inch(f.x0 * sx), y: inch(f.y0 * sy), w: inch((f.x1 - f.x0) * sx), h: inch((f.y1 - f.y0) * sy),
           });
         }
