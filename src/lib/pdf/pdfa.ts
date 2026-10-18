@@ -301,34 +301,108 @@ function nameTreeEntries(node: PDFDict | undefined, doc: PDFDocument, out: [PDFO
   return out;
 }
 
+// Every dictionary in the file's objects, nested direct ones too (references aren't
+// followed), with the reference of the object when it is one of the file's own.
+function eachDict(doc: PDFDocument, fn: (d: PDFDict, ref: PDFRef | undefined) => void) {
+  const walk = (o: PDFObject, ref: PDFRef | undefined, depth: number) => {
+    if (depth > 32) return;
+    const d = o instanceof PDFStream ? o.dict : o instanceof PDFDict ? o : undefined;
+    if (d) {
+      fn(d, ref);
+      for (const [, v] of d.entries()) walk(v, undefined, depth + 1);
+    } else if (o instanceof PDFArray) for (const v of o.asArray()) walk(v, undefined, depth + 1);
+  };
+  for (const [ref, o] of doc.context.enumerateIndirectObjects()) walk(o, ref, 0);
+}
+
+// PDF/A-1 forbids embedded files and PDF/A-2 allows only PDF/A ones, which can't be
+// checked here: every file goes, wherever it is listed, and its bytes leave the file.
+function stripFiles(doc: PDFDocument, removed: Set<string>) {
+  eachDict(doc, (d) => {
+    for (const k of ["AF", "EF", "RF"])
+      if (d.has(N(k))) {
+        d.delete(N(k));
+        removed.add("attachments");
+      }
+  });
+  for (const [ref, o] of doc.context.enumerateIndirectObjects())
+    if (o instanceof PDFStream && o.dict.get(N("Type")) === N("EmbeddedFile")) doc.context.delete(ref);
+}
+
 // PDF/A-3: embedded files stay when they're really embedded, each one an
-// associated file of the document (ISO 19005-3, 6.8).
-function associateFiles(doc: PDFDocument, names: PDFDict, removed: Set<string>) {
+// associated file of the document or of a part of it (ISO 19005-3, 6.8).
+function associateFiles(doc: PDFDocument, removed: Set<string>) {
   const ctx = doc.context;
-  const kept: PDFObject[] = [];
-  const af = doc.catalog.lookupMaybe(N("AF"), PDFArray)?.asArray().slice() ?? [];
-  for (const [key, value] of nameTreeEntries(names.lookupMaybe(N("EmbeddedFiles"), PDFDict), doc)) {
-    const spec = ctx.lookup(value);
-    const file = spec instanceof PDFDict ? spec.lookupMaybe(N("EF"), PDFDict)?.lookup(N("F")) : undefined;
-    if (!(spec instanceof PDFDict) || !(file instanceof PDFRawStream)) {
-      removed.add("external file references");
-      continue;
+  const valid = new Map<PDFDict, boolean>();
+  // Whether a file specification embeds its file; one that does gets what PDF/A-3 asks of it.
+  const embeds = (spec: PDFDict, key?: PDFObject) => {
+    let ok = valid.get(spec);
+    if (ok !== undefined) return ok;
+    const ef = spec.lookupMaybe(N("EF"), PDFDict);
+    const file = ef?.lookup(N("F")) ?? ef?.lookup(N("UF"));
+    ok = file instanceof PDFStream;
+    if (file instanceof PDFStream) {
+      const label = spec.get(N("UF")) ?? spec.get(N("F")) ?? key ?? PDFString.of("attachment");
+      if (!spec.has(N("F"))) spec.set(N("F"), label);
+      if (!spec.has(N("UF"))) spec.set(N("UF"), label);
+      spec.set(N("Type"), N("Filespec"));
+      if (!(spec.get(N("AFRelationship")) instanceof PDFName)) spec.set(N("AFRelationship"), N("Unspecified"));
+      if (!(file.dict.get(N("Subtype")) instanceof PDFName)) file.dict.set(N("Subtype"), N("application/octet-stream"));
+      const params = file.dict.lookupMaybe(N("Params"), PDFDict) ?? ctx.obj({});
+      if (!params.has(N("ModDate"))) params.set(N("ModDate"), PDFString.fromDate(new Date()));
+      file.dict.set(N("Params"), params);
     }
-    const label = spec.get(N("UF")) ?? spec.get(N("F")) ?? key;
-    if (!spec.has(N("F"))) spec.set(N("F"), label);
-    if (!spec.has(N("UF"))) spec.set(N("UF"), label);
-    spec.set(N("Type"), N("Filespec"));
-    if (!(spec.get(N("AFRelationship")) instanceof PDFName)) spec.set(N("AFRelationship"), N("Unspecified"));
-    if (!(file.dict.get(N("Subtype")) instanceof PDFName)) file.dict.set(N("Subtype"), N("application/octet-stream"));
-    const params = file.dict.lookupMaybe(N("Params"), PDFDict) ?? ctx.obj({});
-    if (!params.has(N("ModDate"))) params.set(N("ModDate"), PDFString.fromDate(new Date()));
-    file.dict.set(N("Params"), params);
-    const ref = value instanceof PDFRef ? value : ctx.register(spec);
-    kept.push(key, ref);
-    if (!af.some((r) => r === ref)) af.push(ref);
+    valid.set(spec, ok);
+    return ok;
+  };
+
+  // The attachments list: each file kept is associated with the document.
+  const af = doc.catalog.lookupMaybe(N("AF"), PDFArray)?.asArray().slice() ?? [];
+  const names = doc.catalog.lookupMaybe(N("Names"), PDFDict);
+  if (names?.has(N("EmbeddedFiles"))) {
+    const kept: PDFObject[] = [];
+    for (const [key, value] of nameTreeEntries(names.lookupMaybe(N("EmbeddedFiles"), PDFDict), doc)) {
+      const spec = ctx.lookup(value);
+      if (!(spec instanceof PDFDict) || !embeds(spec, key)) {
+        removed.add("external file references");
+        continue;
+      }
+      const ref = value instanceof PDFRef ? value : ctx.register(spec);
+      kept.push(key, ref);
+      if (!af.some((r) => r === ref)) af.push(ref);
+    }
+    names.set(N("EmbeddedFiles"), ctx.obj({ Names: kept }));
+    if (af.length) doc.catalog.set(N("AF"), ctx.obj(af));
   }
-  names.set(N("EmbeddedFiles"), ctx.obj({ Names: kept }));
-  if (af.length) doc.catalog.set(N("AF"), ctx.obj(af));
+
+  // Every AF list, the document's and its parts', keeps only files really embedded.
+  const associated = new Set<PDFDict>();
+  eachDict(doc, (d) => {
+    if (!d.has(N("AF"))) return;
+    const list = d.lookupMaybe(N("AF"), PDFArray)?.asArray() ?? [];
+    const keep = list.filter((r) => {
+      const spec = ctx.lookup(r);
+      if (!(spec instanceof PDFDict) || !embeds(spec)) return false;
+      associated.add(spec);
+      return true;
+    });
+    if (keep.length < list.length || !list.length) removed.add("external file references");
+    if (keep.length) d.set(N("AF"), ctx.obj(keep));
+    else d.delete(N("AF"));
+  });
+
+  // Files embedded anywhere else become associated files of the document.
+  const extra: PDFRef[] = [];
+  eachDict(doc, (d, ref) => {
+    if (!d.has(N("EF")) || associated.has(d)) return;
+    if (ref && embeds(d)) extra.push(ref);
+    else {
+      d.delete(N("EF"));
+      d.delete(N("RF"));
+      removed.add("attachments");
+    }
+  });
+  if (extra.length) doc.catalog.set(N("AF"), ctx.obj([...(doc.catalog.lookupMaybe(N("AF"), PDFArray)?.asArray() ?? []), ...extra]));
 }
 
 function cleanDocument(doc: PDFDocument, removed: Set<string>, part: number) {
@@ -353,10 +427,11 @@ function cleanDocument(doc: PDFDocument, removed: Set<string>, part: number) {
   const names = cat.lookupMaybe(N("Names"), PDFDict);
   if (names) {
     drop(names, "JavaScript", "scripts");
-    if (part === 3) associateFiles(doc, names, removed);
-    else drop(names, "EmbeddedFiles", "attachments");
+    if (part < 3) drop(names, "EmbeddedFiles", "attachments");
     drop(names, "AlternatePresentations", "alternate presentations");
   }
+  if (part === 3) associateFiles(doc, removed);
+  else stripFiles(doc, removed);
   const form = cat.lookupMaybe(N("AcroForm"), PDFDict);
   if (form) {
     drop(form, "XFA", "XFA form data");

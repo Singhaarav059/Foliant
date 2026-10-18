@@ -22,7 +22,7 @@ const { fixForPdfA, pdfaNeedsRaster } = await load("pdfa");
 const results = { failed: 0 };
 const test = check(results);
 
-async function build({ cmykPage = false, symbolPage = false, separationPage = false, transparentPage = false, unmappedFontPage = false, attachment = false } = {}) {
+async function build({ cmykPage = false, symbolPage = false, separationPage = false, transparentPage = false, unmappedFontPage = false, attachment = false, keepAF = false } = {}) {
   const doc = await PDFDocument.create();
   doc.setTitle("Annual report");
   doc.setAuthor("Finance team");
@@ -93,6 +93,23 @@ async function build({ cmykPage = false, symbolPage = false, separationPage = fa
   if (attachment) await doc.attach(new TextEncoder().encode("year,revenue\n2025,112\n"), "figures.csv", { mimeType: "text/csv", description: "Source figures" });
   if (symbolPage) doc.addPage([595, 842]).drawText("αβγ", { x: 50, y: 700, size: 14, font: await doc.embedFont(StandardFonts.Symbol) });
   if (!attachment) return doc.save();
+  const doc0 = doc;
+  if (keepAF) {
+    // Associated files the way Factur-X and other PDF/A-3 files carry them: the catalog's AF
+    // (pdf-lib sets it on save), a page's AF, and an AF entry that points at no embedded file.
+    const doc = await PDFDocument.load(await doc0.save());
+    const ctx = doc.context;
+    const spec = doc.catalog.lookup(PDFName.of("AF"), PDFArray).get(0);
+    doc.getPage(0).node.set(PDFName.of("AF"), ctx.obj([spec]));
+    const external = ctx.register(ctx.obj({ Type: "Filespec", F: PDFString.of("elsewhere.xml") }));
+    const onlyInAF = ctx.register(ctx.obj({
+      Type: "Filespec", F: PDFString.of("data.xml"),
+      EF: { F: ctx.register(ctx.flateStream("<x/>", { Type: "EmbeddedFile" })) },
+    }));
+    doc.catalog.lookup(PDFName.of("AF"), PDFArray).push(external);
+    doc.catalog.lookup(PDFName.of("AF"), PDFArray).push(onlyInAF);
+    return doc.save();
+  }
   // pdf-lib lists the file in the catalog's AF; most PDFs with attachments don't.
   const again = await PDFDocument.load(await doc.save());
   again.catalog.delete(PDFName.of("AF"));
@@ -235,12 +252,57 @@ await test("render options are needed only when a page must become an image", as
   eq(await pdfaNeedsRaster(file(await build({ cmykPage: true })), "2b"), true, "device CMYK");
 });
 
+// Every dictionary in the file, direct ones inside indirect objects included.
+const allDicts = (d) => {
+  const out = [];
+  const walk = (o, depth = 0) => {
+    if (depth > 32) return;
+    const dict = o instanceof PDFRawStream ? o.dict : o instanceof PDFDict ? o : null;
+    if (dict) {
+      out.push(dict);
+      for (const [, v] of dict.entries()) walk(v, depth + 1);
+    } else if (o instanceof PDFArray) o.asArray().forEach((v) => walk(v, depth + 1));
+  };
+  for (const [, o] of d.context.enumerateIndirectObjects()) walk(o);
+  return out;
+};
+const withAF = await build({ attachment: true, keepAF: true });
+const out1bAF = await outputOf(withAF, "1b");
+const out2bAF = await outputOf(withAF, "2b");
+await test("PDF/A-1b and 2b: associated files and their embedded streams are gone", async () => {
+  for (const [lvl, out] of [["1b", out1bAF], ["2b", out2bAF]]) {
+    const d = await PDFDocument.load(out.bytes);
+    const dicts = allDicts(d);
+    eq(dicts.filter((x) => x.has(PDFName.of("AF"))).length, 0, `${lvl}: no AF anywhere`);
+    eq(dicts.filter((x) => x.has(PDFName.of("EF"))).length, 0, `${lvl}: no file specification with EF`);
+    eq(dicts.filter((x) => x.get(PDFName.of("Type")) === PDFName.of("EmbeddedFile")).length, 0, `${lvl}: no embedded file stream left in the file`);
+    eq((await text(out.bytes))[0], (await text(withAF))[0], `${lvl}: text unchanged`);
+  }
+});
+const out3bAF = await outputOf(withAF, "3b");
+await test("PDF/A-3b: files only in the catalog's AF are made valid; AF entries with no file go", async () => {
+  const d = await PDFDocument.load(out3bAF.bytes);
+  const af = d.catalog.lookup(PDFName.of("AF"), PDFArray).asArray().map((r) => d.context.lookup(r));
+  eq(af.map((s) => s.lookup(PDFName.of("UF"))?.decodeText()).join(","), "figures.csv,data.xml", "catalog AF");
+  for (const s of af) {
+    const file = s.lookup(PDFName.of("EF"), PDFDict).lookup(PDFName.of("F"), PDFRawStream);
+    eq(s.get(PDFName.of("AFRelationship")) instanceof PDFName, true, "AFRelationship");
+    eq(file.dict.get(PDFName.of("Subtype")) instanceof PDFName, true, "MIME type");
+    eq(file.dict.lookup(PDFName.of("Params"), PDFDict).has(PDFName.of("ModDate")), true, "ModDate");
+  }
+  const pageAF = d.getPage(0).node.lookup(PDFName.of("AF"), PDFArray).asArray();
+  eq(pageAF.length === 1 && d.context.lookup(pageAF[0]).lookup(PDFName.of("UF")).decodeText() === "figures.csv", true, "page AF kept");
+});
+
 // Full validation, when a veraPDF command line is available (CI).
 if (process.env.VERAPDF) {
   const dir = mkdtempSync(join(tmpdir(), "pdfa-"));
-  for (const [flavour, bytes] of [["2b", output], ["1b", out1b.bytes], ["2u", out2u.bytes], ["3b", out3b.bytes]]) {
-    await test(`veraPDF: PDF/A-${flavour} compliant`, () => {
-      const file = join(dir, `report-pdfa-${flavour}.pdf`);
+  for (const [flavour, bytes, tag] of [
+    ["2b", output, ""], ["1b", out1b.bytes, ""], ["2u", out2u.bytes, ""], ["3b", out3b.bytes, ""],
+    ["1b", out1bAF.bytes, "attachments"], ["2b", out2bAF.bytes, "attachments"], ["3b", out3bAF.bytes, "attachments"],
+  ]) {
+    await test(`veraPDF: PDF/A-${flavour}${tag ? ` (${tag})` : ""} compliant`, () => {
+      const file = join(dir, `report-pdfa-${flavour}${tag ? `-${tag.replace(/ /g, "-")}` : ""}.pdf`);
       writeFileSync(file, bytes);
       let report;
       try {
@@ -252,6 +314,6 @@ if (process.env.VERAPDF) {
       eq(/^PASS /m.test(report), true, "veraPDF verdict");
     });
   }
-} else console.log("skip  veraPDF (set VERAPDF to validate 2b, 1b, 2u and 3b outputs)");
+} else console.log("skip  veraPDF (set VERAPDF to validate the 1b, 2b, 2u and 3b outputs)");
 
 process.exit(results.failed ? 1 : 0);
