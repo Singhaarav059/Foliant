@@ -1,5 +1,6 @@
-// Offline: after one visit to a tool, the page loads and the tool runs with
-// no network. Info pages don't download the PDF engines.
+// Offline: after one visit to a tool, loaded directly or reached by a link,
+// the page loads and the tool runs with no network. Info pages don't
+// download the PDF engines.
 //
 //   node tests/e2e/offline.mjs [chromium] [firefox] [webkit]   (see kit.mjs)
 import { PDFDocument } from "pdf-lib";
@@ -57,52 +58,73 @@ await suite(async ({ name, browser, test }) => {
     return "no qpdf.wasm, no pdf.js worker";
   });
 
-  await test("fr: compress works offline after one visit", async () => {
-    const t = dict("fr");
-    const ctx = await browser.newContext({ locale: "fr-FR", viewport: { width: 1280, height: 900 } });
-    const page = await ctx.newPage();
-    try {
-      await page.goto(base + "/fr");
-      await controlled(page);
-      await page.goto(base + "/fr/compress-pdf");
-      await hydrated(page);
-      // The tool's engines are fetched once the page settles.
-      await until(page, async (wasm) => {
-        for (const name of await caches.keys()) if (await (await caches.open(name)).match(wasm)) return true;
-        return false;
-      }, `${vendor}qpdf.wasm`, "the engines to be cached");
-      await page.waitForLoadState("networkidle");
-      const paths = await cached(page);
-      const chunks = paths.filter((p) => p.startsWith("/_next/static/chunks/"));
-      if (!chunks.length) throw new Error("no /_next/static/chunks/ entry in the cache");
+  // Reaching the tool from the home page by a link is a client-side
+  // navigation: the browser never requests the tool's page itself.
+  const reach = {
+    "after one visit": (page) => page.goto(base + "/fr/compress-pdf"),
+    "reached by a link": async (page) => {
+      await page.locator('a[href="/fr/compress-pdf"]').first().click();
+      await page.waitForURL("**/fr/compress-pdf");
+    },
+  };
+  for (const [how, go] of Object.entries(reach)) {
+    await test(`fr: compress works offline ${how}`, async () => {
+      const t = dict("fr");
+      const ctx = await browser.newContext({ locale: "fr-FR", viewport: { width: 1280, height: 900 } });
+      const page = await ctx.newPage();
+      try {
+        await page.goto(base + "/fr");
+        await controlled(page);
+        await go(page);
+        await hydrated(page);
+        // The tool's engines are fetched once the page settles.
+        await until(page, async (wasm) => {
+          for (const name of await caches.keys()) if (await (await caches.open(name)).match(wasm)) return true;
+          return false;
+        }, `${vendor}qpdf.wasm`, "the engines to be cached");
+        // A page reached by a link is loaded once more in a hidden frame,
+        // which is removed when it has cached what a reload needs.
+        await until(page, async () => !document.querySelector("iframe") && !!(await caches.match(location.pathname)),
+          null, "the page itself to be cached", 60000);
+        // Settled: nothing new cached for a second. (Not "networkidle": the
+        // removed frame's requests are never reported as finished.)
+        let paths = await cached(page);
+        for (let before = -1; before !== paths.length; ) {
+          before = paths.length;
+          await page.waitForTimeout(1000);
+          paths = await cached(page);
+        }
+        const chunks = paths.filter((p) => p.startsWith("/_next/static/chunks/"));
+        if (!chunks.length) throw new Error("no /_next/static/chunks/ entry in the cache");
 
-      await ctx.setOffline(true);
-      const really = await swOffline(page);
-      // Offline emulation also stops the download of the result, so keep
-      // the PDFs the page makes and read the last one back.
-      await page.addInitScript(() => {
-        const create = URL.createObjectURL;
-        window.__pdfs = [];
-        URL.createObjectURL = (blob) => {
-          if (blob instanceof Blob && blob.type === "application/pdf") window.__pdfs.push(blob);
-          return create.call(URL, blob);
-        };
-      });
-      await page.reload({ waitUntil: "load" });
-      await hydrated(page);
-      await page.locator("input[type=file]").first().setInputFiles(fixture("scanned.pdf"));
-      await page.getByRole("button", { name: t["tool.compress.action"], exact: true }).click();
-      await page.getByText(t["res.doneTitle"]).waitFor({ timeout: 60000 });
-      const bytes = await page.evaluate(async () => [...new Uint8Array(await window.__pdfs.at(-1).arrayBuffer())]);
-      const path = join(downloads, `${name}-scanned-compressed.pdf`);
-      writeFileSync(path, Buffer.from(bytes));
-      const pages = (await PDFDocument.load(readFileSync(path))).getPageCount();
-      if (!pages) throw new Error("not a valid PDF");
-      return `${chunks.length} chunks cached, offline output has ${pages} page(s)${really ? "" : " (setOffline doesn't reach the service worker here)"}`;
-    } finally {
-      await ctx.close();
-    }
-  });
+        await ctx.setOffline(true);
+        const really = await swOffline(page);
+        // Offline emulation also stops the download of the result, so keep
+        // the PDFs the page makes and read the last one back.
+        await page.addInitScript(() => {
+          const create = URL.createObjectURL;
+          window.__pdfs = [];
+          URL.createObjectURL = (blob) => {
+            if (blob instanceof Blob && blob.type === "application/pdf") window.__pdfs.push(blob);
+            return create.call(URL, blob);
+          };
+        });
+        await page.reload({ waitUntil: "load" });
+        await hydrated(page);
+        await page.locator("input[type=file]").first().setInputFiles(fixture("scanned.pdf"));
+        await page.getByRole("button", { name: t["tool.compress.action"], exact: true }).click();
+        await page.getByText(t["res.doneTitle"]).waitFor({ timeout: 60000 });
+        const bytes = await page.evaluate(async () => [...new Uint8Array(await window.__pdfs.at(-1).arrayBuffer())]);
+        const path = join(downloads, `${name}-${how.replace(/\W+/g, "-")}-compressed.pdf`);
+        writeFileSync(path, Buffer.from(bytes));
+        const pages = (await PDFDocument.load(readFileSync(path))).getPageCount();
+        if (!pages) throw new Error("not a valid PDF");
+        return `${chunks.length} chunks cached, offline output has ${pages} page(s)${really ? "" : " (setOffline doesn't reach the service worker here)"}`;
+      } finally {
+        await ctx.close();
+      }
+    });
+  }
 
   await test("an unvisited page offline falls back to its language's home", async () => {
     const ctx = await browser.newContext({ locale: "de-DE" });
