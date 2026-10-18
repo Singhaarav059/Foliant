@@ -68,7 +68,7 @@ export type Tool = {
 };
 
 const PDF = ["pdf"];
-const IMAGES = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "heic"];
+const IMAGES = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif", "tif", "tiff", "avif", "svg"];
 
 // Languages PaddleOCR's PP-OCRv5 model reads at least about as well as Tesseract
 // (Tesseract codes), for high-accuracy OCR. tests/ocr-accuracy.mjs holds each to that.
@@ -145,9 +145,12 @@ const ALL: Tool[] = [
     id: "jpgToPdf", slug: "jpg-to-pdf", category: "convertTo", icon: "ImagePlus", mode: "files",
     runtime: "browser", accept: IMAGES, multiple: true,
     options: [
-      { key: "orientation", type: "select", choices: ["auto", "portrait", "landscape"], default: "auto" },
-      { key: "pageSize", type: "select", choices: ["fit", "a4", "letter"], default: "a4" },
-      { key: "margin", type: "select", choices: ["none", "small", "large"], default: "small" },
+      { key: "pageSize", type: "select", choices: ["fit", "a4", "a3", "a5", "letter", "legal", "custom"], default: "a4" },
+      // Millimetres (src/lib/pdf/convert.ts imagesToPdf).
+      { key: "pageWidth", type: "number", min: 10, max: 5000, default: 210, when: { key: "pageSize", is: ["custom"] } },
+      { key: "pageHeight", type: "number", min: 10, max: 5000, default: 297, when: { key: "pageSize", is: ["custom"] } },
+      { key: "orientation", type: "select", choices: ["auto", "portrait", "landscape"], default: "auto", when: { key: "pageSize", is: ["a4", "a3", "a5", "letter", "legal"] } },
+      { key: "margin", type: "range", min: 0, max: 50, default: 7, unit: " mm", when: { key: "pageSize", is: ["a4", "a3", "a5", "letter", "legal", "custom"] } },
       { key: "separate", type: "toggle", default: false },
     ],
   },

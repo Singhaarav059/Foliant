@@ -48,7 +48,8 @@
     "test:e2e:errors": "node tests/e2e/errors.mjs",
     "test:e2e:intake": "node tests/e2e/intake.mjs",
     "test:e2e:offline": "node tests/e2e/offline.mjs",
-    "test:e2e:compare": "node tests/e2e/compare.mjs"
+    "test:e2e:compare": "node tests/e2e/compare.mjs",
+    "test:e2e:images": "node tests/e2e/images.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -105,6 +106,7 @@
     "fflate": "^0.8.3",
     "jose": "^6.2.12",
     "jszip": "^3.10.2",
+    "libheif-js": "1.23.2",
     "lucide-react": "^1.58.0",
     "mammoth": "^1.13.0",
     "next": "16.4.2",
@@ -118,7 +120,8 @@
     "react-dom": "19.3.0",
     "regenerator-runtime": "^0.14.1",
     "server-only": "^0.0.1",
-    "tesseract.js": "^7.0.0"
+    "tesseract.js": "^7.0.0",
+    "utif2": "4.1.0"
   },
   "devDependencies": {
     "@napi-rs/canvas": "1.0.11",

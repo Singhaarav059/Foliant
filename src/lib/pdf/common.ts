@@ -2,7 +2,7 @@
 
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import { VENDOR } from "../vendor";
-import { PdfError, toPdfError } from "./errors";
+import { PdfError } from "./errors";
 
 // `print`: the blob is HTML to save through the browser's print dialog (static build).
 export type Output = { name: string; blob: Blob; note?: string; print?: boolean };
@@ -151,30 +151,10 @@ export function humanSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 }
 
-export async function loadImage(blob: Blob): Promise<ImageBitmap> {
-  try {
-    return await createImageBitmap(blob, { imageOrientation: "from-image" });
-  } catch (e) {
-    // Chromium and Firefox can't decode HEIC, for one.
-    throw toPdfError(e, (blob as File).name ?? "");
-  }
-}
-
-// Converts any browser-decodable image to JPEG or PNG bytes pdf-lib can embed.
+// The first image of a file as upright JPEG or PNG bytes pdf-lib can embed
+// (the watermark image). Images → PDF uses pdfImages (./images) directly.
 export async function normaliseImage(file: Blob): Promise<{ bytes: Uint8Array; kind: "jpg" | "png"; width: number; height: number }> {
-  const type = file.type;
-  const bmp = await loadImage(file);
-  const { width, height } = bmp;
-  if (type === "image/jpeg") {
-    bmp.close();
-    return { bytes: await bytesOf(file), kind: "jpg", width, height };
-  }
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  canvas.getContext("2d")!.drawImage(bmp, 0, 0);
-  bmp.close();
-  const png = type === "image/png";
-  const blob = await canvasToBlob(canvas, png ? "image/png" : "image/jpeg", 0.92);
-  return { bytes: await bytesOf(blob), kind: png ? "png" : "jpg", width, height };
+  const { pdfImages } = await import("./images");
+  for await (const img of pdfImages(file, { upright: true })) return img;
+  throw new PdfError("image_unsupported", (file as File).name ?? "");
 }
