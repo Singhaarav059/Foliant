@@ -2,6 +2,7 @@
 // processing all read from here.
 
 import { STATIC } from "./mode";
+import { LOCALE_CODES } from "./i18n/locales";
 
 export type CategoryId =
   | "organize"
@@ -47,7 +48,7 @@ export type ToolId =
   | "merge" | "split" | "extract" | "remove" | "organize" | "scan"
   | "compress" | "repair" | "ocr"
   | "jpgToPdf" | "wordToPdf" | "pptToPdf" | "excelToPdf" | "htmlToPdf"
-  | "pdfToJpg" | "pdfToWord" | "pdfToPpt" | "pdfToExcel" | "pdfToPdfa" | "pdfToMarkdown"
+  | "pdfToJpg" | "pdfToWord" | "pdfToPpt" | "pdfToExcel" | "pdfToPdfa" | "pdfToMarkdown" | "summarize"
   | "rotate" | "pageNumbers" | "watermark" | "crop" | "edit" | "forms"
   | "unlock" | "protect" | "sign" | "redact" | "compare";
 
@@ -211,6 +212,15 @@ const ALL: Tool[] = [
     id: "pdfToMarkdown", slug: "pdf-to-markdown", category: "convertFrom", icon: "Hash", mode: "files",
     runtime: "browser", accept: PDF, multiple: true, isNew: true,
     options: [{ key: "pageBreaks", type: "toggle", default: false }],
+  },
+  {
+    // src/lib/ai/summarize.ts: the browser's built-in AI when already on the device, else extractive.
+    id: "summarize", slug: "summarize-pdf", category: "convertFrom", icon: "TextQuote", mode: "files",
+    runtime: "browser", accept: PDF, multiple: true, isNew: true,
+    options: [
+      { key: "summaryLength", type: "select", choices: ["short", "medium", "long"], default: "medium" },
+      { key: "summaryLang", type: "select", choices: ["same", ...LOCALE_CODES], default: "same" },
+    ],
   },
   // ── Edit
   {
