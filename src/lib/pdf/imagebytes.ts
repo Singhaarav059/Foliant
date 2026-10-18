@@ -56,32 +56,51 @@ export function tiffRaster(UTIF: Utif, buffer: ArrayBuffer, ifd: object): Uint8A
 // camera serial, thumbnail), XMP, IPTC, maker notes and comments. Kept: JFIF
 // (APP0), the ICC colour profile (APP2 "ICC_PROFILE") and Adobe's colour
 // transform (APP14), which change how the pixels look. The image data is
-// copied byte for byte. A file whose markers can't be followed is returned
-// as it is.
+// copied byte for byte, up to the end-of-image marker: anything after it (an
+// MPF or gain-map JPEG with its own EXIF, a motion photo's video) is dropped.
+// A file whose markers can't be followed is returned as it is.
 export function stripJpegMetadata(b: Uint8Array): Uint8Array {
   if (b[0] !== 0xff || b[1] !== 0xd8) return b;
   const keep: [number, number][] = [[0, 2]];
   let dropped = false;
+  let scanned = false;
   let i = 2;
-  while (i + 4 <= b.length) {
+  for (;;) {
+    if (i + 2 > b.length) {
+      // No end-of-image marker: a truncated file. Keep its scan data as it is.
+      if (!scanned) return b;
+      keep.push([i, b.length]);
+      break;
+    }
     if (b[i] !== 0xff) return b;
     const m = b[i + 1];
     if (m === 0xff) { i++; continue; } // fill byte
-    if (m === 0x01 || (m >= 0xd0 && m <= 0xd8)) { keep.push([i, i + 2]); i += 2; continue; }
-    if (m === 0xd9) return b; // end of image before any scan
-    const len = (b[i + 2] << 8) | b[i + 3];
-    if (len < 2 || i + 2 + len > b.length) return b;
-    if (m === 0xda) {
-      keep.push([i, b.length]); // the scan and everything after it
+    if (m === 0xd9) {
+      if (!scanned) return b; // end of image before any scan
+      keep.push([i, i + 2]);
+      if (i + 2 < b.length) dropped = true; // data after the image
       break;
     }
+    if (m === 0x01 || (m >= 0xd0 && m <= 0xd8)) { keep.push([i, i + 2]); i += 2; continue; }
+    if (i + 4 > b.length) return b;
+    const len = (b[i + 2] << 8) | b[i + 3];
+    if (len < 2 || i + 2 + len > b.length) return b;
     const app = m >= 0xe0 && m <= 0xef;
     const icc = m === 0xe2 && String.fromCharCode(...b.subarray(i + 4, i + 16)) === "ICC_PROFILE\0";
     if ((app && m !== 0xe0 && m !== 0xee && !icc) || m === 0xfe) dropped = true;
     else keep.push([i, i + 2 + len]);
     i += 2 + len;
+    if (m !== 0xda) continue;
+    // Entropy-coded data runs to the next marker that isn't a stuffed 0xFF
+    // (FF 00) or a restart (FF D0-D7). Progressive files have several scans,
+    // with tables between them, so the marker loop carries on from there.
+    scanned = true;
+    let j = i;
+    while (j + 1 < b.length && !(b[j] === 0xff && b[j + 1] !== 0x00 && !(b[j + 1] >= 0xd0 && b[j + 1] <= 0xd7))) j++;
+    if (j + 1 >= b.length) j = b.length;
+    keep.push([i, j]);
+    i = j;
   }
-  if (i + 4 > b.length) return b;
   if (!dropped) return b;
   const out = new Uint8Array(keep.reduce((s, [a, z]) => s + z - a, 0));
   let o = 0;

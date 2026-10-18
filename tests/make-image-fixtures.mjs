@@ -73,4 +73,13 @@ for (let o = 1; o <= 8; o++) {
   }
   if (!found) throw new Error(`no stored form for orientation ${o}`);
 }
+
+// A phone "motion photo": orient-6.jpg with a second JPEG (its own EXIF, as
+// in an MPF or gain-map image) and a stand-in MP4 after the end-of-image
+// marker. Viewers show the first image; the rest is data that rides along.
+{
+  const extra = await quadrants(40, 30).withExif({ IFD0: { Make: "TrailingCam" }, IFD3: { GPSLatitudeRef: "N" } }).jpeg().toBuffer();
+  const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypisom\0\0\0\0isommp42MotionPhotoVideo", "latin1")]);
+  writeFileSync(join(out, "motion.jpg"), Buffer.concat([readFileSync(join(out, "orient-6.jpg")), extra, mp4]));
+}
 console.log("written to", out);

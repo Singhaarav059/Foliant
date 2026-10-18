@@ -81,6 +81,25 @@ await test("a JPEG with nothing to take out comes back as it is; a broken one to
   if (stripJpegMetadata(broken) !== broken) throw new Error("truncated JPEG was changed");
 });
 
+await test("whatever follows the end of the image (a second JPEG, a motion photo's video) is cut off", async () => {
+  const src = fixture("motion.jpg");
+  for (const t of ["TrailingCam", "ftypisom"]) if (!has(src, t)) throw new Error(`source lacks ${t}`);
+  const out = stripJpegMetadata(src);
+  for (const t of ["TrailingCam", "ftypisom", "MotionPhotoVideo", "Exif\0\0"]) if (has(out, t)) throw new Error(`output still has ${JSON.stringify(t)}`);
+  if (out[out.length - 2] !== 0xff || out[out.length - 1] !== 0xd9) throw new Error("output doesn't end at the end-of-image marker");
+  if (!Buffer.from(out).equals(Buffer.from(stripJpegMetadata(fixture("orient-6.jpg"))))) throw new Error("output differs from the photo on its own");
+  return `${src.length} → ${out.length} bytes`;
+});
+
+await test("a progressive JPEG keeps all its scans; trailing bytes still go", async () => {
+  const base = await sharp(fixture("orient-1.jpg")).jpeg({ progressive: true, quality: 85 }).toBuffer();
+  const src = Buffer.concat([base, Buffer.from("\xff\xd8\xff\xe1 trailing secret", "latin1")]);
+  const out = stripJpegMetadata(new Uint8Array(src));
+  if (!Buffer.from(out).equals(base)) throw new Error(`output is ${out.length} bytes, the image alone ${base.length}`);
+  const scans = [...base.keys()].filter((i) => base[i] === 0xff && base[i + 1] === 0xda).length;
+  return `${scans} scans kept`;
+});
+
 if (failed) {
   console.log(`${failed} failed`);
   process.exit(1);

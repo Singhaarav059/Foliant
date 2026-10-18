@@ -144,9 +144,17 @@ function decodeHeif(buffer: ArrayBuffer): Promise<ImageData> {
         if (heif === state) heif = null;
       }, 30_000);
     };
-    worker.onmessage = ({ data }: MessageEvent<{ id: number; width: number; height: number; data: ArrayBuffer; error?: string }>) => {
+    worker.onmessage = ({ data }: MessageEvent<{ id: number; width: number; height: number; data: ArrayBuffer; error?: string; load?: boolean }>) => {
       const job = state.jobs.get(data.id);
       state.jobs.delete(data.id);
+      if (data.load) {
+        // libheif didn't load (its wasm wasn't downloaded): this worker can't
+        // recover, so the next file gets a new one.
+        job?.reject(new Error(`Failed to fetch the HEIC decoder: ${data.error}`));
+        if (heif === state) heif = null;
+        if (!state.jobs.size) worker.terminate();
+        return;
+      }
       if (data.error) job?.reject(new Error(data.error));
       else job?.resolve(new ImageData(new Uint8ClampedArray(data.data), data.width, data.height));
       finish();

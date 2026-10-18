@@ -25,6 +25,8 @@ const SIZES = { a3: [297, 420], a4: [210, 297], a5: [148, 210], letter: [215.9, 
 const MM = 72 / 25.4;
 // The largest page PDF readers accept (Acrobat's limit), in points.
 const MAX_PAGE = 14400;
+// The smallest, in points (ISO 32000 Annex C); some readers clamp or refuse smaller.
+const MIN_PAGE = 3;
 
 // ── Images → PDF
 // `pageSize` "fit" makes each page the image's own size (no margin);
@@ -44,6 +46,9 @@ export async function imagesToPdf(
           let pw: number, ph: number;
           if (o.pageSize === "fit") {
             [pw, ph] = img.points;
+            // A tiny image (an icon, a 1-pixel line) is scaled up to a page readers accept.
+            const small = Math.min(pw, ph) / MIN_PAGE;
+            if (small < 1) [pw, ph] = [pw / small, ph / small];
           } else if (o.pageSize === "custom") {
             // Exactly as entered: the orientation choice doesn't apply.
             [pw, ph] = [o.width || SIZES.a4[0], o.height || SIZES.a4[1]].map((v) => Math.min(Math.max(v, 10), MAX_PAGE / MM) * MM);
@@ -56,6 +61,9 @@ export async function imagesToPdf(
           // A huge image at 96 DPI would make a page readers refuse.
           const big = Math.max(pw, ph) / MAX_PAGE;
           if (big > 1) [pw, ph] = [pw / big, ph / big];
+          // Only an image over 4800 times longer than wide gets here: its page
+          // is widened, and the image keeps its shape in the middle.
+          [pw, ph] = [Math.max(pw, MIN_PAGE), Math.max(ph, MIN_PAGE)];
           const page = doc.addPage([pw, ph]);
           const scale = Math.min((pw - margin * 2) / img.width, (ph - margin * 2) / img.height);
           const w = img.width * scale;
