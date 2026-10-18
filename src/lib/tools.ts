@@ -203,8 +203,10 @@ const ALL: Tool[] = [
     id: "pdfToPdfa", slug: "pdf-to-pdfa", category: "convertFrom", icon: "Archive", mode: "files",
     runtime: "browser", accept: PDF, multiple: true, chainable: true,
     options: [
-      { key: "pdfaDpi", type: "select", choices: ["150", "200", "300"], default: "200" },
-      { key: "keepText", type: "toggle", default: true },
+      { key: "pdfaLevel", type: "select", choices: ["1b", "2b", "2u", "3b", "3u"], default: "2b" },
+      // pdfaRaster isn't an option: the workspace sets it once it knows some page must become an image.
+      { key: "pdfaDpi", type: "select", choices: ["150", "200", "300"], default: "200", when: { key: "pdfaRaster", is: [true] } },
+      { key: "keepText", type: "toggle", default: true, when: { key: "pdfaRaster", is: [true] } },
     ],
   },
   {

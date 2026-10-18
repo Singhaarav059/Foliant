@@ -1,4 +1,4 @@
-// PDF → PDF/A-2b that keeps the pages as they are, the way Ghostscript and
+// PDF → PDF/A (1b, 2b, 2u, 3b or 3u) that keeps the pages as they are, the way Ghostscript and
 // OCRmyPDF do it: fix what the standard forbids instead of turning pages into
 // pictures. What it fixes:
 //   - fonts named but not embedded get a metric-compatible substitute (Arimo,
@@ -10,13 +10,19 @@
 // Pages it can't fix (device CMYK under an sRGB output intent, fonts it can't
 // substitute, PostScript XObjects, form fields without appearances) are
 // returned so the caller can render just those pages as images.
+// Levels, from ISO 19005:
+//   1b  PDF 1.4: no transparency, JPEG 2000, layers or 1.5+ annotation types;
+//       pages that use them are rendered instead
+//   2u, 3u  every character maps to Unicode; when a font can't, the file is
+//       made to the b level of the same part instead (report.level says which)
+//   3b, 3u  embedded files stay, as associated files with an AFRelationship
 
 import "regenerator-runtime/runtime";
 import fontkit from "@pdf-lib/fontkit";
 import { unzlibSync } from "fflate";
 import {
-  PDFArray, PDFDict, PDFHeader, PDFName, PDFNumber, PDFRawStream, PDFRef, PDFStream, decodePDFRawStream,
-  type PDFDocument, type PDFObject,
+  PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFRawStream, PDFRef, PDFStream, PDFString, decodePDFRawStream,
+  type PDFObject,
 } from "pdf-lib";
 import { VENDOR } from "../vendor";
 import { contentBytes, tokens } from "./content";
@@ -27,7 +33,10 @@ export const pdfaFonts = {
   load: async (file: string): Promise<Uint8Array> => new Uint8Array(await (await fetch(`${VENDOR}pdfa-fonts/${file}`)).arrayBuffer()),
 };
 
-export type PdfaReport = { raster: Set<number>; substituted: Map<string, string>; removed: Set<string> };
+export const PDFA_LEVELS = ["1b", "2b", "2u", "3b", "3u"] as const;
+export type PdfaLevel = (typeof PDFA_LEVELS)[number];
+// level: the level the file was made to, which is the one asked for unless it had to come down.
+export type PdfaReport = { raster: Set<number>; substituted: Map<string, string>; removed: Set<string>; level: PdfaLevel };
 
 const N = (s: string) => PDFName.of(s);
 
@@ -142,7 +151,21 @@ function cmykSpace(cs: PDFObject | undefined, resources: PDFDict | undefined, c:
 
 // ── Scanning content
 
-type Usage = { cmyk: boolean; postscript: boolean; fonts: Map<PDFDict, Set<number>> };
+// transparency and jpx only matter to PDF/A-1, which allows neither.
+type Usage = { cmyk: boolean; postscript: boolean; transparency: boolean; jpx: boolean; fonts: Map<PDFDict, Set<number>> };
+
+// A graphics state that blends, fades or masks.
+function transparentState(gs: PDFDict): boolean {
+  const smask = gs.lookup(N("SMask"));
+  if (smask instanceof PDFDict) return true;
+  for (const k of ["CA", "ca"]) {
+    const v = gs.lookup(N(k));
+    if (v instanceof PDFNumber && v.asNumber() < 1) return true;
+  }
+  const bm = gs.lookup(N("BM"));
+  const mode = bm instanceof PDFArray ? bm.get(0) : bm;
+  return mode !== undefined && mode !== N("Normal") && mode !== N("Compatible");
+}
 
 function scan(streams: Uint8Array[], resources: PDFDict | undefined, u: Usage, c: Ctx, seen: Set<PDFObject>, depth = 0) {
   if (depth > 20) return;
@@ -219,6 +242,10 @@ function scan(streams: Uint8Array[], resources: PDFDict | undefined, u: Usage, c
           if (sub === N("PS") || x.dict.get(N("Subtype2")) === N("PS")) u.postscript = true;
           else if (sub === N("Image")) {
             if (!x.dict.get(N("ImageMask")) && cmykSpace(x.dict.get(N("ColorSpace")), resources, c)) u.cmyk = true;
+            const sid = x.dict.lookup(N("SMaskInData"));
+            if (x.dict.lookup(N("SMask")) instanceof PDFStream || (sid instanceof PDFNumber && sid.asNumber() !== 0)) u.transparency = true;
+            const f = x.dict.lookup(N("Filter"));
+            if (f === N("JPXDecode") || (f instanceof PDFArray && f.asArray().includes(N("JPXDecode")))) u.jpx = true;
             const smask = x.dict.lookup(N("SMask"));
             if (smask instanceof PDFRawStream && cmykSpace(smask.dict.get(N("ColorSpace")), resources, c)) u.cmyk = true;
           } else if (sub === N("Form")) form(x);
@@ -241,6 +268,7 @@ function scan(streams: Uint8Array[], resources: PDFDict | undefined, u: Usage, c
   }
   for (const [, g] of resources?.lookupMaybe(N("ExtGState"), PDFDict)?.entries() ?? []) {
     const gs = c.doc.context.lookup(g);
+    if (gs instanceof PDFDict && transparentState(gs)) u.transparency = true;
     const smask = gs instanceof PDFDict ? gs.lookup(N("SMask")) : undefined;
     const group = smask instanceof PDFDict ? smask.lookup(N("G")) : undefined;
     if (group instanceof PDFRawStream) form(group);
@@ -252,6 +280,8 @@ function scan(streams: Uint8Array[], resources: PDFDict | undefined, u: Usage, c
 const BAD_ACTIONS = new Set(["/Launch", "/Sound", "/Movie", "/ResetForm", "/ImportData", "/JavaScript", "/Hide", "/SetOCGState", "/Rendition", "/Trans", "/GoTo3DView", "/GoToE"]);
 const GOOD_NAMED = new Set(["/NextPage", "/PrevPage", "/FirstPage", "/LastPage"]);
 const BAD_ANNOTS = new Set(["/Sound", "/Movie", "/Screen", "/3D", "/RichMedia", "/FileAttachment"]);
+// The annotation types PDF 1.4, and so PDF/A-1, knows.
+const PDF14_ANNOTS = new Set(["/Text", "/Link", "/FreeText", "/Line", "/Square", "/Circle", "/Highlight", "/Underline", "/Squiggly", "/StrikeOut", "/Stamp", "/Ink", "/Popup", "/Widget", "/PrinterMark", "/TrapNet"]);
 
 function badAction(a: PDFObject | undefined, c: Ctx): boolean {
   const d = a instanceof PDFRef ? c.doc.context.lookup(a) : a;
@@ -262,7 +292,46 @@ function badAction(a: PDFObject | undefined, c: Ctx): boolean {
   return badAction(d.get(N("Next")), c);
 }
 
-function cleanDocument(doc: PDFDocument, removed: Set<string>) {
+// Each [name, value] pair in a name tree, leaves in order.
+function nameTreeEntries(node: PDFDict | undefined, doc: PDFDocument, out: [PDFObject, PDFObject][] = [], depth = 0) {
+  if (!node || depth > 32) return out;
+  const names = node.lookupMaybe(N("Names"), PDFArray)?.asArray() ?? [];
+  for (let i = 0; i + 1 < names.length; i += 2) out.push([names[i], names[i + 1]]);
+  for (const kid of node.lookupMaybe(N("Kids"), PDFArray)?.asArray() ?? []) nameTreeEntries(doc.context.lookupMaybe(kid, PDFDict), doc, out, depth + 1);
+  return out;
+}
+
+// PDF/A-3: embedded files stay when they're really embedded, each one an
+// associated file of the document (ISO 19005-3, 6.8).
+function associateFiles(doc: PDFDocument, names: PDFDict, removed: Set<string>) {
+  const ctx = doc.context;
+  const kept: PDFObject[] = [];
+  const af = doc.catalog.lookupMaybe(N("AF"), PDFArray)?.asArray().slice() ?? [];
+  for (const [key, value] of nameTreeEntries(names.lookupMaybe(N("EmbeddedFiles"), PDFDict), doc)) {
+    const spec = ctx.lookup(value);
+    const file = spec instanceof PDFDict ? spec.lookupMaybe(N("EF"), PDFDict)?.lookup(N("F")) : undefined;
+    if (!(spec instanceof PDFDict) || !(file instanceof PDFRawStream)) {
+      removed.add("external file references");
+      continue;
+    }
+    const label = spec.get(N("UF")) ?? spec.get(N("F")) ?? key;
+    if (!spec.has(N("F"))) spec.set(N("F"), label);
+    if (!spec.has(N("UF"))) spec.set(N("UF"), label);
+    spec.set(N("Type"), N("Filespec"));
+    if (!(spec.get(N("AFRelationship")) instanceof PDFName)) spec.set(N("AFRelationship"), N("Unspecified"));
+    if (!(file.dict.get(N("Subtype")) instanceof PDFName)) file.dict.set(N("Subtype"), N("application/octet-stream"));
+    const params = file.dict.lookupMaybe(N("Params"), PDFDict) ?? ctx.obj({});
+    if (!params.has(N("ModDate"))) params.set(N("ModDate"), PDFString.fromDate(new Date()));
+    file.dict.set(N("Params"), params);
+    const ref = value instanceof PDFRef ? value : ctx.register(spec);
+    kept.push(key, ref);
+    if (!af.some((r) => r === ref)) af.push(ref);
+  }
+  names.set(N("EmbeddedFiles"), ctx.obj({ Names: kept }));
+  if (af.length) doc.catalog.set(N("AF"), ctx.obj(af));
+}
+
+function cleanDocument(doc: PDFDocument, removed: Set<string>, part: number) {
   const c = { doc };
   const cat = doc.catalog;
   const drop = (d: PDFDict, key: string, why: string) => {
@@ -275,11 +344,17 @@ function cleanDocument(doc: PDFDocument, removed: Set<string>) {
   drop(cat, "Collection", "portfolio");
   drop(cat, "Perms", "permissions");
   drop(cat, "Requirements", "requirements");
+  if (part === 1) {
+    // PDF 1.4 has no layers: everything shows, as it prints.
+    drop(cat, "OCProperties", "layers");
+    cat.delete(N("Version"));
+  }
   if (badAction(cat.get(N("OpenAction")), c)) drop(cat, "OpenAction", "open action");
   const names = cat.lookupMaybe(N("Names"), PDFDict);
   if (names) {
     drop(names, "JavaScript", "scripts");
-    drop(names, "EmbeddedFiles", "attachments");
+    if (part === 3) associateFiles(doc, names, removed);
+    else drop(names, "EmbeddedFiles", "attachments");
     drop(names, "AlternatePresentations", "alternate presentations");
   }
   const form = cat.lookupMaybe(N("AcroForm"), PDFDict);
@@ -325,6 +400,8 @@ function cleanDocument(doc: PDFDocument, removed: Set<string>) {
     if (d.get(N("Subtype")) === N("Form")) {
       drop(d, "OPI", "OPI");
       drop(d, "Ref", "reference XObjects");
+      // A transparency group of opaque content looks the same without it; pages with transparency are rendered.
+      if (part === 1 && d.lookupMaybe(N("Group"), PDFDict)?.get(N("S")) === N("Transparency")) d.delete(N("Group"));
     }
     // LZW isn't allowed; Flate is.
     if (obj instanceof PDFRawStream) {
@@ -348,12 +425,20 @@ function cleanDocument(doc: PDFDocument, removed: Set<string>) {
 
 // ── Main
 
-export async function fixForPdfA(doc: PDFDocument): Promise<PdfaReport> {
+// Whether a PDF/A conversion at this level will have to render any page as an
+// image, which is when the resolution and text-layer options matter.
+export async function pdfaNeedsRaster(file: Blob, level: PdfaLevel): Promise<boolean> {
+  const doc = await PDFDocument.load(new Uint8Array(await file.arrayBuffer()), { updateMetadata: false });
+  return (await fixForPdfA(doc, level)).raster.size > 0;
+}
+
+export async function fixForPdfA(doc: PDFDocument, level: PdfaLevel = "2b"): Promise<PdfaReport> {
   const c = { doc };
+  const part = Number(level[0]);
   const removed = new Set<string>();
   const raster = new Set<number>();
   const substituted = new Map<string, string>();
-  cleanDocument(doc, removed);
+  cleanDocument(doc, removed, part);
 
   // Per page: annotations, then everything the page draws.
   const fontPages = new Map<PDFDict, Set<number>>();
@@ -364,7 +449,9 @@ export async function fixForPdfA(doc: PDFDocument): Promise<PdfaReport> {
     node.delete(N("PresSteps"));
     const group = node.lookupMaybe(N("Group"), PDFDict);
     if (group && cmykSpace(group.get(N("CS")), undefined, c)) group.set(N("CS"), N("DeviceRGB"));
-    const u: Usage = { cmyk: false, postscript: false, fonts: new Map() };
+    // PDF/A-1 forbids the page group; a page that really is transparent is rendered.
+    if (part === 1) node.delete(N("Group"));
+    const u: Usage = { cmyk: false, postscript: false, transparency: false, jpx: false, fonts: new Map() };
     const seen = new Set<PDFObject>();
     let resources: PDFDict | undefined;
     for (let n: PDFDict | undefined = node; n && !resources; n = n.lookupMaybe(N("Parent"), PDFDict)) resources = n.lookupMaybe(N("Resources"), PDFDict);
@@ -377,6 +464,12 @@ export async function fixForPdfA(doc: PDFDocument): Promise<PdfaReport> {
         if (!(a instanceof PDFDict)) continue;
         const sub = String(a.get(N("Subtype")));
         if (BAD_ANNOTS.has(sub)) { removed.add(`${sub.slice(1)} annotations`); continue; }
+        if (part === 1) {
+          // Newer annotation types and faded annotations: drawn into the page if they have a look, dropped if not.
+          const ca = a.lookup(N("CA"));
+          if (!PDF14_ANNOTS.has(sub) && !a.has(N("AP"))) { removed.add(`${sub.slice(1)} annotations`); continue; }
+          if (!PDF14_ANNOTS.has(sub) || (ca instanceof PDFNumber && ca.asNumber() < 1)) raster.add(i);
+        }
         a.delete(N("AA"));
         if (badAction(a.get(N("A")), c)) { a.delete(N("A")); removed.add("annotation actions"); }
         // Printable, not hidden.
@@ -406,7 +499,7 @@ export async function fixForPdfA(doc: PDFDocument): Promise<PdfaReport> {
     }
 
     scan(contentBytes(node.get(N("Contents")), doc), resources, u, c, seen);
-    if (u.cmyk || u.postscript) raster.add(i);
+    if (u.cmyk || u.postscript || (part === 1 && (u.transparency || u.jpx))) raster.add(i);
     for (const [font, codes] of u.fonts) {
       fontPages.set(font, (fontPages.get(font) ?? new Set()).add(i));
       const all = allCodes.get(font) ?? new Set<number>();
@@ -424,13 +517,14 @@ export async function fixForPdfA(doc: PDFDocument): Promise<PdfaReport> {
     const fail = () => pages.forEach((p) => raster.add(p));
     if (sub === "/Type0") {
       const desc = font.lookupMaybe(N("DescendantFonts"), PDFArray)?.lookup(0, PDFDict)?.lookupMaybe(N("FontDescriptor"), PDFDict);
-      desc?.delete(N("CIDSet"));
+      // PDF/A-1 requires CIDSet and CharSet for subsets; PDF/A-2 makes them optional, and wrong ones fail.
+      if (part > 1) desc?.delete(N("CIDSet"));
       if (!embeddedFile(desc)) fail();
       continue;
     }
     const desc = font.lookupMaybe(N("FontDescriptor"), PDFDict);
     if (embeddedFile(desc)) {
-      desc!.delete(N("CharSet"));
+      if (part > 1) desc!.delete(N("CharSet"));
       continue;
     }
     const base = String(font.get(N("BaseFont")) ?? "/").slice(1).replace(/^[A-Z]{6}\+/, "");
@@ -496,8 +590,35 @@ export async function fixForPdfA(doc: PDFDocument): Promise<PdfaReport> {
     substituted.set(base, name);
   }
 
-  // PDF/A-2 is based on PDF 1.7.
-  const header = doc.context.header.toString();
-  if (!/%PDF-1\.[0-7]/.test(header)) doc.context.header = PDFHeader.forVersion(1, 7);
-  return { raster, substituted, removed };
+  // The u levels: every character on a page kept as it is maps to Unicode, or
+  // the file comes down to the b level of the same part.
+  let reached = level;
+  if (level.endsWith("u")) {
+    for (const [font, codes] of allCodes)
+      if ([...fontPages.get(font)!].some((p) => !raster.has(p)) && !mapsToUnicode(font, codes)) reached = `${part}b` as PdfaLevel;
+  }
+
+  return { raster, substituted, removed, level: reached };
+}
+
+// PDF/A-1 is based on PDF 1.4, PDF/A-2 and 3 on PDF 1.7. pdf-lib always
+// writes a 1.7 header, so the saved file's version digit is set here; the
+// header keeps its length, so every offset stays right.
+export function pdfaVersion(bytes: Uint8Array, level: PdfaLevel): Uint8Array {
+  if (level[0] === "1" && new TextDecoder().decode(bytes.subarray(0, 8)) === "%PDF-1.7") bytes[7] = 0x34;
+  return bytes;
+}
+
+// Unicode for every code drawn: a ToUnicode map, or glyph names Unicode knows.
+// Composite fonts, symbolic fonts and built-in encodings need the map.
+function mapsToUnicode(font: PDFDict, codes: Set<number>): boolean {
+  if (font.get(N("ToUnicode")) instanceof PDFStream || font.lookup(N("ToUnicode")) instanceof PDFStream) return true;
+  const sub = String(font.get(N("Subtype")));
+  if (sub === "/Type0") return false;
+  const desc = font.lookupMaybe(N("FontDescriptor"), PDFDict);
+  const flags = desc?.lookup(N("Flags"));
+  if (sub !== "/Type3" && flags instanceof PDFNumber && flags.asNumber() & 4) return false;
+  if (sub !== "/Type3" && embeddedFile(desc) && !font.has(N("Encoding"))) return false;
+  const enc = encodingOf(font, sub === "/Type1" && !embeddedFile(desc));
+  return !!enc && [...codes].every((code) => unicodeOf(enc[code]) !== undefined);
 }

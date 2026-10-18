@@ -14,14 +14,15 @@ import { execFileSync } from "node:child_process";
 import { writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { load, openPdf, check, eq } from "./lib/load.mjs";
+import { load, openPdf, check, eq, nodeCanvas } from "./lib/load.mjs";
 
+nodeCanvas();
 const { pdfToPdfa } = await load("convert");
-const { fixForPdfA } = await load("pdfa");
+const { fixForPdfA, pdfaNeedsRaster } = await load("pdfa");
 const results = { failed: 0 };
 const test = check(results);
 
-async function build({ cmykPage = false, symbolPage = false, separationPage = false } = {}) {
+async function build({ cmykPage = false, symbolPage = false, separationPage = false, transparentPage = false, unmappedFontPage = false, attachment = false } = {}) {
   const doc = await PDFDocument.create();
   doc.setTitle("Annual report");
   doc.setAuthor("Finance team");
@@ -70,8 +71,32 @@ async function build({ cmykPage = false, symbolPage = false, separationPage = fa
     sep.node.Resources().set(PDFName.of("ColorSpace"), ctx.obj({ CS0: ctx.obj([PDFName.of("Separation"), PDFName.of("Orange"), PDFName.of("DeviceCMYK"), ctx.register(tint)]) }));
     sep.pushOperators(PDFOperator.of("cs", [PDFName.of("CS0")]), PDFOperator.of("scn", [ctx.obj(1)]), PDFOperator.of("re", [50, 600, 100, 100].map((n) => ctx.obj(n))), PDFOperator.of("f"));
   }
+  if (transparentPage) {
+    // Office apps give every page a transparency group, whether or not anything on it is transparent.
+    p.node.set(PDFName.of("Group"), ctx.obj({ Type: "Group", S: "Transparency", CS: "DeviceRGB" }));
+    const t = doc.addPage([595, 842]);
+    t.drawText("Under glass", { x: 50, y: 700, size: 14, font: helv });
+    t.drawRectangle({ x: 40, y: 690, width: 200, height: 40, color: rgb(1, 0.8, 0), opacity: 0.5 });
+  }
+  if (unmappedFontPage) {
+    // A Type3 font whose only glyph name means nothing in Unicode, and no ToUnicode map.
+    const u = doc.addPage([595, 842]);
+    const glyph = ctx.register(ctx.stream("500 0 0 0 500 500 d1 0 0 500 500 re f"));
+    const font = ctx.register(ctx.obj({
+      Type: "Font", Subtype: "Type3", FontBBox: [0, 0, 500, 500], FontMatrix: [0.001, 0, 0, 0.001, 0, 0],
+      CharProcs: { blot: glyph }, Encoding: { Type: "Encoding", Differences: [65, PDFName.of("blot")] },
+      FirstChar: 65, LastChar: 65, Widths: [500], Resources: {},
+    }));
+    const f = u.node.newFontDictionary("T3", font);
+    u.pushOperators(PDFOperator.of("BT"), PDFOperator.of("Tf", [f, ctx.obj(24)]), PDFOperator.of("Td", [ctx.obj(50), ctx.obj(700)]), PDFOperator.of("Tj", [PDFString.of("A")]), PDFOperator.of("ET"));
+  }
+  if (attachment) await doc.attach(new TextEncoder().encode("year,revenue\n2025,112\n"), "figures.csv", { mimeType: "text/csv", description: "Source figures" });
   if (symbolPage) doc.addPage([595, 842]).drawText("αβγ", { x: 50, y: 700, size: 14, font: await doc.embedFont(StandardFonts.Symbol) });
-  return doc.save();
+  if (!attachment) return doc.save();
+  // pdf-lib lists the file in the catalog's AF; most PDFs with attachments don't.
+  const again = await PDFDocument.load(await doc.save());
+  again.catalog.delete(PDFName.of("AF"));
+  return again.save();
 }
 
 const text = async (bytes) => {
@@ -146,21 +171,87 @@ await test("CMYK, spot colour over CMYK and Symbol pages are flagged for renderi
   eq([...raster].sort().join(","), "1,2,3", "pages to render");
 });
 
-// Full validation, when a veraPDF command line is available.
+const outputOf = async (bytes, level) => {
+  const [r] = await pdfToPdfa(new File([bytes], "report.pdf"), { pdfaDpi: "150", keepText: true, pdfaLevel: level });
+  return { bytes: new Uint8Array(await r.blob.arrayBuffer()), note: r.note };
+};
+const pdfaId = (d) => {
+  const xmp = new TextDecoder().decode(d.catalog.lookup(PDFName.of("Metadata"), PDFRawStream).contents);
+  return `${xmp.match(/<pdfaid:part>(\d)</)?.[1]}${xmp.match(/<pdfaid:conformance>([A-Z])</)?.[1]}`;
+};
+const header = (bytes) => new TextDecoder().decode(bytes.subarray(0, 8));
+
+const transparent = await build({ transparentPage: true });
+const out1b = await outputOf(transparent, "1b");
+await test("PDF/A-1b: transparency rendered, PDF 1.4, identified as 1B", async () => {
+  eq((await fixForPdfA(await PDFDocument.load(transparent), "2b")).raster.size, 0, "PDF/A-2 keeps transparency as it is");
+  eq([...(await fixForPdfA(await PDFDocument.load(transparent), "1b")).raster].join(","), "1", "PDF/A-1 renders the transparent page");
+  const d = await PDFDocument.load(out1b.bytes);
+  eq(header(out1b.bytes), "%PDF-1.4", "header");
+  eq(pdfaId(d), "1B", "pdfaid");
+  eq(d.getPages().some((p) => p.node.has(PDFName.of("Group"))), false, "no page transparency groups");
+  const pages = await text(out1b.bytes);
+  eq(pages[0], (await text(transparent))[0], "the opaque page keeps its real text");
+  eq(pages[1].includes("Under glass"), true, "the rendered page stays searchable");
+  eq(out1b.note, undefined, "no downgrade");
+});
+
+const out2u = await outputOf(input, "2u");
+await test("PDF/A-2u: every font maps to Unicode, identified as 2U", async () => {
+  eq(pdfaId(await PDFDocument.load(out2u.bytes)), "2U", "pdfaid");
+  eq(out2u.note, undefined, "no downgrade");
+});
+
+await test("PDF/A-2u downgrades to 2b when a font can't map to Unicode", async () => {
+  const bytes = await build({ unmappedFontPage: true });
+  eq((await fixForPdfA(await PDFDocument.load(bytes), "2u")).level, "2b", "level reached");
+  eq((await fixForPdfA(await PDFDocument.load(bytes), "2b")).raster.size, 0, "the page stays as it is");
+  const out = await outputOf(bytes, "2u");
+  eq(pdfaId(await PDFDocument.load(out.bytes)), "2B", "pdfaid");
+  eq(out.note, "pdfaDowngraded:2b", "note");
+});
+
+const out3b = await outputOf(await build({ attachment: true }), "3b");
+await test("PDF/A-3b: embedded files kept as associated files", async () => {
+  const d = await PDFDocument.load(out3b.bytes);
+  eq(pdfaId(d), "3B", "pdfaid");
+  const tree = d.catalog.lookup(PDFName.of("Names"), PDFDict).lookup(PDFName.of("EmbeddedFiles"), PDFDict).lookup(PDFName.of("Names"), PDFArray).asArray();
+  eq(tree.filter((_, i) => i % 2 === 0).map((k) => k.decodeText()).join(","), "figures.csv", "only the file that is really embedded");
+  const spec = d.context.lookup(tree[1]);
+  eq(String(spec.get(PDFName.of("AFRelationship"))), "/Unspecified", "AFRelationship");
+  eq(spec.lookup(PDFName.of("UF")).decodeText(), "figures.csv", "UF");
+  eq(String(spec.lookup(PDFName.of("EF"), PDFDict).lookup(PDFName.of("F"), PDFRawStream).dict.get(PDFName.of("Subtype"))), "/text#2Fcsv", "MIME type");
+  eq(d.catalog.lookup(PDFName.of("AF"), PDFArray).asArray().some((r) => r === tree[1]), true, "listed in the catalog's AF");
+  eq((await PDFDocument.load(out3b.bytes.slice())).getPageCount(), 1, "pages");
+  const asB = await PDFDocument.load((await outputOf(await build({ attachment: true }), "2b")).bytes);
+  eq(asB.catalog.lookupMaybe(PDFName.of("Names"), PDFDict)?.has(PDFName.of("EmbeddedFiles")) ?? false, false, "PDF/A-2 still drops attachments");
+});
+
+await test("render options are needed only when a page must become an image", async () => {
+  const file = (bytes) => new File([bytes], "f.pdf");
+  eq(await pdfaNeedsRaster(file(input), "2b"), false, "plain file");
+  eq(await pdfaNeedsRaster(file(transparent), "2b"), false, "transparency at PDF/A-2");
+  eq(await pdfaNeedsRaster(file(transparent), "1b"), true, "transparency at PDF/A-1");
+  eq(await pdfaNeedsRaster(file(await build({ cmykPage: true })), "2b"), true, "device CMYK");
+});
+
+// Full validation, when a veraPDF command line is available (CI).
 if (process.env.VERAPDF) {
-  await test("veraPDF: PDF/A-2b compliant", () => {
-    const dir = mkdtempSync(join(tmpdir(), "pdfa-"));
-    const file = join(dir, "report-pdfa.pdf");
-    writeFileSync(file, output);
-    let report;
-    try {
-      report = execFileSync(process.env.VERAPDF, ["--flavour", "2b", "--format", "text", file], { encoding: "utf8" });
-    } catch (e) {
-      report = e.stdout?.toString() ?? String(e);
-    }
-    console.log(report.split("\n").map((l) => `      ${l}`).join("\n"));
-    eq(/^PASS /m.test(report), true, "veraPDF verdict");
-  });
-}
+  const dir = mkdtempSync(join(tmpdir(), "pdfa-"));
+  for (const [flavour, bytes] of [["2b", output], ["1b", out1b.bytes], ["2u", out2u.bytes], ["3b", out3b.bytes]]) {
+    await test(`veraPDF: PDF/A-${flavour} compliant`, () => {
+      const file = join(dir, `report-pdfa-${flavour}.pdf`);
+      writeFileSync(file, bytes);
+      let report;
+      try {
+        report = execFileSync(process.env.VERAPDF, ["--flavour", flavour, "--format", "text", file], { encoding: "utf8" });
+      } catch (e) {
+        report = e.stdout?.toString() ?? String(e);
+      }
+      console.log(report.split("\n").map((l) => `      ${l}`).join("\n"));
+      eq(/^PASS /m.test(report), true, "veraPDF verdict");
+    });
+  }
+} else console.log("skip  veraPDF (set VERAPDF to validate 2b, 1b, 2u and 3b outputs)");
 
 process.exit(results.failed ? 1 : 0);

@@ -82,7 +82,7 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
     }
     case "pdfToPdfa": {
       const { pdfToPdfa } = await import("./convert");
-      return each(files, progress, (f, p) => pdfToPdfa(f, { pdfaDpi: s(o.pdfaDpi), keepText: b(o.keepText) }, p));
+      return each(files, progress, (f, p) => pdfToPdfa(f, { pdfaDpi: s(o.pdfaDpi), keepText: b(o.keepText), pdfaLevel: s(o.pdfaLevel) }, p));
     }
     case "pdfToMarkdown": {
       const { pdfToMarkdown } = await import("./convert");
