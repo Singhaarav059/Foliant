@@ -76,6 +76,7 @@ const d: { [K in DictKey]?: string } = {
   "tool.excelToPdf.desc": "Converteer spreadsheets naar pdf, één pagina per bladgebied.",
   "tool.excelToPdf.action": "Naar pdf converteren",
   "tool.htmlToPdf.name": "Webpagina naar pdf",
+  "tool.htmlToPdf.desc": "Bewaar elke webpagina of elk HTML-bestand als pdf.",
   "tool.htmlToPdf.action": "Naar pdf converteren",
   "tool.pdfToJpg.name": "Pdf naar afbeeldingen",
   "tool.pdfToJpg.desc": "Zet elke pagina om in JPG of PNG, of haal ingesloten afbeeldingen eruit.",

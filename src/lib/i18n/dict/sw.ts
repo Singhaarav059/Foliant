@@ -76,6 +76,7 @@ const d: { [K in DictKey]?: string } = {
   "tool.excelToPdf.desc": "Badilisha lahajedwali kuwa PDF, ukurasa mmoja kwa kila eneo la laha.",
   "tool.excelToPdf.action": "Badilisha kuwa PDF",
   "tool.htmlToPdf.name": "Ukurasa wa wavuti kuwa PDF",
+  "tool.htmlToPdf.desc": "Hifadhi ukurasa wowote wa wavuti au faili ya HTML kama PDF.",
   "tool.htmlToPdf.action": "Badilisha kuwa PDF",
   "tool.pdfToJpg.name": "PDF kuwa picha",
   "tool.pdfToJpg.desc": "Geuza kila ukurasa kuwa JPG au PNG, au toa picha zilizopachikwa.",

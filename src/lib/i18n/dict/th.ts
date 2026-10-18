@@ -76,6 +76,7 @@ const d: { [K in DictKey]?: string } = {
   "tool.excelToPdf.desc": "แปลงสเปรดชีตเป็น PDF หนึ่งหน้าต่อพื้นที่ชีต",
   "tool.excelToPdf.action": "แปลงเป็น PDF",
   "tool.htmlToPdf.name": "หน้าเว็บเป็น PDF",
+  "tool.htmlToPdf.desc": "บันทึกหน้าเว็บหรือไฟล์ HTML ใดก็ได้เป็น PDF",
   "tool.htmlToPdf.action": "แปลงเป็น PDF",
   "tool.pdfToJpg.name": "PDF เป็นรูปภาพ",
   "tool.pdfToJpg.desc": "แปลงแต่ละหน้าเป็น JPG หรือ PNG หรือดึงรูปภาพที่ฝังอยู่ออกมา",

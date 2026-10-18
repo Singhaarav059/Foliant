@@ -8,7 +8,7 @@
 //
 //   node tests/html-site.mjs
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -127,6 +127,29 @@ await test("page size, orientation, margins and screen width", () => {
   eq(/zoom/.test(fit), false, "fit to page by default");
   eq(/size: A5 portrait; margin: 25mm/.test(htmlPage("<p>x</p>", { pageSize: "a5", margin: "large" })), true, "A5, large margin");
   eq(/size: letter portrait/.test(htmlPage("<p>x</p>", { pageSize: "letter" })), true, "letter");
+});
+
+// The description is shared by the pages, the tool grid and the OG image. The
+// server build takes a URL and only .html, so it keeps its own wording.
+await test("each build describes the input it takes", async () => {
+  const lib = mkdtempSync(join(tmpdir(), "html-site-tools-"));
+  execFileSync(join(root, "node_modules/.bin/tsc"), ["--outDir", lib, "--module", "esnext", "--target", "es2022", "--moduleResolution", "bundler", "--skipLibCheck", "--noCheck", "src/lib/tools.ts"], { cwd: root, stdio: "inherit" });
+  cpSync(lib, `${lib}-static`, { recursive: true });
+  const en = {};
+  for (const m of readFileSync(join(root, "src/lib/i18n/dict/en.ts"), "utf8").matchAll(/^\s*"([^"]+)":\s*"((?:[^"\\]|\\.)*)",?\s*$/gm)) en[m[1]] = JSON.parse(`"${m[2]}"`);
+  const desc = async (dir, flag) => {
+    process.env.NEXT_PUBLIC_STATIC = flag;
+    const { toolById, descKey } = await import(pathToFileURL(join(dir, "tools.js")).href);
+    const tool = toolById("htmlToPdf");
+    return { mode: tool.mode, text: en[descKey(tool)] };
+  };
+  const server = await desc(lib, "0");
+  const site = await desc(`${lib}-static`, "1");
+  eq(server.mode, "url", "server build takes a URL");
+  eq(/zip|paste/i.test(server.text ?? ""), false, `server copy offers zip or paste: ${server.text}`);
+  eq(/web page/i.test(server.text ?? ""), true, `server copy mentions web pages: ${server.text}`);
+  eq(site.mode, "files", "static build takes files");
+  eq(/zip/i.test(site.text ?? "") && /paste/i.test(site.text ?? ""), true, `static copy names zip and paste: ${site.text}`);
 });
 
 await browser.close();

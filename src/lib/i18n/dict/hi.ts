@@ -76,6 +76,7 @@ const d: { [K in DictKey]?: string } = {
   "tool.excelToPdf.desc": "स्प्रेडशीट को PDF में बदलें, हर शीट क्षेत्र का एक पेज।",
   "tool.excelToPdf.action": "PDF में बदलें",
   "tool.htmlToPdf.name": "वेब पेज से PDF",
+  "tool.htmlToPdf.desc": "कोई भी वेब पेज या HTML फ़ाइल PDF के रूप में सेव करें।",
   "tool.htmlToPdf.action": "PDF में बदलें",
   "tool.pdfToJpg.name": "PDF से इमेज",
   "tool.pdfToJpg.desc": "हर पेज को JPG या PNG में बदलें, या अंदर की इमेज निकालें।",
