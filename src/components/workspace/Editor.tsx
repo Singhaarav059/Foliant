@@ -4,16 +4,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   MousePointer2, Type, ImagePlus, Square, Circle, Minus, Pencil, Highlighter, Eraser, Undo2, Redo2, Trash2,
   ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Signature as SignatureIcon, CalendarDays, Search, ScanEye, Crop as CropIcon,
-  TextCursorInput, SquareCheck, Copy, Bold, Stamp, UserRound, Crosshair,
+  TextCursorInput, SquareCheck, Copy, Bold, Stamp, UserRound, Crosshair, CircleDot, SquareChevronDown, List, PenLine,
 } from "lucide-react";
 import { useI18n } from "../I18n";
 import { SignaturePad, type SignatureImage } from "./SignaturePad";
+import { FieldInput, FieldPreview, FieldSettings, fieldShape, fieldSize, newField } from "./FormFields";
 import { thumbUrl, pageSizes, docFor } from "@/lib/pdf/thumbs";
 import type { EditorItem, FieldInfo, FracRect } from "@/lib/pdf/edit";
 import { parseRanges, type Output, type Progress } from "@/lib/pdf/common";
+import { isFieldKind, type FieldKind } from "@/lib/pdf/formsmeta";
 import type { ToolId } from "@/lib/tools";
 
-type EdTool = "select" | "text" | "image" | "rect" | "ellipse" | "line" | "path" | "highlight" | "whiteout" | "redact" | "crop" | "textField" | "checkbox" | "place";
+type EdTool = "select" | "text" | "image" | "rect" | "ellipse" | "line" | "path" | "highlight" | "whiteout" | "redact" | "crop" | FieldKind | "place";
 type Size = { w: number; h: number };
 // Marks from a search keep the text matched, the search they came from (and
 // its pattern, to run it again on the result) and how many boxes that text
@@ -27,6 +29,7 @@ const PRESET_NAMES = ["emails", "phones", "numbers"] as const;
 const ITEM_LABELS: Record<EditorItem["kind"], string> = {
   text: "ed.text", image: "ed.image", rect: "ed.rect", ellipse: "ed.ellipse", line: "ed.line", path: "ed.draw",
   highlight: "ed.highlight", whiteout: "ed.whiteout", textField: "ed.addTextField", checkbox: "ed.addCheckbox",
+  radio: "ed.addRadio", dropdown: "ed.addDropdown", optionList: "ed.addList", dateField: "ed.addDate", signatureField: "ed.addSignatureField",
 };
 // Pages a signature can be copied to.
 const PLACEMENTS = ["all", "allButLast", "last", "custom"] as const;
@@ -258,7 +261,7 @@ export function Editor({
       id: uid(), page, kind, x: p.x, y: p.y, w: 0, h: 0,
       color: tool === "highlight" ? "#facc15" : style.color, fill: tool === "rect" || tool === "ellipse" ? style.fill : null, stroke: style.stroke,
       points: tool === "path" || tool === "line" ? [[p.x, p.y], [p.x, p.y]] : undefined,
-      name: tool === "textField" ? `field_${items.value.filter((i) => i.kind === "textField").length + 1}` : tool === "checkbox" ? `check_${items.value.filter((i) => i.kind === "checkbox").length + 1}` : undefined,
+      ...(isFieldKind(kind) ? newField(kind, items.value.filter((i) => i.kind === kind).length, t) : {}),
     };
     items.set((l) => [...l, it]);
     setSel(it.id);
@@ -327,7 +330,7 @@ export function Editor({
       if (!it) return;
       // A click without a drag drops a default-sized shape.
       if (it.kind !== "path" && it.kind !== "line" && (it.w < 0.01 || it.h < 0.006)) {
-        const def = it.kind === "checkbox" ? { w: 0.03, h: 0.03 * ((size?.w ?? 1) / (size?.h ?? 1.414)) } : it.kind === "textField" ? { w: 0.3, h: 0.035 } : { w: 0.18, h: 0.08 };
+        const def = isFieldKind(it.kind) ? fieldSize(it, (size?.w ?? 1) / (size?.h ?? 1.414)) : { w: 0.18, h: 0.08 };
         patch(it.id, def, false);
       }
       if ((it.kind === "path" || it.kind === "line") && it.points) {
@@ -473,6 +476,11 @@ export function Editor({
     if (toolId === "forms") return [...base,
       { id: "textField", icon: <TextCursorInput size={18} />, label: t("ed.addTextField") },
       { id: "checkbox", icon: <SquareCheck size={18} />, label: t("ed.addCheckbox") },
+      { id: "radio", icon: <CircleDot size={18} />, label: t("ed.addRadio") },
+      { id: "dropdown", icon: <SquareChevronDown size={18} />, label: t("ed.addDropdown") },
+      { id: "optionList", icon: <List size={18} />, label: t("ed.addList") },
+      { id: "dateField", icon: <CalendarDays size={18} />, label: t("ed.addDate") },
+      { id: "signatureField", icon: <PenLine size={18} />, label: t("ed.addSignatureField") },
       { id: "text", icon: <Type size={18} />, label: t("ed.text") },
     ];
     if (toolId === "redact") return [{ id: "redact", icon: <ScanEye size={18} />, label: t("ed.redactArea") }];
@@ -621,12 +629,11 @@ export function Editor({
                 i.kind === "ellipse" ? { border: `${(i.stroke ?? 2) * ptToPx}px solid ${i.color}`, background: i.fill ?? "transparent", borderRadius: "50%" } :
                 i.kind === "highlight" ? { background: i.color, opacity: 0.38, mixBlendMode: "multiply" } :
                 i.kind === "whiteout" ? { background: "#fff", boxShadow: isSel ? undefined : "0 0 0 1px rgb(0 0 0 / 0.06)" } :
-                i.kind === "textField" ? { background: "color-mix(in oklab, var(--accent) 12%, transparent)", border: "1px dashed var(--accent)" } :
-                i.kind === "checkbox" ? { border: "1.5px solid #4b5563", background: "#fff" } : {};
+                isFieldKind(i.kind) ? fieldShape(i.kind) : {};
               return (
                 <div key={i.id} {...common} className={`absolute cursor-move ${frame}`} style={{ ...boxStyle, ...shape }}>
                   {inner}
-                  {i.kind === "textField" && <span className="absolute left-1 top-0 text-[10px] text-accent">{i.name}</span>}
+                  {isFieldKind(i.kind) && <FieldPreview item={i} px={ptToPx} />}
                   {isSel && (
                     <span onPointerDown={(e) => startItemDrag(e, i, "resize")}
                       className="absolute -bottom-2 -right-2 h-4 w-4 cursor-nwse-resize rounded-full border-2 border-white bg-accent shadow" />
@@ -744,23 +751,8 @@ export function Editor({
               <div className="max-h-[340px] space-y-3 overflow-auto pr-1">
                 {fields.map((f) => (
                   <label key={f.name} className="block">
-                    <span className="mb-1 block truncate text-[13px] text-muted" title={f.name}>{f.name}</span>
-                    {f.type === "checkbox" ? (
-                      <input type="checkbox" className="h-5 w-5 accent-[var(--accent)]" checked={Boolean(values[f.name])} onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.checked }))} />
-                    ) : f.type === "dropdown" || f.type === "radio" ? (
-                      <select className="field" value={String(values[f.name] ?? "")} onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}>
-                        <option value="" />
-                        {f.options?.map((o) => <option key={o}>{o}</option>)}
-                      </select>
-                    ) : f.type === "list" ? (
-                      <select multiple className="field h-24" value={(values[f.name] as string[]) ?? []} onChange={(e) => setValues((v) => ({ ...v, [f.name]: Array.from(e.target.selectedOptions, (o) => o.value) }))}>
-                        {f.options?.map((o) => <option key={o}>{o}</option>)}
-                      </select>
-                    ) : f.multiline ? (
-                      <textarea className="field" rows={3} value={String(values[f.name] ?? "")} onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))} />
-                    ) : (
-                      <input className="field" value={String(values[f.name] ?? "")} onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))} />
-                    )}
+                    <span className="mb-1 block truncate text-[13px] text-muted" title={f.tooltip ?? f.name}>{f.name}{f.required ? " *" : ""}</span>
+                    <FieldInput field={f} value={values[f.name]} onChange={(v) => setValues((old) => ({ ...old, [f.name]: v }))} />
                   </label>
                 ))}
               </div>
@@ -769,7 +761,9 @@ export function Editor({
         )}
 
         {/* Style for new and selected items */}
-        {(toolId === "edit" || toolId === "sign" || toolId === "forms") && (selected?.kind !== "image") && (
+        {selected && isFieldKind(selected.kind) && <FieldSettings item={selected} onChange={(p) => patch(selected.id, p)} />}
+
+        {(toolId === "edit" || toolId === "sign" || toolId === "forms") && selected?.kind !== "image" && !(selected && isFieldKind(selected.kind)) && (
           <div className="space-y-3">
             <div className="flex flex-wrap gap-1.5">
               {COLORS.map((c) => (

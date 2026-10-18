@@ -57,7 +57,9 @@
     "test:e2e:office-phone": "node tests/e2e/office-phone.mjs",
     "test:e2e:html": "node tests/e2e/html.mjs",
     "test:html-site": "node tests/html-site.mjs",
-    "test:e2e:summarize": "node tests/e2e/summarize.mjs"
+    "test:e2e:summarize": "node tests/e2e/summarize.mjs",
+    "test:forms": "node tests/forms.mjs",
+    "test:e2e:forms": "node tests/e2e/forms.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

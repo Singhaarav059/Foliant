@@ -2,12 +2,14 @@
 
 import {
   PDFDocument, PDFPage, PDFFont, StandardFonts, rgb, degrees, BlendMode, PDFArray, PDFName,
-  PDFCheckBox, PDFDropdown, PDFRadioGroup, PDFTextField, PDFOptionList,
+  PDFCheckBox, PDFDropdown, PDFRadioGroup, PDFTextField, PDFOptionList, PDFSignature, PDFString, PDFHexString,
 } from "pdf-lib";
 import { baseName, hexToRgb, isWinAnsi, normaliseImage, pageSet, pdfBlob, textToPng, type Output } from "./common";
 import { loadPdf } from "./organize";
 import { PdfError } from "./errors";
 import { fontCovering, layoutText, type LaidOut } from "./fonts";
+import { addField } from "./forms";
+import { dateFormatOf, isFieldKind, type DateFormat, type FieldKind } from "./formsmeta";
 
 // ── Visual ↔ user space
 // Users place things on the page as they see it. A page may carry /Rotate and
@@ -273,7 +275,7 @@ export async function crop(file: File, rects: Map<number, FracRect> | FracRect):
 export type EditorItem = {
   id: string;
   page: number;
-  kind: "text" | "image" | "rect" | "ellipse" | "line" | "path" | "highlight" | "whiteout" | "textField" | "checkbox";
+  kind: "text" | "image" | "rect" | "ellipse" | "line" | "path" | "highlight" | "whiteout" | FieldKind;
   // Visual fractions of the page, top-left origin.
   x: number; y: number; w: number; h: number;
   color?: string;
@@ -284,7 +286,14 @@ export type EditorItem = {
   text?: string;
   image?: string; // data URL
   points?: [number, number][]; // fractions, for path and line
-  name?: string; // form field name
+  // Form fields (see forms.ts).
+  name?: string;
+  options?: string[];
+  required?: boolean;
+  multiple?: boolean;
+  multiline?: boolean;
+  dateFormat?: DateFormat;
+  tooltip?: string;
 };
 
 function dataUrlBytes(url: string) {
@@ -299,7 +308,7 @@ export async function applyItems(doc: PDFDocument, items: EditorItem[]) {
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const pages = doc.getPages();
-  const form = items.some((i) => i.kind === "textField" || i.kind === "checkbox") ? doc.getForm() : null;
+  const form = items.some((i) => isFieldKind(i.kind)) ? doc.getForm() : null;
   for (const it of items) {
     const page = pages[it.page];
     if (!page) continue;
@@ -360,26 +369,10 @@ export async function applyItems(doc: PDFDocument, items: EditorItem[]) {
         page.drawSvgPath(d, { x: ox, y: oy, borderColor: c, borderWidth: it.stroke ?? 2, rotate, borderLineCap: 1 });
         break;
       }
-      case "textField": {
-        const field = form!.createTextField(uniqueName(form!, it.name || "text"));
-        field.addToPage(page, { x, y, width: w, height: h, rotate, borderColor: rgb(0.6, 0.64, 0.7), borderWidth: 1 });
-        break;
-      }
-      case "checkbox": {
-        const field = form!.createCheckBox(uniqueName(form!, it.name || "check"));
-        field.addToPage(page, { x, y, width: w, height: h, rotate, borderColor: rgb(0.4, 0.44, 0.5), borderWidth: 1 });
-        break;
-      }
+      default:
+        if (isFieldKind(it.kind)) await addField(doc, form!, page, f, { ...it, kind: it.kind }, { vx, vy: vyTop - h, w, h });
     }
   }
-}
-
-function uniqueName(form: ReturnType<PDFDocument["getForm"]>, base: string) {
-  const names = new Set(form.getFields().map((f) => f.getName()));
-  let n = base.replace(/[.\s]+/g, "_");
-  let k = 2;
-  while (names.has(n)) n = `${base}_${k++}`;
-  return n;
 }
 
 export async function editPdf(file: File, items: EditorItem[], suffix: string): Promise<Output[]> {
@@ -391,10 +384,13 @@ export async function editPdf(file: File, items: EditorItem[], suffix: string): 
 // ── Forms
 export type FieldInfo = {
   name: string;
-  type: "text" | "checkbox" | "dropdown" | "radio" | "list" | "other";
+  type: "text" | "checkbox" | "dropdown" | "radio" | "list" | "date" | "signature" | "other";
   value: string | boolean | string[];
   options?: string[];
   multiline?: boolean;
+  required?: boolean;
+  tooltip?: string;
+  dateFormat?: DateFormat;
   page: number;
   rect?: { x: number; y: number; w: number; h: number }; // visual fractions
 };
@@ -418,13 +414,20 @@ export async function readFields(file: File): Promise<FieldInfo[]> {
       // Approximate for unrotated pages; rotated pages fall back to the side list.
       if (f.rot === 0) rect = { x: (r.x - box.x) / f.vw, y: 1 - (r.y - box.y + r.height) / f.vh, w: r.width / f.vw, h: r.height / f.vh };
     }
-    const name = field.getName();
-    if (field instanceof PDFTextField) return { name, type: "text", value: field.getText() ?? "", multiline: field.isMultiline(), page, rect };
-    if (field instanceof PDFCheckBox) return { name, type: "checkbox", value: field.isChecked(), page, rect };
-    if (field instanceof PDFDropdown) return { name, type: "dropdown", value: field.getSelected()[0] ?? "", options: field.getOptions(), page, rect };
-    if (field instanceof PDFOptionList) return { name, type: "list", value: field.getSelected(), options: field.getOptions(), page, rect };
-    if (field instanceof PDFRadioGroup) return { name, type: "radio", value: field.getSelected() ?? "", options: field.getOptions(), page, rect };
-    return { name, type: "other", value: "", page, rect };
+    const tu = field.acroField.dict.lookup(PDFName.of("TU"));
+    const tooltip = tu instanceof PDFString || tu instanceof PDFHexString ? tu.decodeText() : undefined;
+    const base = { name: field.getName(), page, rect, required: field.isRequired(), tooltip };
+    if (field instanceof PDFTextField) {
+      const dateFormat = dateFormatOf(tooltip);
+      if (dateFormat) return { ...base, type: "date", value: field.getText() ?? "", dateFormat };
+      return { ...base, type: "text", value: field.getText() ?? "", multiline: field.isMultiline() };
+    }
+    if (field instanceof PDFCheckBox) return { ...base, type: "checkbox", value: field.isChecked() };
+    if (field instanceof PDFDropdown) return { ...base, type: "dropdown", value: field.getSelected()[0] ?? "", options: field.getOptions() };
+    if (field instanceof PDFOptionList) return { ...base, type: "list", value: field.getSelected(), options: field.getOptions() };
+    if (field instanceof PDFRadioGroup) return { ...base, type: "radio", value: field.getSelected() ?? "", options: field.getOptions() };
+    if (field instanceof PDFSignature) return { ...base, type: "signature", value: "" };
+    return { ...base, type: "other", value: "" };
   });
 }
 
