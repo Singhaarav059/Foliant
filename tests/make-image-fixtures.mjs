@@ -2,7 +2,7 @@
 // converts. Run once with `node tests/make-image-fixtures.mjs`; the output is
 // committed. (photo.heic in tests/fixtures/ is 96 × 64.)
 import sharp from "sharp";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,6 +28,14 @@ writeFileSync(join(out, "photo.webp"), await quadrants(120, 200).webp({ lossless
 // 300 DPI, so its page is 160 / 300 inches wide.
 writeFileSync(join(out, "scan.tiff"), await quadrants(160, 90).withMetadata({ density: 300 }).tiff({ compression: "lzw" }).toBuffer());
 writeFileSync(join(out, "photo.avif"), await quadrants(150, 100).avif({ lossless: true }).toBuffer());
+// scan.tiff with its directory's next-directory link pointing back at itself:
+// a corrupt or crafted file whose page chain never ends.
+{
+  const b = readFileSync(join(out, "scan.tiff"));
+  const ifd = b.readUInt32LE(4);
+  b.writeUInt32LE(ifd, ifd + 2 + b.readUInt16LE(ifd) * 12);
+  writeFileSync(join(out, "loop.tiff"), b);
+}
 
 // An SVG of 200 × 100 CSS pixels.
 {

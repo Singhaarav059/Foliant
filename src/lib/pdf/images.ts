@@ -1,8 +1,8 @@
 "use client";
 
 // Reads the images Images → PDF and Scan accept, in every browser:
-//  JPEG             kept as it is (no re-encoding), with its EXIF orientation
-//                   applied when it's drawn on the page
+//  JPEG             kept as it is (no re-encoding) less its metadata, with its
+//                   EXIF orientation applied when it's drawn on the page
 //  TIFF             UTIF.js (MIT), one image per page of the file
 //  HEIC/HEIF        the browser where it can (Safari), else libheif (LGPL-3.0)
 //                   in a worker, loaded from /vendor/…/heif/ only when needed
@@ -14,6 +14,7 @@
 import { VENDOR } from "../vendor";
 import { bytesOf, canvasToBlob } from "./common";
 import { PdfError, toPdfError } from "./errors";
+import { stripJpegMetadata, tiffChainOk, tiffRaster } from "./imagebytes";
 
 // One image ready for pdf-lib. `width`/`height` are the pixels as they show,
 // `points` the size at the image's resolution (96 DPI unless the file says),
@@ -173,6 +174,8 @@ async function* tiffPages(blob: Blob): AsyncGenerator<{ image: ImageBitmap; dpi:
   const mod = await import("utif2");
   const UTIF = ((mod as unknown as { default?: typeof mod }).default ?? mod) as typeof mod;
   const buffer = await blob.arrayBuffer();
+  // A directory chain that loops or runs off the file would hang UTIF.decode.
+  if (!tiffChainOk(new Uint8Array(buffer))) throw unsupported(blob);
   let ifds: ReturnType<typeof UTIF.decode>;
   try {
     ifds = UTIF.decode(buffer);
@@ -189,16 +192,17 @@ async function* tiffPages(blob: Blob): AsyncGenerator<{ image: ImageBitmap; dpi:
   const pages = ifds.filter((ifd) => !((tag(ifd, 254) ?? 0) & 1));
   if (!pages.length) throw unsupported(blob);
   for (const ifd of pages) {
-    let rgba: Uint8Array;
+    // One page's raster in memory at a time.
+    let rgba: Uint8Array | null;
     try {
-      UTIF.decodeImage(buffer, ifd);
-      rgba = UTIF.toRGBA8(ifd);
+      rgba = tiffRaster(UTIF, buffer, ifd);
     } catch (e) {
       throw unsupported(blob, e);
     }
     const { width, height } = ifd;
     if (!width || !height || rgba.length < width * height * 4) throw unsupported(blob);
     const raw = await createImageBitmap(new ImageData(new Uint8ClampedArray(rgba.buffer as ArrayBuffer, rgba.byteOffset, width * height * 4), width, height));
+    rgba = null;
     const image = await upright(raw, tag(ifd, 274) ?? 1);
     // Resolution: inches (2, the default) or centimetres (3). None, or an
     // implausible one (libvips writes 25.4 when it has none), means 96 DPI.
@@ -311,7 +315,9 @@ export async function* pdfImages(file: Blob, o: { upright?: boolean } = {}): Asy
       (await browserDecode(file)).close();
       const swap = info.orientation >= 5;
       const [width, height] = swap ? [info.height, info.width] : [info.width, info.height];
-      yield { bytes, kind: "jpg", width, height, points: [width * 0.75, height * 0.75], orientation: info.orientation };
+      // Without EXIF and the like (GPS, camera serial, thumbnail): only the
+      // orientation, read above, is used, and the PDF applies it.
+      yield { bytes: stripJpegMetadata(bytes), kind: "jpg", width, height, points: [width * 0.75, height * 0.75], orientation: info.orientation };
       return;
     }
   }

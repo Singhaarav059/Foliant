@@ -126,7 +126,19 @@ await suite(async ({ name, browser, test }) => {
     if (s.length !== 8) throw new Error(`${s.length} pages`);
     s.forEach((x, i) => sameRatio(x, 120, 200, `orientation ${i + 1}`));
     (await sample(pdf, QUAD_POINTS)).forEach((c, i) => upright(c, `orientation ${i + 1}`));
-    return "8 upright";
+    // The JPEGs are embedded as they are, less their metadata (EXIF here).
+    if (pdf.includes(Buffer.from("Exif\0\0", "latin1"))) throw new Error("EXIF data reached the PDF");
+    return "8 upright, no EXIF";
+  });
+
+  await test("a TIFF whose pages loop is refused, not left to hang the tab", async () => {
+    const msg = await convert(page, name, ["images/loop.tiff"]).then(
+      () => { throw new Error("converted"); },
+      (e) => e.message,
+    );
+    if (!msg.startsWith("alert: ")) throw new Error(msg);
+    if (!msg.includes("loop.tiff")) throw new Error(`alert doesn't name the file: ${msg}`);
+    return msg.slice(7, 90);
   });
 
   await test("A3, A5 and Legal page sizes", async () => {
