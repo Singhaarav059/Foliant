@@ -154,6 +154,24 @@ await test("tags a regex misreads: > in a value, / before a name, odd schemes", 
   eq((await blockRemote(pages.schemes)).blocked, 4, "every odd scheme counted");
 });
 
+// CSS a url() regex misses: image-set() with plain strings, and escapes.
+// The CSP blocks these anyway; the notice has to count them.
+await test("CSS image-set() strings and escaped URLs are taken out and counted", async () => {
+  const pages = {
+    imageSet: `<div style="background-image: image-set('https://example.com/x.png' 1x, &quot;https://example.com/y.png&quot; 2x)">a</div>`,
+    webkit: `<style>p { background-image: -webkit-image-set("https://example.com/w.png" 1x) }</style><p>b</p>`,
+    escaped: `<style>p { background: url(\\68ttps://example.com/e.png) }</style><p>c</p>`,
+    escapedQuoted: `<style>p { background: url("\\68 ttps://example.com/q.png") }</style><p>d</p>`,
+  };
+  const want = { imageSet: 2, webkit: 1, escaped: 1, escapedQuoted: 1 };
+  for (const [name, input] of Object.entries(pages)) {
+    const { html, blocked } = await blockRemote(input);
+    eq(blocked, want[name], `${name}: counted`);
+    eq(/example\.com/.test(html), false, `${name}: remote URL left in ${html.match(/[^>]*example\.com[^<]*/)?.[0]}`);
+  }
+  eq((await blockRemote(`<style>p { background: image-set("ok.png" 1x); content: "\\201C" }</style>`)).blocked, 0, "local image-set and other escapes left alone");
+});
+
 await test("page size, orientation, margins and screen width", () => {
   const page = htmlPage("<!doctype html><html><head><title>x</title></head><body>hi</body></html>", { pageSize: "a3", orientation: "landscape", margin: "none", screenWidth: "390" });
   eq(/@page \{ size: A3 landscape; margin: 0(mm)?; \}/.test(page), true, `@page: ${page.match(/@page[^}]*}/)?.[0]}`);
