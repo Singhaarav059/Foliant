@@ -4,7 +4,9 @@
 // files can be swapped for another build without touching the site's code.
 //
 // In:  { id, buffer }   the file's bytes
-// Out: { id, width, height, data } RGBA pixels, or { id, error }
+// Out: { id, width, height, data } RGBA pixels, or { id, error }, with
+//      load: true when libheif itself couldn't be loaded (its wasm not
+//      downloaded, say); the page then starts a fresh worker next time.
 /* global libheif */
 importScripts("libheif.js");
 
@@ -23,7 +25,13 @@ self.onmessage = async ({ data: { id, buffer } }) => {
   let decoder = null;
   let images = [];
   try {
-    const lib = await load();
+    let lib;
+    try {
+      lib = await load();
+    } catch (e) {
+      self.postMessage({ id, error: String((e && e.message) || e), load: true });
+      return;
+    }
     decoder = new lib.HeifDecoder();
     images = decoder.decode(new Uint8Array(buffer));
     // The primary image; the others are alternatives (a burst, a thumbnail).

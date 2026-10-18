@@ -6,7 +6,7 @@
 //
 // Fixtures: tests/fixtures/photo.heic (96 × 64) and tests/fixtures/images/,
 // written by tests/make-image-fixtures.mjs.
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PDFDocument } from "pdf-lib";
@@ -131,7 +131,20 @@ await suite(async ({ name, browser, test }) => {
     return "8 upright, no EXIF";
   });
 
+  await test("a motion photo's second JPEG and video don't reach the PDF", async () => {
+    const pdf = await convert(page, name, ["images/motion.jpg"]);
+    const [s] = await sizes(pdf);
+    sameRatio(s, 120, 200, "motion photo");
+    upright((await sample(pdf, QUAD_POINTS))[0], "motion photo");
+    for (const text of ["TrailingCam", "ftypisom", "MotionPhotoVideo", "Exif\0\0"]) {
+      if (pdf.includes(Buffer.from(text, "latin1"))) throw new Error(`${JSON.stringify(text)} reached the PDF`);
+    }
+    return "photo only";
+  });
+
   await test("a TIFF whose pages loop is refused, not left to hang the tab", async () => {
+    // The same file with its link intact converts, so the refusal is the chain check.
+    if ((await sizes(await convert(page, name, ["images/scan.tiff"]))).length !== 1) throw new Error("scan.tiff didn't give 1 page");
     const msg = await convert(page, name, ["images/loop.tiff"]).then(
       () => { throw new Error("converted"); },
       (e) => e.message,
@@ -139,6 +152,23 @@ await suite(async ({ name, browser, test }) => {
     if (!msg.startsWith("alert: ")) throw new Error(msg);
     if (!msg.includes("loop.tiff")) throw new Error(`alert doesn't name the file: ${msg}`);
     return msg.slice(7, 90);
+  });
+
+  await test("Fit never makes a page side shorter than PDF's 3 pt minimum", async () => {
+    // 1 × 1 and 2 × 3000 px are 0.75 × 0.75 and 1.5 × 2250 pt at 96 DPI.
+    const png = (w, h) => {
+      const c = createCanvas(w, h);
+      c.getContext("2d").fillRect(0, 0, w, h);
+      const path = join(downloads, `${name}-${w}x${h}.png`);
+      writeFileSync(path, c.toBuffer("image/png"));
+      return path;
+    };
+    const s = await sizes(await convert(page, name, [png(1, 1), png(2, 3000)]));
+    if (s.length !== 2) throw new Error(`${s.length} pages`);
+    for (const x of s) if (Math.min(x.width, x.height) < 3) throw new Error(`page ${x.width} × ${x.height} pt`);
+    sameRatio(s[0], 1, 1, "1 × 1");
+    sameRatio(s[1], 2, 3000, "2 × 3000");
+    return s.map((x) => `${x.width}×${x.height}`).join(", ");
   });
 
   await test("A3, A5 and Legal page sizes", async () => {
@@ -169,6 +199,25 @@ await suite(async ({ name, browser, test }) => {
   });
 
   await ctx.close();
+
+  await test("when the HEIC decoder can't be downloaded, the message says so, and a retry works", async () => {
+    const blocked = await browser.newContext({ locale: "en-US", viewport: { width: 1280, height: 900 }, acceptDownloads: true, serviceWorkers: "block" });
+    try {
+      const p = await blocked.newPage();
+      await blocked.route("**/heif/libheif.wasm", (r) => r.abort());
+      const msg = await convert(p, name, ["photo.heic"]).then(() => null, (e) => e.message);
+      // A browser that reads HEIC itself (Safari) never asks for libheif.
+      if (msg === null) return "the browser decodes HEIC itself";
+      if (!msg.startsWith("alert: ")) throw new Error(msg);
+      if (!msg.includes(t["err.download"])) throw new Error(`not the download message: ${msg}`);
+      await blocked.unroute("**/heif/libheif.wasm");
+      const [s] = await sizes(await convert(p, name, ["photo.heic"]));
+      sameRatio(s, 96, 64, "HEIC after the retry");
+      return "download message, then converted";
+    } finally {
+      await blocked.close();
+    }
+  });
 
   await test("HEIC converts offline after one visit", async () => {
     const vendor = readFileSync(join(root, "src/lib/vendor.ts"), "utf8").match(/VENDOR = "([^"]+)"/)[1];
