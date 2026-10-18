@@ -89,6 +89,34 @@ jobs:
         if: matrix.browser == 'chromium'
         run: npm run test:e2e-office
 
+  # Every tool in tools.ts, with its defaults and with one option changed, in
+  # English, Arabic (right to left) and Japanese (tests/e2e/tools).
+  tools:
+    name: Every tool (${{ matrix.lang }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        lang: [en, ar, ja]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run build:static
+      - name: Install chromium
+        run: npx playwright-core install --with-deps chromium
+      - name: Serve the static build
+        run: |
+          nohup npm run serve:static > server.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:3202/en > /dev/null && exit 0; sleep 1; done
+          echo "Server did not start" && exit 1
+      - name: Run every tool
+        run: npm run test:e2e:tools -- --lang ${{ matrix.lang }}
+
   pdf:
     name: PDF engine tests
     runs-on: ubuntu-24.04
