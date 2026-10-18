@@ -77,6 +77,16 @@ for (const name of engines) {
     return (await alert.textContent()).trim();
   };
 
+  // Sets a switch by clicking its visible label, as a person would. A forced
+  // click on the hidden checkbox misses in WebKit once the page has scrolled
+  // under the sticky options panel (the click lands on the panel itself).
+  const toggle = async (label, on) => {
+    const box = page.getByLabel(label, { exact: true });
+    if ((await box.isChecked()) === on) return;
+    await page.locator(`label[for="${await box.getAttribute("id")}"]`).click();
+    if ((await box.isChecked()) !== on) throw new Error(`"${label}" didn't change`);
+  };
+
   for (const password of ["@Secure2024", "-v"]) {
     await test(`password ${password} protects the file`, async () => {
       await open("/en/protect-pdf");
@@ -97,14 +107,14 @@ for (const name of engines) {
     // An empty password is refused while one is required.
     let text = await refused("Protect PDF");
     if (text !== "Enter a password.") throw new Error(`alert was "${text}"`);
-    await page.getByLabel("Require a password to open", { exact: true }).uncheck({ force: true });
+    await toggle("Require a password to open", false);
     // With every permission allowed there'd be nothing to protect.
     for (const label of ["Allow editing", "Allow comments and notes", "Allow filling in forms", "Allow adding, removing and rotating pages"]) {
-      await page.getByLabel(label, { exact: true }).check({ force: true });
+      await toggle(label, true);
     }
     text = await refused("Protect PDF");
     if (!text.startsWith("Without a password to open it")) throw new Error(`alert was "${text}"`);
-    await page.getByLabel("Allow printing", { exact: true }).uncheck({ force: true });
+    await toggle("Allow printing", false);
     const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 60000 }), page.getByRole("button", { name: "Protect PDF", exact: true }).click()]);
     const path = join(downloads, `${name}-${Date.now()}-${dl.suggestedFilename()}`);
     await dl.saveAs(path);
