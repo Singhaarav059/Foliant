@@ -127,11 +127,13 @@ for (const name of engines) {
     return "noindex, no canonical or translations";
   });
 
-  await test("home lists 31 tools", async () => {
+  // Every tool declared in src/lib/tools.ts.
+  const toolCount = (readFileSync(join(fixtures, "../../src/lib/tools.ts"), "utf8").match(/^\s+id: "\w+", slug: "/gm) ?? []).length;
+  await test(`home lists ${toolCount} tools`, async () => {
     await open("/en");
     const n = await page.locator("main a[data-tool]").count();
     const over = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
-    if (n !== 31 || over > 0) throw new Error(`${n} tools, ${over}px overflow`);
+    if (n !== toolCount || over > 0) throw new Error(`${n} tools, ${over}px overflow`);
     return `${n} tools`;
   });
 

@@ -81,6 +81,9 @@ jobs:
       - name: Compare
         if: success() || failure()
         run: npm run test:e2e:compare -- ${{ matrix.browser }}
+      - name: Summarize
+        if: success() || failure()
+        run: npm run test:e2e:summarize -- ${{ matrix.browser }}
       - name: Rotate
         if: success() || failure()
         run: npm run test:e2e:rotate -- ${{ matrix.browser }}
@@ -131,6 +134,8 @@ jobs:
         run: npm run test:errors
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:compare
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:summarize
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:organize
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}

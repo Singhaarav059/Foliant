@@ -88,6 +88,10 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
       const { pdfToMarkdown } = await import("./convert");
       return each(files, progress, (f, p) => pdfToMarkdown(f, { pageBreaks: b(o.pageBreaks) }, p));
     }
+    case "summarize": {
+      const { summarizePdf } = await import("@/lib/ai/summarize");
+      return each(files, progress, (f, p) => summarizePdf(f, { summaryLength: s(o.summaryLength), summaryLang: s(o.summaryLang) }, p));
+    }
     case "pageNumbers": {
       const { pageNumbers } = await import("./edit");
       return each(files, progress, (f) => pageNumbers(f, {
@@ -194,6 +198,8 @@ export async function prepare(id: ToolId): Promise<unknown> {
       return (await import("./convert")).prepare("excel");
     case "pdfToPpt":
       return (await import("./convert")).prepare("ppt");
+    case "summarize":
+      return (await import("@/lib/ai/summarize")).prepare();
     case "pageNumbers":
     case "watermark":
       return import("./edit");
