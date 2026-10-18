@@ -9,11 +9,10 @@ import { getDictionary, format, type Dict, type DictKey } from "@/lib/i18n/dicti
 import { hasLocale, LOCALE_CODES } from "@/lib/i18n/locales";
 import { CATEGORIES, LIMITS, TOOLS, toolBySlug, type Tool } from "@/lib/tools";
 import { LEGAL, LEGAL_UPDATED } from "@/lib/legal";
-import { BRAND } from "@/lib/brand";
+import { BRAND, OPERATOR } from "@/lib/brand";
+import { readLicenses, LICENSES_URL } from "@/lib/licenses";
 import { REPO_URL, STATIC } from "@/lib/mode";
-
-const INFO = ["features", "faq", "security", "about", "guide", "privacy", "terms", "cookies"] as const;
-type Info = (typeof INFO)[number];
+import { INFO, pageMetadata, type Info } from "@/lib/seo";
 
 export function generateStaticParams() {
   const slugs = [...TOOLS.map((t) => t.slug), ...INFO];
@@ -22,7 +21,16 @@ export function generateStaticParams() {
 
 function infoTitle(slug: Info, t: Dict) {
   if (slug === "privacy" || slug === "terms" || slug === "cookies") return LEGAL[slug].title;
-  const key = { features: "feat.title", faq: "faq.title", security: "sec.title", about: "about.title", guide: "guide.title" }[slug] as DictKey;
+  const key = { features: "feat.title", faq: "faq.title", security: "sec.title", about: "about.title", guide: "guide.title", licenses: "lic.title" }[slug] as DictKey;
+  return t[key];
+}
+
+// A line for search results and link previews.
+function infoDescription(slug: Info, t: Dict) {
+  if (slug === "privacy" || slug === "terms" || slug === "cookies") return LEGAL[slug].intro;
+  if (slug === "about") return format(t["about.b1"], { brand: BRAND.name });
+  if (slug === "licenses") return format(t["lic.subtitle"], { brand: BRAND.name });
+  const key = { features: "feat.subtitle", faq: "home.subtitle", security: "sec.subtitle", guide: "guide.subtitle" }[slug] as DictKey;
   return t[key];
 }
 
@@ -31,8 +39,16 @@ export async function generateMetadata({ params }: PageProps<"/[lang]/[slug]">):
   if (!hasLocale(lang)) return {};
   const t = await getDictionary(lang);
   const tool = toolBySlug(slug);
-  if (tool) return { title: t[`tool.${tool.id}.name` as DictKey], description: t[`tool.${tool.id}.desc` as DictKey] };
-  if ((INFO as readonly string[]).includes(slug)) return { title: infoTitle(slug as Info, t) };
+  if (tool) {
+    const title = t[`tool.${tool.id}.name` as DictKey];
+    const description = t[`tool.${tool.id}.desc` as DictKey];
+    return { title, description, ...pageMetadata({ lang, path: `/${slug}`, title, description, image: tool.slug }) };
+  }
+  if ((INFO as readonly string[]).includes(slug)) {
+    const title = infoTitle(slug as Info, t);
+    const description = infoDescription(slug as Info, t);
+    return { title, description, ...pageMetadata({ lang, path: `/${slug}`, title, description }) };
+  }
   return {};
 }
 
@@ -161,14 +177,20 @@ function InfoPage({ slug, t, lang }: { slug: Info; t: Dict; lang: string }) {
     ), t["sec.subtitle"]);
   }
   if (slug === "about") {
+    // Contact: the contact form on a server, the operator's address (once
+    // set, see src/lib/brand.ts) in the static build.
     return wrap(t["about.title"], (
       <div className="space-y-4 text-[17px] leading-relaxed text-ink-2">
         {[1, 2, 3].map((n) => <p key={n}>{k(`about.b${n}`, { brand: BRAND.name })}</p>)}
-        {!STATIC && <Link href={`/${lang}/contact`} className="btn btn-quiet mt-4">{t["foot.contact"]}</Link>}
-        {STATIC && REPO_URL && <a href={`${REPO_URL}/issues`} className="btn btn-quiet mt-4">{t["foot.contact"]}</a>}
+        <div className="flex flex-wrap gap-2 pt-4">
+          {!STATIC && <Link href={`/${lang}/contact`} className="btn btn-quiet">{t["foot.contact"]}</Link>}
+          {STATIC && OPERATOR.contactHref && <a href={OPERATOR.contactHref} className="btn btn-quiet">{t["foot.contact"]}</a>}
+          {REPO_URL && <a href={`${REPO_URL}/issues`} className="btn btn-quiet">{t["about.report"]}</a>}
+        </div>
       </div>
     ));
   }
+  if (slug === "licenses") return <Licenses wrap={wrap} t={t} />;
   if (slug === "guide") {
     return wrap(t["guide.title"], (
       <div className="space-y-10">
@@ -201,12 +223,68 @@ function InfoPage({ slug, t, lang }: { slug: Info; t: Dict; lang: string }) {
       <p className="eyebrow">{k("legal.updated", { date: LEGAL_UPDATED })}</p>
       <p className="mt-4 text-[17px]">{doc.intro}</p>
       {doc.sections.map((s) => (
-        <section key={s.h}>
+        <section key={s.h} id={s.id}>
           <h2>{s.h}</h2>
           {s.p.map((p) => <p key={p}>{p}</p>)}
           {s.list && <ul>{s.list.map((li) => <li key={li}>{li}</li>)}</ul>}
+          {s.link && <p>{s.link[0]} {s.link[2] ? <a href={s.link[2]}>{s.link[1]}</a> : s.link[1]}</p>}
         </section>
       ))}
     </div>
   ));
+}
+
+// Every component and library the site ships, from the list scripts/vendor.mjs
+// writes next to their licence texts. Names and versions are isolated (<bdi>)
+// so they read left to right on right-to-left pages.
+function Licenses({ wrap, t }: { wrap: (title: string, body: React.ReactNode, subtitle?: string) => React.ReactNode; t: Dict }) {
+  const { components, libraries, librariesFile } = readLicenses();
+  const link = "underline decoration-line-strong underline-offset-2 transition-colors hover:text-ink";
+  return wrap(t["lic.title"], (
+    <div className="space-y-14">
+      <section>
+        <h2 className="eyebrow mb-3">{t["lic.components"]}</h2>
+        <ul className="divide-y divide-line border-y border-line">
+          {components.map((c) => (
+            <li key={c.name} className="py-5">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+                <h3 className="text-[16px] font-medium tracking-[-0.01em]">{c.name}</h3>
+                <a href={`${LICENSES_URL}${c.file}`} className={`text-[14px] text-ink-2 ${link}`}>{t["lic.text"]}</a>
+              </div>
+              {c.includes.map((i) => (
+                <p key={i.name} className="mt-1 text-[15px] text-ink-2">
+                  <bdi>{i.name} · {i.license}</bdi> · <a href={i.source} className={link}>{t["foot.source"]}</a>
+                </p>
+              ))}
+              {c.packages.length > 0 && (
+                <p className="mt-1 text-[13px] leading-relaxed text-muted">
+                  {c.packages.map((p, n) => (
+                    <span key={p.name}>
+                      {n > 0 && ", "}
+                      <bdi><a href={p.source} className={link}>{p.name}</a> {p.version} ({p.license})</bdi>
+                    </span>
+                  ))}
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-4 max-w-[64ch] text-pretty text-[15px] leading-relaxed text-ink-2">{t["lic.mpl"]}</p>
+      </section>
+      <section>
+        <h2 className="eyebrow mb-3">{t["lic.libraries"]}</h2>
+        <p className="max-w-[64ch] text-pretty text-[15px] leading-relaxed text-ink-2">
+          {t["lic.librariesBody"]} <a href={`${LICENSES_URL}${librariesFile}`} className={link}>{t["lic.text"]}</a>
+        </p>
+        <ul className="mt-5 gap-x-8 text-[13px] leading-relaxed text-muted sm:columns-2 lg:columns-3">
+          {libraries.map((l) => (
+            <li key={`${l.name}@${l.version}`} className="break-inside-avoid">
+              <bdi><a href={l.source} className={link}>{l.name}</a> {l.version} ({l.license})</bdi>
+            </li>
+          ))}
+        </ul>
+      </section>
+      {REPO_URL && <a href={REPO_URL} className="btn btn-quiet">{format(t["lic.own"], { brand: BRAND.name })}</a>}
+    </div>
+  ), format(t["lic.subtitle"], { brand: BRAND.name }));
 }

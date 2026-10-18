@@ -33,16 +33,17 @@ function finish(fill = () => {}) {
   mkdirSync(out);
   copyFileSync(join(root, "security-headers.json"), join(dir, "security-headers.json"));
   writeFileSync(join(out, "index.html"), "<!doctype html><title>Languages</title>");
+  writeFileSync(join(out, "404.html"), "<!doctype html><title>Not found</title>");
   fill(out);
   const run = spawnSync(process.execPath, [join(root, "scripts/static-extras.mjs"), out], { cwd: dir, encoding: "utf8" });
   return { out, status: run.status, log: run.stdout + run.stderr };
 }
 
-await test("writes _headers, 404.html and .nojekyll", () => {
+await test("writes _headers and .nojekyll, and leaves Next's 404.html alone", () => {
   const { out, status, log } = finish();
   eq(status, 0, `exit status (${log.trim()})`);
   eq(/Cross-Origin-Embedder-Policy: require-corp/.test(readFileSync(join(out, "_headers"), "utf8")), true, "COEP in _headers");
-  eq(existsSync(join(out, "404.html")), true, "404.html");
+  eq(readFileSync(join(out, "404.html"), "utf8"), "<!doctype html><title>Not found</title>", "404.html untouched");
   eq(existsSync(join(out, ".nojekyll")), true, ".nojekyll");
 });
 

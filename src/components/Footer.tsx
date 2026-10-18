@@ -5,7 +5,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { Download } from "lucide-react";
 import { Logo } from "./Logo";
 import { useI18n } from "./I18n";
-import { BRAND } from "@/lib/brand";
+import { BRAND, OPERATOR } from "@/lib/brand";
 import { REPO_URL, STATIC } from "@/lib/mode";
 
 const noop = () => () => {};
@@ -34,8 +34,9 @@ export function Footer() {
     } else setHint(true);
   };
 
-  // The static build has no contact form; feedback goes to the repository.
-  const contact = STATIC ? (REPO_URL ? `${REPO_URL}/issues` : null) : "/contact";
+  // The static build has no contact form: Contact is the operator's address
+  // (src/lib/brand.ts), or the repository's issues until that is set.
+  const contact = STATIC ? OPERATOR.contactHref || (REPO_URL ? `${REPO_URL}/issues` : null) : "/contact";
   const company: [string, string][] = [[t("foot.about"), "/about"], [t("foot.security"), "/security"]];
   if (contact) company.push([t("foot.contact"), contact]);
   if (REPO_URL) company.push([t("foot.source"), REPO_URL]);
@@ -43,7 +44,7 @@ export function Footer() {
     { title: t("foot.product"), links: [[t("nav.allTools"), "/"], [t("nav.workflows"), "/workflows"], [t("foot.features"), "/features"]] },
     { title: t("foot.company"), links: company },
     { title: t("foot.help"), links: [[t("foot.faq"), "/faq"], [t("foot.guide"), "/guide"]] },
-    { title: t("foot.legal"), links: [[t("foot.privacy"), "/privacy"], [t("foot.terms"), "/terms"], [t("foot.cookies"), "/cookies"]] },
+    { title: t("foot.legal"), links: [[t("foot.privacy"), "/privacy"], [t("foot.terms"), "/terms"], [t("foot.cookies"), "/cookies"], [t("foot.licenses"), "/licenses"]] },
   ];
 
   return (
@@ -63,7 +64,7 @@ export function Footer() {
             <ul className="space-y-2.5">
               {c.links.map(([label, path]) => (
                 <li key={path}>
-                  {path.startsWith("http") ? (
+                  {/^(https?|mailto):/.test(path) ? (
                     <a href={path} className="text-[14px] text-ink-2 transition-colors hover:text-ink">{label}</a>
                   ) : (
                     <Link href={href(path)} className="text-[14px] text-ink-2 transition-colors hover:text-ink">{label}</Link>

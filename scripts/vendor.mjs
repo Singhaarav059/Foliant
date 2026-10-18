@@ -6,6 +6,9 @@
 // and src/lib/vendor.ts (generated, not committed) exports that path. New
 // package versions therefore get new URLs, so neither the service worker nor
 // a browser cache can pair new page code with an old worker or WASM file.
+// Licence texts, which change with any library update, go to
+// public/vendor/licenses/<hash>/ instead, so updating a library doesn't make
+// browsers download every engine again.
 import { createHash } from "node:crypto";
 import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
@@ -20,6 +23,20 @@ const out = join(root, "staging");
 mkdirSync(out, { recursive: true });
 
 const pkgDir = (name) => dirname(require.resolve(`${name}/package.json`));
+
+// Content hash of a folder's files, in a stable file order.
+const hashOf = (dir) => {
+  const hash = createHash("sha256");
+  const walk = (d) => readdirSync(d, { withFileTypes: true })
+    .sort((a, b) => (a.name < b.name ? -1 : 1))
+    .forEach((e) => {
+      const p = join(d, e.name);
+      if (e.isDirectory()) return walk(p);
+      hash.update(p.slice(dir.length)).update(readFileSync(p));
+    });
+  walk(dir);
+  return hash.digest("hex").slice(0, 12);
+};
 
 const files = [
   [join(pkgDir("pdfjs-dist"), "build", "pdf.worker.min.mjs"), "pdf.worker.min.mjs"],
@@ -154,20 +171,148 @@ console.log(`vendor: ${fontFiles} font slices`);
   console.log(`vendor: LibreOffice ${pkgVersion}, ${Object.values(manifest.files).reduce((n, f) => n + f.parts.length, 0)} parts`);
 }
 
-// Content hash of everything above, in a stable file order.
-const hash = createHash("sha256");
-const walk = (dir) => readdirSync(dir, { withFileTypes: true })
-  .sort((a, b) => (a.name < b.name ? -1 : 1))
-  .forEach((e) => {
-    const p = join(dir, e.name);
-    if (e.isDirectory()) return walk(p);
-    hash.update(p.slice(out.length)).update(readFileSync(p));
-  });
-walk(out);
-const version = hash.digest("hex").slice(0, 12);
+// Licences of everything the browser gets, for the licences page
+// (/{lang}/licenses), in public/vendor/licenses/<hash>/. <component>.txt
+// holds the licence and notice files of each package above, plus those of the
+// projects compiled into them; libraries.txt those of the libraries bundled
+// into the page code. A package that ships no licence file gets the standard
+// text of the licence its package.json names, from scripts/licenses/, which
+// also holds the notices of compiled-in projects. licenses.json lists it all.
+const licRoot = join(root, "licenses");
+const licOut = join(licRoot, "staging");
+{
+  mkdirSync(licOut, { recursive: true });
+  const committed = (file) => readFileSync(join(process.cwd(), "scripts", "licenses", file), "utf8").trim();
+  const standard = (id) => (existsSync(join(process.cwd(), "scripts", "licenses", `${id}.txt`)) ? committed(`${id}.txt`) : null);
+  const joined = (texts) => texts.map(([f, body]) => (texts.length > 1 ? `--- ${f}\n\n` : "") + body).join("\n\n");
+  const info = (name, from = process.cwd()) => {
+    // Found the way Node would, without require.resolve (which "exports" can block).
+    for (let d = from; ; d = dirname(d)) {
+      const file = join(d, "node_modules", name, "package.json");
+      if (existsSync(file)) return { dir: dirname(file), ...JSON.parse(readFileSync(file, "utf8")) };
+      if (d === dirname(d)) throw new Error(`vendor: ${name} not installed`);
+    }
+  };
+  // Where a package's repository field doesn't lead to the source.
+  const sourceOf = {
+    // Names a repository that doesn't exist (404); npm has the files.
+    "pdfmarkdown-ppocrv5-models": (p) => `https://www.npmjs.com/package/${p.name}`,
+    // MPL-2.0 §3.2: the build recipe and patches of this very version.
+    "@matbee/libreoffice-converter": (p) => `https://github.com/matbeedotcom/libreoffice-document-converter/tree/v${p.version}`,
+  };
+  const source = (p) => {
+    if (sourceOf[p.name]) return sourceOf[p.name](p);
+    const repo = (typeof p.repository === "string" ? p.repository : p.repository?.url ?? "")
+      .replace(/^git\+/, "").replace(/^git:\/\//, "https://").replace(/^ssh:\/\/git@/, "https://").replace(/\.git$/, "");
+    if (/^https:\/\//.test(repo)) return repo;
+    if (/^(github:)?[\w.-]+\/[\w.-]+$/.test(repo)) return `https://github.com/${repo.replace(/^github:/, "")}`;
+    return /^https:\/\//.test(p.homepage ?? "") ? p.homepage : `https://www.npmjs.com/package/${p.name}`;
+  };
+  const licence = (p) => (typeof p.license === "string" ? p.license : p.license?.type ?? p.licenses?.[0]?.type ?? "unknown");
+  // A package's own licence files (and any extra ones), else the standard text.
+  const text = (p, extra = []) => {
+    const own = readdirSync(p.dir).filter((f) => /^(licen[cs]e|notice|copying)/i.test(f)).sort();
+    const body = joined([...own, ...extra].map((f) => [f, readFileSync(join(p.dir, f), "utf8").trim()]));
+    if (body) return body;
+    if (licence(p) === "unknown") return `The package names no licence in its package.json and includes no licence file. See ${source(p)}.`;
+    const std = standard(licence(p).replace(/^MIT\/X11$/, "MIT"));
+    return `The package declares ${licence(p)} in its package.json and includes no licence file.` + (std ? ` The standard text follows.\n\n${std}` : "");
+  };
+  const section = (title, body) => `=== ${title} ===\n\n${body}\n`;
+
+  // The LibreOffice commit the converter's WebAssembly was built from, as the
+  // version.ini packed into soffice.data records it.
+  const loData = readFileSync(join(pkgDir("@matbee/libreoffice-converter"), "wasm", "soffice.data"));
+  const loAt = loData.indexOf("buildid=");
+  const loCommit = loAt < 0 ? null : /^buildid=([0-9a-f]{40})/.exec(loData.toString("latin1", loAt, loAt + 48))?.[1];
+  if (!loCommit) console.warn("vendor: no LibreOffice build id in soffice.data, so its source link names no commit");
+
+  // Everything served from /vendor, by component, with the projects each one
+  // compiles in: [name, licence, source, texts in scripts/licenses/ that the
+  // package itself doesn't ship].
+  const fonts = (names) => names.map((n) => [`@fontsource/${n}`]);
+  const components = [
+    { name: "PDF.js", file: "pdfjs.txt", packages: [["pdfjs-dist"]] },
+    {
+      name: "qpdf", file: "qpdf.txt", packages: [["@neslinesli93/qpdf-wasm"]],
+      includes: [["qpdf", "Apache-2.0", "https://github.com/qpdf/qpdf", ["qpdf-NOTICE.md", "Apache-2.0.txt"]]],
+    },
+    { name: "MozJPEG", file: "mozjpeg.txt", packages: [["@jsquash/jpeg", ["codec/LICENSE.codec.md"]]], includes: [["MozJPEG", "IJG AND BSD-3-Clause AND Zlib", "https://github.com/mozilla/mozjpeg"]] },
+    { name: "PDFium", file: "pdfium.txt", packages: [["@embedpdf/pdfium"]], includes: [["PDFium", "BSD-3-Clause", "https://pdfium.googlesource.com/pdfium/"]] },
+    {
+      name: "Tesseract", file: "tesseract.txt", packages: [["tesseract.js"], ["tesseract.js-core"]],
+      includes: [
+        ["Tesseract", "Apache-2.0", "https://github.com/tesseract-ocr/tesseract"],
+        ["Leptonica", "BSD-2-Clause", "https://github.com/DanBloomberg/leptonica", ["leptonica-license.txt"]],
+      ],
+    },
+    {
+      name: "Tesseract language data", file: "tessdata.txt", packages: readdirSync(scope).sort().map((l) => [`@tesseract.js-data/${l}`]),
+      includes: [["tessdata_best", "Apache-2.0", "https://github.com/tesseract-ocr/tessdata_best", ["Apache-2.0.txt"]]],
+    },
+    { name: "ONNX Runtime Web", file: "onnxruntime.txt", packages: [["onnxruntime-web"]], includes: [["ONNX Runtime", "MIT", "https://github.com/microsoft/onnxruntime"]] },
+    { name: "PaddleOCR models", file: "paddleocr.txt", packages: [["pdfmarkdown-ppocrv5-models"]], includes: [["PaddleOCR PP-OCRv5", "Apache-2.0", "https://github.com/PaddlePaddle/PaddleOCR"]] },
+    // MPL-2.0 §3.2: say where the source of the WebAssembly build is.
+    {
+      name: "LibreOffice", file: "libreoffice.txt", packages: [["@matbee/libreoffice-converter"]],
+      includes: [["LibreOffice", "MPL-2.0", `https://git.libreoffice.org/core${loCommit ? `/+/${loCommit}` : ""}`, ["MPL-2.0.txt"]]],
+    },
+    { name: "Noto Sans", file: "noto.txt", packages: fonts(Object.keys(fontGroups).map((g) => fontGroups[g][0])) },
+    { name: "Arimo, Tinos, Cousine, Carlito, Caladea", file: "pdfa-fonts.txt", packages: fonts(["arimo", "tinos", "cousine", "carlito", "caladea"]) },
+  ];
+  const listed = new Set();
+  const json = { components: [], libraries: [], librariesFile: "libraries.txt" };
+  for (const c of components) {
+    const parts = [];
+    const packages = c.packages.map(([name, extra]) => {
+      const p = info(name);
+      listed.add(p.name);
+      parts.push(section(`${p.name} ${p.version} (${licence(p)}), ${source(p)}`, text(p, extra)));
+      return { name: p.name, version: p.version, license: licence(p), source: source(p) };
+    });
+    const includes = (c.includes ?? []).map(([name, license, src, texts]) => {
+      parts.push(section(`Includes ${name} (${license}), source code: ${src}`, texts ? joined(texts.map((f) => [f, committed(f)])) : `See ${src} for its licence.`));
+      return { name, license, source: src };
+    });
+    writeFileSync(join(licOut, c.file), parts.join("\n"));
+    json.components.push({ name: c.name, file: c.file, packages, includes });
+  }
+  // The site's own font, which Next serves from /_next.
+  writeFileSync(join(licOut, "geist.txt"), section("Geist (OFL-1.1), https://github.com/vercel/geist-font", readFileSync(join(process.cwd(), "src/app/fonts/LICENSE-Geist.txt"), "utf8").trim()));
+  json.components.push({ name: "Geist", file: "geist.txt", packages: [], includes: [{ name: "Geist", license: "OFL-1.1", source: "https://github.com/vercel/geist-font" }] });
+
+  // Libraries in the page code: the dependency tree of every runtime
+  // dependency except server-only ones, less the packages listed above.
+  // Optional dependencies are platform builds (compilers, image tools), not
+  // page code.
+  const serverOnly = new Set(["bcryptjs", "jose", "playwright-core", "server-only"]);
+  const libs = new Map();
+  const walk = (name, from) => {
+    const p = info(name, from);
+    const key = `${p.name}@${p.version}`;
+    if (libs.has(key)) return;
+    libs.set(key, p);
+    for (const dep of Object.keys(p.dependencies ?? {})) walk(dep, p.dir);
+  };
+  const app = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
+  for (const dep of Object.keys(app.dependencies)) if (!serverOnly.has(dep)) walk(dep, process.cwd());
+  const sorted = [...libs.values()].filter((p) => !listed.has(p.name)).sort((a, b) => (a.name === b.name ? (a.version < b.version ? -1 : 1) : a.name < b.name ? -1 : 1));
+  writeFileSync(join(licOut, json.librariesFile), sorted.map((p) => section(`${p.name} ${p.version} (${licence(p)}), ${source(p)}`, text(p))).join("\n"));
+  json.libraries = sorted.map((p) => ({ name: p.name, version: p.version, license: licence(p), source: source(p) }));
+  writeFileSync(join(licOut, "licenses.json"), JSON.stringify(json));
+  console.log(`vendor: licences for ${json.components.length} components and ${json.libraries.length} libraries`);
+}
+
+const version = hashOf(out);
 renameSync(out, join(root, version));
+const licVersion = hashOf(licOut);
+renameSync(licOut, join(licRoot, licVersion));
 writeFileSync(
   join(process.cwd(), "src", "lib", "vendor.ts"),
-  `// Generated by scripts/vendor.mjs on install. Do not edit or commit.\nexport const VENDOR_VERSION = "${version}";\nexport const VENDOR = "/vendor/${version}/";\n`,
+  `// Generated by scripts/vendor.mjs on install. Do not edit or commit.
+export const VENDOR_VERSION = "${version}";
+export const VENDOR = "/vendor/${version}/";
+export const LICENSES = "/vendor/licenses/${licVersion}/";
+`,
 );
-console.log(`vendor: public/vendor/${version}/`);
+console.log(`vendor: public/vendor/${version}/, public/vendor/licenses/${licVersion}/`);

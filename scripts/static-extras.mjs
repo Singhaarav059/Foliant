@@ -2,15 +2,15 @@
 // - _headers: security and caching headers, for hosts that read the file
 //   (Cloudflare Pages, Netlify). The server build sets the same ones in
 //   next.config.ts.
-// - 404.html: the language picker, so links without a language prefix still
-//   land. Missing pages inside a language get /{lang}/404.html on hosts that
-//   look for the nearest one.
+// (404.html is rendered by Next from src/app/global-not-found.static.tsx;
+// missing pages inside a language get /{lang}/404.html on hosts that look for
+// the nearest one. sitemap.xml and robots.txt come from route handlers.)
 // - .nojekyll: GitHub Pages otherwise runs Jekyll, which drops every path
 //   that starts with "_", including all of _next/.
 // Then it fails the build if the site wouldn't deploy to Cloudflare Pages'
 // free plan (20,000 files, 25 MiB per file), with some headroom.
 // Usage: node scripts/static-extras.mjs [dir=out]
-import { copyFileSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -25,9 +25,8 @@ const rules = [
   ["/vendor/*", ["Cache-Control: public, max-age=31536000, immutable"]],
 ];
 writeFileSync(join(out, "_headers"), rules.map(([path, lines]) => [path, ...lines.map((l) => `  ${l}`)].join("\n")).join("\n\n") + "\n");
-copyFileSync(join(out, "index.html"), join(out, "404.html"));
 writeFileSync(join(out, ".nojekyll"), "");
-console.log("static: wrote out/_headers, out/404.html and out/.nojekyll");
+console.log("static: wrote out/_headers and out/.nojekyll");
 
 const MAX_FILES = 18000;
 const MAX_FILE_BYTES = 24 * 1024 * 1024;

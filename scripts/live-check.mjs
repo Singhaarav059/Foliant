@@ -22,7 +22,7 @@ const VENDOR = vendorTs.match(/VENDOR = "([^"]+)"/)[1];
 const hostHeaders = process.env.HOST_HEADERS !== "none";
 // Once this checkout's build writes a sitemap (a Next sitemap route, a file in
 // public/, or the static-extras step), the site must serve it.
-const buildsSitemap = ["src/app/sitemap.ts", "src/app/sitemap.js", "public/sitemap.xml"].some((f) => existsSync(join(root, f)))
+const buildsSitemap = ["src/app/sitemap.ts", "src/app/sitemap.js", "src/app/sitemap.xml", "public/sitemap.xml"].some((f) => existsSync(join(root, f)))
   || /sitemap\.xml/.test(readFileSync(join(root, "scripts/static-extras.mjs"), "utf8"));
 let failed = 0;
 

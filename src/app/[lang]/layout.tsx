@@ -9,7 +9,7 @@ import { Footer } from "@/components/Footer";
 import { ServiceWorker } from "@/components/ServiceWorker";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { hasLocale, isRtl, LOCALE_CODES } from "@/lib/i18n/locales";
-import { BRAND } from "@/lib/brand";
+import { BRAND, SITE_URL } from "@/lib/brand";
 
 // Committed in src/app/fonts, so builds never reach out to a font CDN.
 const sans = localFont({ src: "../fonts/Geist-Variable.woff2", variable: "--font-geist-sans", weight: "100 900" });
@@ -23,13 +23,17 @@ export async function generateMetadata({ params }: LayoutProps<"/[lang]">): Prom
   const { lang } = await params;
   if (!hasLocale(lang)) return {};
   const t = await getDictionary(lang);
+  // Canonical and language links are per page (src/lib/seo.ts).
   return {
+    metadataBase: new URL(SITE_URL),
     title: { default: `${BRAND.name}: ${t["home.title"]}`, template: `%s · ${BRAND.name}` },
     description: t["home.subtitle"],
     applicationName: BRAND.name,
-    icons: { icon: "/icon.svg", apple: "/icon-maskable.svg" },
+    icons: {
+      icon: [{ url: "/favicon.ico", sizes: "48x48" }, { url: "/icon.svg", type: "image/svg+xml" }],
+      apple: "/apple-touch-icon.png",
+    },
     manifest: "/manifest.webmanifest",
-    alternates: { languages: Object.fromEntries(LOCALE_CODES.map((l) => [l, `/${l}`])) },
   };
 }
 

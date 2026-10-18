@@ -1,31 +1,44 @@
 // Legal text describes how this app actually behaves. It is a starting point:
-// the operator's name, address and jurisdiction must be filled in and the text
-// reviewed by a lawyer before going live.
-import { BRAND } from "./brand";
+// the operator's name, country and contact come from src/lib/brand.ts (a
+// release build refuses the placeholders), and the text should be reviewed by
+// a lawyer before going live.
+import { BRAND, OPERATOR } from "./brand";
 import { STATIC } from "./mode";
 
 // The static build has no server, accounts or cookies, so its text says so.
 const on = <T,>(when: boolean, items: T[]) => (when ? items : []);
 
-export const LEGAL_UPDATED = "2026-10-16";
+export const LEGAL_UPDATED = "2026-10-17";
 
-type Section = { h: string; p: string[]; list?: string[] };
+// link: a line ending in a link, as [lead-in, text, href]; no href, no link.
+type Section = { id?: string; h: string; p: string[]; list?: string[]; link?: [string, string, string] };
 export type LegalDoc = { title: string; intro: string; sections: Section[] };
+
+// Who runs the site and how to reach them, at the top of the privacy policy and terms.
+const operator = (p: string): Section => ({
+  id: "operator",
+  h: "Who runs this site",
+  p: [p],
+  link: ["Contact:", OPERATOR.contact, OPERATOR.contactHref],
+});
 
 export const LEGAL: Record<"privacy" | "terms" | "cookies", LegalDoc> = {
   privacy: {
     title: "Privacy policy",
-    intro: `This policy explains what ${BRAND.name} collects, why, and what you can do about it. The operator of this site is responsible for your data.`,
+    intro: `This policy explains what ${BRAND.name} collects, why, and what you can do about it.`,
     sections: [
+      operator(`${BRAND.name} is run by ${OPERATOR.name}, based in ${OPERATOR.country}, who is responsible for your data. Questions about this policy or your data go to the contact below.`),
       {
         h: "Files you process",
         p: STATIC
           ? [
               "Every tool runs entirely in your browser. Your files are never sent to us or to anyone else.",
               "Office and HTML files are laid out in your browser and saved through its own print dialog.",
+              "High-fidelity Office conversion and high-accuracy OCR download their engines (LibreOffice, and PaddleOCR with ONNX Runtime) from this same site the first time you use them. They run on your device too, so your files still stay there.",
             ]
           : [
               "Tools marked “Runs on your device” process files entirely in your browser. Those files are never sent to us.",
+              "High-accuracy OCR downloads its engine (PaddleOCR with ONNX Runtime) from this same site the first time you use it. It runs on your device too, so your files still stay there.",
               "Office conversions and web page conversion send the file to our server over HTTPS. We process it in memory or a temporary folder and delete it as soon as the result is returned. We don't keep copies or look at the contents.",
             ],
       },
@@ -69,6 +82,7 @@ export const LEGAL: Record<"privacy" | "terms" | "cookies", LegalDoc> = {
     title: "Terms of use",
     intro: `By using ${BRAND.name} you agree to these terms.`,
     sections: [
+      operator(`${BRAND.name} is run by ${OPERATOR.name}, based in ${OPERATOR.country}.`),
       {
         h: "Using the service",
         p: [
@@ -95,6 +109,10 @@ export const LEGAL: Record<"privacy" | "terms" | "cookies", LegalDoc> = {
       {
         h: "Liability",
         p: ["To the extent the law allows, we aren't liable for indirect losses or for data loss arising from use of the service."],
+      },
+      {
+        h: "Governing law",
+        p: [`These terms are governed by the law of ${OPERATOR.country}. If you live elsewhere, you keep any protection the law of your own country gives you that an agreement can't take away.`],
       },
       {
         h: "Changes",
