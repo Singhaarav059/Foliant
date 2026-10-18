@@ -57,6 +57,13 @@ for (const family of ["arimo", "tinos", "cousine", "carlito", "caladea"])
       const file = `${family}-latin-${weight}-${style}.woff`;
       files.push([join(pkgDir(`@fontsource/${family}`), "files", file), `pdfa-fonts/${file}`]);
     }
+// Handwriting fonts for typed signatures (src/components/workspace/SignaturePad.tsx),
+// so they look the same on every system. Latin and Latin Extended slices.
+for (const family of ["dancing-script", "great-vibes", "caveat"])
+  for (const subset of ["latin", "latin-ext"]) {
+    const file = `${family}-${subset}-400-normal.woff2`;
+    files.push([join(pkgDir(`@fontsource/${family}`), "files", file), `signature-fonts/${file}`]);
+  }
 // High-accuracy OCR (src/lib/pdf/paddle.ts): ONNX Runtime Web's CPU build and
 // PaddleOCR's PP-OCRv5 mobile models. Fetched only when that mode is used.
 files.push(
@@ -259,6 +266,7 @@ const licOut = join(licRoot, "staging");
     },
     { name: "Noto Sans", file: "noto.txt", packages: fonts(Object.keys(fontGroups).map((g) => fontGroups[g][0])) },
     { name: "Arimo, Tinos, Cousine, Carlito, Caladea", file: "pdfa-fonts.txt", packages: fonts(["arimo", "tinos", "cousine", "carlito", "caladea"]) },
+    { name: "Dancing Script, Great Vibes, Caveat", file: "signature-fonts.txt", packages: fonts(["dancing-script", "great-vibes", "caveat"]) },
   ];
   const listed = new Set();
   const json = { components: [], libraries: [], librariesFile: "libraries.txt" };

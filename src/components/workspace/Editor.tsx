@@ -4,13 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   MousePointer2, Type, ImagePlus, Square, Circle, Minus, Pencil, Highlighter, Eraser, Undo2, Redo2, Trash2,
   ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Signature as SignatureIcon, CalendarDays, Search, ScanEye, Crop as CropIcon,
-  TextCursorInput, SquareCheck, Copy, Bold,
+  TextCursorInput, SquareCheck, Copy, Bold, Stamp, UserRound, Crosshair,
 } from "lucide-react";
 import { useI18n } from "../I18n";
 import { SignaturePad, type SignatureImage } from "./SignaturePad";
 import { thumbUrl, pageSizes, docFor } from "@/lib/pdf/thumbs";
 import type { EditorItem, FieldInfo, FracRect } from "@/lib/pdf/edit";
-import type { Output, Progress } from "@/lib/pdf/common";
+import { parseRanges, type Output, type Progress } from "@/lib/pdf/common";
 import type { ToolId } from "@/lib/tools";
 
 type EdTool = "select" | "text" | "image" | "rect" | "ellipse" | "line" | "path" | "highlight" | "whiteout" | "redact" | "crop" | "textField" | "checkbox" | "place";
@@ -23,6 +23,45 @@ type Mark = { id: string; page: number; rect: FracRect; term?: string; search?: 
 const COLORS = ["#111827", "#d33f6a", "#2f6fed", "#12a37f", "#e2662b", "#7b4fe0", "#ffffff"];
 const uid = () => crypto.randomUUID();
 const PRESET_NAMES = ["emails", "phones", "numbers"] as const;
+// How an item on the page is announced.
+const ITEM_LABELS: Record<EditorItem["kind"], string> = {
+  text: "ed.text", image: "ed.image", rect: "ed.rect", ellipse: "ed.ellipse", line: "ed.line", path: "ed.draw",
+  highlight: "ed.highlight", whiteout: "ed.whiteout", textField: "ed.addTextField", checkbox: "ed.addCheckbox",
+};
+// Pages a signature can be copied to.
+const PLACEMENTS = ["all", "allButLast", "last", "custom"] as const;
+type Placement = (typeof PLACEMENTS)[number];
+const DATE_FORMATS = ["locale", "long", "iso", "dmy", "mdy"] as const;
+type DateFormat = (typeof DATE_FORMATS)[number];
+
+export function formatDate(d: Date, format: DateFormat, locale: string) {
+  const two = (n: number) => String(n).padStart(2, "0");
+  const [y, m, day] = [d.getFullYear(), two(d.getMonth() + 1), two(d.getDate())];
+  if (format === "iso") return `${y}-${m}-${day}`;
+  if (format === "dmy") return `${day}/${m}/${y}`;
+  if (format === "mdy") return `${m}/${day}/${y}`;
+  return d.toLocaleDateString(locale, format === "long" ? { day: "numeric", month: "long", year: "numeric" } : undefined);
+}
+
+// The zero-based pages a placement covers, in order; empty when none match.
+export function placementPages(placement: Placement, custom: string, total: number) {
+  const all = Array.from({ length: total }, (_, i) => i);
+  if (placement === "all") return all;
+  if (placement === "allButLast") return all.slice(0, -1);
+  if (placement === "last") return all.slice(-1);
+  return [...new Set(parseRanges(custom, total).flat())].sort((a, b) => a - b);
+}
+
+// Puts `item` on exactly `pages`: it stays where it is if its page is one of
+// them, otherwise it moves to the first; the other pages get copies.
+export function placeOnPages<T extends { id: string; page: number }>(list: T[], item: T, pages: number[], newId: () => string): T[] {
+  if (!pages.length) return list;
+  const home = pages.includes(item.page) ? item.page : pages[0];
+  return [
+    ...list.map((i) => (i.id === item.id ? { ...i, page: home } : i)),
+    ...pages.filter((p) => p !== home).map((p) => ({ ...item, id: newId(), page: p })),
+  ];
+}
 
 function useHistory<T>(initial: T) {
   const [stack, setStack] = useState<{ past: T[]; now: T; future: T[] }>({ past: [], now: initial, future: [] });
@@ -49,7 +88,7 @@ export function Editor({
   // The file can't be opened (not a PDF, damaged, password-protected).
   onError: (e: unknown) => void;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [sizes, setSizes] = useState<Size[]>([]);
   const [page, setPage] = useState(0);
   const [zoom, setZoom] = useState(1);
@@ -62,7 +101,19 @@ export function Editor({
   const [sel, setSel] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [style, setStyle] = useState({ color: "#111827", fill: null as string | null, stroke: 2, fontSize: 16, bold: false });
-  const [pad, setPad] = useState<null | "signature" | "initials">(null);
+  const [pad, setPad] = useState<null | "signature" | "initials" | "stamp">(null);
+  const [signer, setSigner] = useState(() => {
+    try {
+      return localStorage.getItem("sign-name") ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const [dateFormat, setDateFormat] = useState<DateFormat>("locale");
+  const [placement, setPlacement] = useState<Placement>("all");
+  const [customPages, setCustomPages] = useState("");
+  // An item to focus once it renders (placed with the keyboard).
+  const focusItem = useRef<string | null>(null);
   const [stamp, setStamp] = useState<{ image?: SignatureImage; text?: string } | null>(null);
   const [pendingImage, setPendingImage] = useState<SignatureImage | null>(null);
   const [fields, setFields] = useState<FieldInfo[]>([]);
@@ -137,7 +188,35 @@ export function Editor({
     const it: EditorItem = { id: uid(), page, kind, x: Math.max(0, x - w / 2), y: Math.max(0, y - h / 2), w, h, image: img.url };
     items.set((l) => [...l, it]);
     setSel(it.id);
+    return it.id;
   };
+
+  // Drops what's waiting to be placed (a signature, stamp, date, name or
+  // image) with its centre at x, y. Returns the new item's id.
+  const placePending = (x: number, y: number) => {
+    let id: string | null = null;
+    if (tool === "place" && stamp) {
+      if (stamp.image) id = placeImage(stamp.image, x, y);
+      else if (stamp.text) {
+        const fs = style.fontSize;
+        // About the text's size on the page, as fractions of it.
+        const h = size ? (fs * 1.25) / size.h : 0.03;
+        const w = size ? Math.min(0.9, (stamp.text.length * fs * 0.55) / size.w) : 0.2;
+        const it: EditorItem = { id: uid(), page, kind: "text", x: Math.max(0, x - w / 2), y: Math.max(0, y - h / 2), w, h, text: stamp.text, fontSize: fs, color: style.color };
+        items.set((l) => [...l, it]);
+        setSel(it.id);
+        id = it.id;
+      }
+      setStamp(null);
+      setTool("select");
+    } else if (tool === "image" && pendingImage) {
+      id = placeImage(pendingImage, x, y);
+      setPendingImage(null);
+      setTool("select");
+    }
+    return id;
+  };
+  const pending = (tool === "place" && stamp) || (tool === "image" && pendingImage);
 
   const onDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
@@ -146,21 +225,8 @@ export function Editor({
     e.preventDefault();
     const p = frac(e);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    if (tool === "place" && stamp) {
-      if (stamp.image) placeImage(stamp.image, p.x, p.y);
-      else if (stamp.text) {
-        const it: EditorItem = { id: uid(), page, kind: "text", x: p.x, y: p.y - 0.01, w: 0.2, h: 0.03, text: stamp.text, fontSize: style.fontSize, color: style.color };
-        items.set((l) => [...l, it]);
-        setSel(it.id);
-      }
-      setStamp(null);
-      setTool("select");
-      return;
-    }
-    if (tool === "image" && pendingImage) {
-      placeImage(pendingImage, p.x, p.y);
-      setPendingImage(null);
-      setTool("select");
+    if (pending) {
+      placePending(p.x, p.y);
       return;
     }
     if (tool === "text") {
@@ -415,7 +481,11 @@ export function Editor({
 
   const cursor = tool === "select" ? "default" : tool === "text" ? "text" : "crosshair";
 
+  const placeLabel = t("ed.placeCentre");
+  const runButton = <button className="btn btn-primary btn-lg w-full" disabled={!canRun} onClick={run}>{actionLabel}</button>;
+
   return (
+    <div>
     <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
       <div className="min-w-0">
         {/* Toolbar */}
@@ -507,7 +577,19 @@ export function Editor({
               const boxStyle: React.CSSProperties = { left: `${i.x * 100}%`, top: `${i.y * 100}%`, width: `${i.w * 100}%`, height: `${i.h * 100}%` };
               const isSel = sel === i.id;
               const frame = isSel ? "outline outline-2 outline-offset-2 outline-[var(--accent)]" : "";
-              const common = { onPointerDown: (e: React.PointerEvent) => startItemDrag(e, i, "move"), onPointerMove: onMove, onPointerUp: onUp };
+              // Items take focus, so the arrow keys and Delete work on them without a mouse.
+              const common = {
+                onPointerDown: (e: React.PointerEvent) => startItemDrag(e, i, "move"), onPointerMove: onMove, onPointerUp: onUp,
+                onFocus: () => setSel(i.id),
+                ref: (el: HTMLDivElement | null) => {
+                  if (el && focusItem.current === i.id) {
+                    focusItem.current = null;
+                    el.focus();
+                  }
+                },
+                "data-item": i.kind, "data-selected": isSel || undefined,
+                ...(editing === i.id ? {} : { tabIndex: 0, role: "button", "aria-label": i.kind === "text" ? i.text || t("ed.text") : t(ITEM_LABELS[i.kind]) }),
+              };
               let inner: React.ReactNode = null;
               if (i.kind === "text") {
                 const fs = (i.fontSize ?? 16) * ptToPx;
@@ -516,7 +598,7 @@ export function Editor({
                     className={`absolute whitespace-pre ${frame} ${editing === i.id ? "" : "cursor-move"}`}
                     style={{ left: `${i.x * 100}%`, top: `${i.y * 100}%`, fontSize: fs, lineHeight: 1.25, color: i.color, fontWeight: i.bold ? 700 : 400, fontFamily: "Helvetica, Arial, sans-serif", minWidth: 8, minHeight: fs * 1.25 }}>
                     {editing === i.id ? (
-                      <textarea ref={(el) => { if (el && document.activeElement !== el) requestAnimationFrame(() => el.focus()); }} value={i.text ?? ""} rows={Math.max(1, (i.text ?? "").split("\n").length)}
+                      <textarea ref={(el) => { if (el && document.activeElement !== el) el.focus(); }} value={i.text ?? ""} rows={Math.max(1, (i.text ?? "").split("\n").length)}
                         onPointerDown={(e) => e.stopPropagation()}
                         onChange={(e) => patch(i.id, { text: e.target.value }, false)}
                         onBlur={() => { setEditing(null); if (!(i.text ?? "").trim()) items.set((l) => l.filter((x) => x.id !== i.id), false); }}
@@ -552,7 +634,7 @@ export function Editor({
                 </div>
               );
             })}
-            {(tool === "place" && stamp) || (tool === "image" && pendingImage) ? (
+            {pending ? (
               <div className="pointer-events-none absolute inset-x-0 top-3 mx-auto w-max rounded-lg bg-ink px-3 py-1.5 text-[13px] text-bg shadow-card">{t("ed.clickToPlace")}</div>
             ) : null}
           </div>
@@ -574,9 +656,39 @@ export function Editor({
           <div className="grid gap-2">
             <button className="btn btn-quiet justify-start" onClick={() => setPad("signature")}><SignatureIcon size={18} /> {t("ed.signature")}</button>
             <button className="btn btn-quiet justify-start" onClick={() => setPad("initials")}><Type size={18} /> {t("ed.initials")}</button>
-            <button className="btn btn-quiet justify-start" onClick={() => { setStamp({ text: new Date().toLocaleDateString() }); setTool("place"); }}>
-              <CalendarDays size={18} /> {t("ed.date")}
-            </button>
+            <button className="btn btn-quiet justify-start" onClick={() => setPad("stamp")}><Stamp size={18} /> {t("ed.stamp")}</button>
+            <div className="flex gap-2">
+              <input className="field h-11 min-w-0 flex-1" value={signer} aria-label={t("ed.yourName")} placeholder={t("ed.yourName")}
+                onChange={(e) => {
+                  setSigner(e.target.value);
+                  try {
+                    localStorage.setItem("sign-name", e.target.value);
+                  } catch {
+                    /* storage blocked: still usable this time */
+                  }
+                }} />
+              <button className="btn btn-quiet shrink-0" disabled={!signer.trim()} onClick={() => { setStamp({ text: signer.trim() }); setTool("place"); }}>
+                <UserRound size={18} /> {t("ed.name")}
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <select className="field h-11 min-w-0 flex-1" value={dateFormat} aria-label={t("ed.dateFormat")} onChange={(e) => setDateFormat(e.target.value as DateFormat)}>
+                {DATE_FORMATS.map((f) => <option key={f} value={f}>{formatDate(new Date(), f, locale)}</option>)}
+              </select>
+              <button className="btn btn-quiet shrink-0" onClick={() => { setStamp({ text: formatDate(new Date(), dateFormat, locale) }); setTool("place"); }}>
+                <CalendarDays size={18} /> {t("ed.date")}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {pending && (
+          <div className="space-y-2">
+            {/* Placing without a pointer: drop it in the middle, then move it with the arrow keys. */}
+            <button className="btn btn-quiet w-full" autoFocus onClick={() => {
+              focusItem.current = placePending(0.5, 0.5);
+            }}><Crosshair size={18} /> {placeLabel}</button>
+            <p className="text-[13px] text-muted">{t("ed.nudgeHint")}</p>
           </div>
         )}
 
@@ -699,9 +811,27 @@ export function Editor({
         {selected && (
           <div className="flex flex-wrap gap-2 border-t border-line pt-4">
             {toolId === "sign" && sizes.length > 1 && (
-              <button className="btn btn-quiet btn-sm" onClick={() => items.set((l) => [...l, ...sizes.map((_, p) => p).filter((p) => p !== selected.page).map((p) => ({ ...selected, id: uid(), page: p }))])}>
-                <Copy size={15} /> {t("ed.applyAll")}
-              </button>
+              <div className="grid w-full gap-2">
+                <label className="flex items-center gap-2 text-[13px] text-ink-2">
+                  <span aria-hidden>{t("ed.placeOn")}</span>
+                  <select className="field h-9 min-w-0 flex-1" value={placement} aria-label={t("ed.placeOn")} onChange={(e) => setPlacement(e.target.value as Placement)}>
+                    {PLACEMENTS.map((k) => <option key={k} value={k}>{t(`ed.pages${k[0].toUpperCase()}${k.slice(1)}`)}</option>)}
+                  </select>
+                </label>
+                {placement === "custom" && (
+                  <input className="field h-9" value={customPages} onChange={(e) => setCustomPages(e.target.value)}
+                    aria-label={t("ed.customPages")} placeholder={t("ed.customPagesHint")} />
+                )}
+                <button className="btn btn-quiet btn-sm justify-self-start"
+                  disabled={!placementPages(placement, customPages, sizes.length).length}
+                  onClick={() => {
+                    const pages = placementPages(placement, customPages, sizes.length);
+                    items.set((l) => placeOnPages(l, selected, pages, uid));
+                    if (!pages.includes(selected.page)) setPage(pages[0]);
+                  }}>
+                  <Copy size={15} /> {t("ed.applyPlacement")}
+                </button>
+              </div>
             )}
             <button className="btn btn-quiet btn-sm text-danger" onClick={() => { items.set((l) => l.filter((i) => i.id !== selected.id)); setSel(null); }}>
               <Trash2 size={15} /> {t("ed.deleteItem")}
@@ -709,12 +839,17 @@ export function Editor({
           </div>
         )}
 
-        <button className="btn btn-primary btn-lg w-full" disabled={!canRun} onClick={run}>{actionLabel}</button>
+        <div className="hidden lg:block">{runButton}</div>
       </aside>
 
       {pad && (
         <SignaturePad kind={pad} onClose={() => setPad(null)} onDone={(s) => { setPad(null); setStamp({ image: s }); setTool("place"); }} />
       )}
+    </div>
+      {/* Below lg the panel sits under the page, so the action stays in reach at the bottom of the screen. */}
+      <div className="sticky bottom-0 z-30 mt-4 rounded-t-xl border border-b-0 border-line bg-[color-mix(in_oklab,var(--surface)_92%,transparent)] p-3 shadow-card backdrop-blur-md lg:hidden">
+        {runButton}
+      </div>
     </div>
   );
 }

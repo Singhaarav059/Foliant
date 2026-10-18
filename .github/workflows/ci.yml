@@ -96,6 +96,9 @@ jobs:
       - name: HTML to PDF (zip, paste, no remote requests)
         if: success() || failure()
         run: npm run test:e2e:html -- ${{ matrix.browser }}
+      - name: Sign and editor
+        if: success() || failure()
+        run: npm run test:e2e:sign -- ${{ matrix.browser }}
       - name: Office to PDF with LibreOffice, first visit
         if: matrix.browser == 'chromium'
         run: npm run test:e2e-office

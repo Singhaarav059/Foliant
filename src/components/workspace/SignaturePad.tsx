@@ -1,15 +1,36 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { useI18n } from "../I18n";
+import { VENDOR } from "@/lib/vendor";
 
 const INKS = ["#111827", "#1d4ed8", "#b91c1c"];
+// Handwriting fonts served from /vendor (scripts/vendor.mjs), so a typed
+// signature looks the same on every system. OFL-1.1, from Fontsource.
 const SCRIPTS = [
-  '"Snell Roundhand", "Segoe Script", "Brush Script MT", cursive',
-  '"Bradley Hand", "Segoe Print", "Comic Sans MS", cursive',
-  '"Zapfino", "Lucida Handwriting", "Apple Chancery", cursive',
+  { family: "Dancing Script", file: "dancing-script" },
+  { family: "Great Vibes", file: "great-vibes" },
+  { family: "Caveat", file: "caveat" },
 ];
+const stack = (family: string) => `"${family}", cursive`;
+// Fontsource's Latin and Latin Extended slices, the same for all three.
+const SUBSETS: [string, string][] = [
+  ["latin", "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD"],
+  ["latin-ext", "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF"],
+];
+let scriptFonts: Promise<unknown> | null = null;
+// Registers the faces once and starts loading the Latin ones; Latin
+// Extended loads when a name needs it.
+function loadScriptFonts() {
+  if (!scriptFonts) {
+    const faces = SCRIPTS.flatMap(({ family, file }) => SUBSETS.map(([subset, unicodeRange]) =>
+      new FontFace(family, `url(${VENDOR}signature-fonts/${file}-${subset}-400-normal.woff2) format("woff2")`, { unicodeRange, display: "swap" })));
+    faces.forEach((f) => document.fonts.add(f));
+    scriptFonts = Promise.allSettled(faces.filter((_, i) => i % SUBSETS.length === 0).map((f) => f.load()));
+  }
+  return scriptFonts;
+}
 
 // Crops a canvas to its inked area and returns a transparent PNG data URL.
 function trimmed(canvas: HTMLCanvasElement) {
@@ -36,9 +57,14 @@ function trimmed(canvas: HTMLCanvasElement) {
 
 export type SignatureImage = { url: string; ratio: number };
 
-export function SignaturePad({ kind, onDone, onClose }: { kind: "signature" | "initials"; onDone: (s: SignatureImage) => void; onClose: () => void }) {
+// A modal <dialog>: focus stays inside, Escape closes it. A stamp is an
+// uploaded image only.
+export function SignaturePad({ kind, onDone, onClose }: { kind: "signature" | "initials" | "stamp"; onDone: (s: SignatureImage) => void; onClose: () => void }) {
   const { t } = useI18n();
-  const [tab, setTab] = useState<"draw" | "type" | "upload">("draw");
+  const tabs = kind === "stamp" ? (["upload"] as const) : (["draw", "type", "upload"] as const);
+  const [tab, setTab] = useState<"draw" | "type" | "upload">(tabs[0]);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
   const [ink, setInk] = useState(INKS[0]);
   const [name, setName] = useState("");
   const [script, setScript] = useState(0);
@@ -69,32 +95,40 @@ export function SignaturePad({ kind, onDone, onClose }: { kind: "signature" | "i
   }, [tab]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    const d = dialog.current;
+    if (d && !d.open) d.showModal();
+    return () => d?.close();
+  }, []);
+
+  useEffect(() => {
+    if (kind !== "stamp") void loadScriptFonts();
+  }, [kind]);
 
   const point = (e: React.PointerEvent) => {
     const r = canvas.current!.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top, p: e.pressure || 0.5 };
   };
 
-  const typed = () => {
+  const typed = async () => {
+    const font = `${kind === "initials" ? 200 : 150}px ${stack(SCRIPTS[script].family)}`;
+    // Canvas text doesn't wait for a font, so load it (and any slice this name needs) first.
+    await loadScriptFonts();
+    await document.fonts.load(font, name).catch(() => {});
     const c = document.createElement("canvas");
     c.width = 1400;
     c.height = 360;
     const ctx = c.getContext("2d")!;
     ctx.fillStyle = ink;
-    ctx.font = `${kind === "initials" ? 200 : 150}px ${SCRIPTS[script]}`;
+    ctx.font = font;
     ctx.textBaseline = "middle";
     ctx.fillText(name, 40, 180);
     return trimmed(c);
   };
 
-  const finish = () => {
+  const finish = async () => {
     let sig: SignatureImage | null = null;
     if (tab === "draw" && canvas.current) sig = trimmed(canvas.current);
-    else if (tab === "type" && name.trim()) sig = typed();
+    else if (tab === "type" && name.trim()) sig = await typed();
     else if (tab === "upload") sig = upload;
     if (!sig) return;
     try {
@@ -125,10 +159,33 @@ export function SignaturePad({ kind, onDone, onClose }: { kind: "signature" | "i
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-[rgb(10_14_22/0.45)] p-4" role="dialog" aria-modal onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="rise card w-full max-w-[560px] p-5 shadow-card">
+    <dialog ref={dialog} aria-labelledby={titleId}
+      className="rise card m-auto w-[calc(100%-2rem)] max-w-[560px] p-5 text-ink shadow-card backdrop:bg-[rgb(10_14_22/0.45)]"
+      onCancel={(e) => { e.preventDefault(); onClose(); }}
+      onKeyDown={(e) => {
+        // A modal dialog lets Tab leave for the browser's own controls; keep it cycling inside.
+        if (e.key !== "Tab") return;
+        const all = [...e.currentTarget.querySelectorAll<HTMLElement>("button, input, select, textarea, [tabindex]")]
+          .filter((el) => !(el as HTMLButtonElement).disabled && el.tabIndex >= 0 && el.getClientRects().length > 0);
+        const [first, last] = [all[0], all[all.length - 1]];
+        if (!first) return;
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }}
+      onPointerDown={(e) => {
+        // A press on the backdrop lands on the dialog itself, outside its box.
+        if (e.target !== e.currentTarget) return;
+        const r = e.currentTarget.getBoundingClientRect();
+        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) onClose();
+      }}>
+      <div>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">{t("ed.createSignature")}</h2>
+          <h2 id={titleId} className="text-lg font-semibold">{t(kind === "stamp" ? "ed.createStamp" : "ed.createSignature")}</h2>
           <button className="icon-btn" aria-label={t("nav.close")} onClick={onClose}><X size={18} /></button>
         </div>
         {saved.length > 0 && (
@@ -141,14 +198,15 @@ export function SignaturePad({ kind, onDone, onClose }: { kind: "signature" | "i
             ))}
           </div>
         )}
-        <div className="mb-3 flex gap-1 rounded-full bg-surface-2 p-1" role="tablist">
-          {(["draw", "type", "upload"] as const).map((k) => (
+        {kind === "stamp" && <p className="mb-3 text-[14px] text-muted">{t("ed.stampHint")}</p>}
+        {tabs.length > 1 && <div className="mb-3 flex gap-1 rounded-full bg-surface-2 p-1" role="tablist">
+          {tabs.map((k) => (
             <button key={k} role="tab" aria-selected={tab === k} onClick={() => { setTab(k); setHasInk(false); }}
               className={`flex-1 rounded-full py-1.5 text-[14px] font-medium ${tab === k ? "bg-surface shadow-sm" : "text-muted"}`}>
               {t(`ed.${k}Tab`)}
             </button>
           ))}
-        </div>
+        </div>}
         {tab === "draw" && (
           <canvas
             ref={canvas}
@@ -178,9 +236,9 @@ export function SignaturePad({ kind, onDone, onClose }: { kind: "signature" | "i
             <input className="field" placeholder={t("ed.typeName")} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
             <div className="grid gap-2">
               {SCRIPTS.map((f, i) => (
-                <button key={f} onClick={() => setScript(i)}
+                <button key={f.family} onClick={() => setScript(i)} aria-pressed={script === i}
                   className={`h-16 truncate rounded-xl border bg-white px-4 text-start text-[34px] ${script === i ? "border-brand" : "border-line"}`}
-                  style={{ fontFamily: f, color: ink }}>
+                  style={{ fontFamily: stack(f.family), color: ink }}>
                   {name || t("ed.typeName")}
                 </button>
               ))}
@@ -188,13 +246,14 @@ export function SignaturePad({ kind, onDone, onClose }: { kind: "signature" | "i
           </div>
         )}
         {tab === "upload" && (
-          <label className="grid h-[200px] cursor-pointer place-items-center rounded-xl border-2 border-dashed border-line-strong bg-white text-muted">
-            <input type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])} />
+          <label className="grid h-[200px] cursor-pointer place-items-center rounded-xl border-2 border-dashed border-line-strong bg-white text-muted focus-within:outline focus-within:outline-2 focus-within:outline-[var(--accent)]">
+            {/* Visually hidden, not hidden: Tab reaches it and Enter opens the file picker. */}
+            <input type="file" accept="image/*" className="sr-only" onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])} />
             {upload ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={upload.url} alt="" className="max-h-[160px] max-w-[90%]" />
             ) : (
-              <span>{t("ed.uploadTab")}</span>
+              <span>{t(kind === "stamp" ? "ed.chooseImage" : "ed.uploadTab")}</span>
             )}
           </label>
         )}
@@ -210,12 +269,12 @@ export function SignaturePad({ kind, onDone, onClose }: { kind: "signature" | "i
               setHasInk(false);
             }}>{t("ed.clear")}</button>
           )}
-          <button className="btn btn-primary ms-auto" onClick={finish}
+          <button className="btn btn-primary ms-auto" onClick={() => void finish()}
             disabled={(tab === "draw" && !hasInk) || (tab === "type" && !name.trim()) || (tab === "upload" && !upload)}>
-            {t("ed.useSignature")}
+            {t(kind === "stamp" ? "ed.useStamp" : "ed.useSignature")}
           </button>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 }
