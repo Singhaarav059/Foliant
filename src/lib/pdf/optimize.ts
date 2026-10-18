@@ -6,7 +6,7 @@ import { baseName, bytesOf, canvasToBlob, closePdf, openPdf, pdfBlob, pdfjs, ren
 import { loadPdf } from "./organize";
 import { prepareQpdf, runQpdf } from "./qpdf";
 import { PdfError } from "./errors";
-import { decodeJpeg, decodeJpegCmyk, encodeJpeg, jpegComponents, prepareJpeg } from "./jpeg";
+import { decodeJpeg, decodeJpegCmyk, encodeJpeg, jpegFrame, prepareJpeg } from "./jpeg";
 import { asGray, cmykToRgb, expandPalette, invert, palette, predictPng, resample, unpack, unpredictPng, type Pixels } from "./pixels";
 import { placements } from "./placements";
 
@@ -58,10 +58,19 @@ function inflate(stream: PDFRawStream, limit: number): Uint8Array | null {
     const step = 1 << 14;
     for (let i = 0; i < bytes.length && total <= limit; i += step) z.push(bytes.subarray(i, i + step), i + step >= bytes.length);
   } catch {
-    // Damaged or oddly wrapped data: pdf-lib's decoder is more forgiving, and
-    // safe when even the largest possible Flate expansion (1032:1) fits.
-    if (bytes.length * 1032 > limit) return null;
-    return decodePDFRawStream(stream).decode();
+    // Damaged or oddly wrapped data (no Adler-32 trailer, a cut-off end):
+    // pdf-lib's decoder is more forgiving. Read it a step at a time, so its
+    // buffer never grows much past the limit (or past what the data holds).
+    const s = decodePDFRawStream(stream);
+    const step = 1 << 20;
+    let got = 0;
+    for (let n = step; n === step; got += n) {
+      n = s.getBytes(step).length;
+      if (got + n > limit) return null;
+    }
+    s.reset();
+    const v = s.getBytes(got);
+    return new Uint8Array(v.buffer, v.byteOffset, v.length);
   }
   if (total > limit) return null;
   const out = new Uint8Array(total);
@@ -128,8 +137,10 @@ async function readImage(stream: PDFRawStream, w: number, h: number, colour: Col
   let px: Pixels | null = null;
   if (filters.length === 1 && filters[0] === "/DCTDecode") {
     if (colour.palette || w * h * comps > MAX_IMAGE_BYTES) return null;
-    const n = jpegComponents(stream.contents);
-    if (n !== comps) return null;
+    // Checked before decoding: the frame, not the dictionary, sets the memory used.
+    const frame = jpegFrame(stream.contents);
+    if (!frame || frame.n !== comps || frame.w !== w || frame.h !== h) return null;
+    const n = frame.n;
     px = n === 4 ? await decodeJpegCmyk(stream.contents) : await decodeJpeg(stream.contents);
     if (!px || px.w !== w || px.h !== h) return null;
     if (n === 1 || n === 3) px = { ...px, ch: n };
@@ -163,9 +174,11 @@ function dropUnreachable(doc: PDFDocument) {
       if (seen.has(o.toString())) continue;
       seen.add(o.toString());
       todo.push(ctx.lookup(o));
-    } else if (o instanceof PDFDict) todo.push(...o.values());
-    else if (o instanceof PDFArray) todo.push(...o.asArray());
-    else if (o instanceof PDFStream) todo.push(...o.dict.values());
+    } else {
+      // One push per entry: spreading a 150k-entry array overflows the stack.
+      const kids = o instanceof PDFDict ? o.values() : o instanceof PDFArray ? o.asArray() : o instanceof PDFStream ? o.dict.values() : [];
+      for (const k of kids) todo.push(k);
+    }
   }
   for (const [ref] of ctx.enumerateIndirectObjects()) if (!seen.has(ref.toString())) ctx.delete(ref);
 }

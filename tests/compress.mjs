@@ -49,6 +49,42 @@ const deflateZeros = (total) => new Promise((resolve, reject) => {
 });
 const GiB = await deflateZeros(1 << 30);
 
+await test("a JPEG far larger than its image dictionary says is not decoded", async () => {
+  // Small files: one flat colour. Decoded, each would need hundreds of MB.
+  const big = (space) => sharp({ create: { width: 12000, height: 12000, channels: 3, background: { r: 200, g: 30, b: 90 } }, limitInputPixels: false }).toColourspace(space).jpeg({ quality: 50 }).toBuffer();
+  const d = await PDFDocument.create();
+  const page = d.addPage([300, 300]);
+  for (const [name, space, cs] of [["Im1", "cmyk", "DeviceCMYK"], ["Im2", "srgb", "DeviceRGB"]]) {
+    const img = d.context.register(PDFRawStream.of(d.context.obj({ Type: "XObject", Subtype: "Image", Width: 2000, Height: 2000, ColorSpace: cs, BitsPerComponent: 8, Filter: "DCTDecode" }), new Uint8Array(await big(space))));
+    page.node.setXObject(PDFName.of(name), img);
+    page.pushOperators(pushGraphicsState(), concatTransformationMatrix(300, 0, 0, 300, 0, 0), drawObject(name), popGraphicsState());
+  }
+  const bytes = await d.save({ useObjectStreams: false });
+  const before = process.resourceUsage().maxRSS / 1024;
+  const t0 = Date.now();
+  await compress(new File([bytes], "liar.pdf"), { level: "extreme" });
+  const ms = Date.now() - t0;
+  const grew = process.resourceUsage().maxRSS / 1024 - before;
+  console.log(`      ${ms} ms, peak memory +${grew.toFixed(0)} MB`);
+  ok(grew < 150, `peak memory grew by ${grew.toFixed(0)} MB (limit 150)`);
+  ok(ms < 3000, `took ${ms} ms (limit 3000)`);
+});
+
+await test("a reachable array with 150,000 entries is walked without overflowing", async () => {
+  const d = await PDFDocument.create();
+  d.addPage([200, 200]).drawText("BIG", { x: 20, y: 100 });
+  // A tagged report's ParentTree can hold this many /Nums entries in one array.
+  const nums = [];
+  for (let i = 0; i < 75000; i++) nums.push(i, d.context.obj({ S: "P" }));
+  const tree = d.context.register(d.context.obj({ Nums: nums }));
+  d.catalog.set(PDFName.of("StructTreeRoot"), d.context.register(d.context.obj({ Type: "StructTreeRoot", ParentTree: tree })));
+  const bytes = await d.save({ useObjectStreams: false });
+  const [res] = await compress(new File([bytes], "tagged.pdf"), { level: "extreme" });
+  const after = await PDFDocument.load(await res.blob.arrayBuffer());
+  const kept = after.catalog.lookup(PDFName.of("StructTreeRoot"), PDFDict).lookup(PDFName.of("ParentTree"), PDFDict).lookup(PDFName.of("Nums"), PDFArray);
+  eq(kept.size(), 150000, "ParentTree entries");
+});
+
 await test("streams nothing uses are dropped without inflating them", async () => {
   const d = await PDFDocument.create();
   d.addPage([200, 200]).drawText("ORPHAN", { x: 20, y: 100 });
@@ -378,6 +414,16 @@ await test("CMYK JPEG with an inverted (Adobe) /Decode keeps its colours", async
   ok(r.ratio < 0.5, `ratio ${r.ratio.toFixed(3)} (limit 0.5)`);
   eq(n(r.img.dict, "Width"), 540, "width at 72 dpi");
   eq(r.img.dict.get(PDFName.of("Decode")), undefined, "Decode dropped with the inversion applied");
+  ok(r.diff < 6, `looks different: ${r.diff.toFixed(2)}`);
+});
+
+await test("Flate image without its Adler-32 checksum is still compressed", async () => {
+  const z = zlib.deflateSync(RGB);
+  const bytes = await onePage({ ColorSpace: "DeviceRGB", BitsPerComponent: 8, Filter: "FlateDecode" }, z.subarray(0, z.length - 4));
+  const r = await squeeze(bytes, "extreme");
+  console.log(`      ratio ${r.ratio.toFixed(3)}, mean difference ${r.diff.toFixed(2)}`);
+  ok(r.ratio < 0.1, `ratio ${r.ratio.toFixed(3)} (limit 0.1)`);
+  eq(n(r.img.dict, "Width"), 540, "width at 72 dpi");
   ok(r.diff < 6, `looks different: ${r.diff.toFixed(2)}`);
 });
 
