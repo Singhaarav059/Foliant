@@ -11,6 +11,11 @@
 // BUILD below, so each deploy installs afresh. The PDF engines (qpdf, the
 // pdf.js worker…) aren't precached: a tool page fetches its own once it has
 // loaded (src/lib/offline.ts), and this worker keeps them.
+//
+// Files shared to the installed app from a phone's share sheet arrive as a
+// POST to /share (the manifest's share_target). This worker keeps them in
+// IndexedDB and sends the page on to /{lang}/open, which offers the tools
+// that take them (src/lib/handoff.ts reads them). No server sees them.
 const VERSION = new URL(location.href).searchParams.get("v") ?? "dev";
 const CACHE = `nopload-${VERSION}`;
 const BUILD = "dev";
@@ -51,7 +56,8 @@ self.addEventListener("install", (event) => {
     const cache = await caches.open(CACHE);
     const m = await manifest();
     const lang = m ? await clientLocale(m.locales) : null;
-    const urls = ["/icon.svg", ...(m?.shell ?? []), ...(lang ? [`/${lang}`] : [])];
+    // /en/open is where "Open with" lands (the manifest's file_handlers).
+    const urls = ["/icon.svg", ...(m?.shell ?? []), "/en/open", ...(lang ? [`/${lang}`, `/${lang}/open`] : [])];
     // Build files never change under the same URL; pages do. One missing
     // file shouldn't stop the worker installing.
     await Promise.all(urls.map(async (u) => {
@@ -104,9 +110,63 @@ function keep(event, req, res) {
   event.waitUntil(caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {}));
 }
 
+// The same database and keys as src/lib/handoff.ts.
+const INBOX = { db: "nopload-inbox", store: "files", shared: "shared" };
+
+// Kept as bytes, as src/lib/handoff.ts reads them (WebKit can't always store a File).
+async function stashShared(shared) {
+  const files = await Promise.all(shared.map(async (f) =>
+    ({ name: f.name, type: f.type, lastModified: f.lastModified, data: await f.arrayBuffer() })));
+  return new Promise((resolve) => {
+    const open = indexedDB.open(INBOX.db, 1);
+    open.onupgradeneeded = () => open.result.createObjectStore(INBOX.store);
+    open.onerror = () => resolve();
+    open.onsuccess = () => {
+      const db = open.result;
+      const tx = db.transaction(INBOX.store, "readwrite");
+      tx.objectStore(INBOX.store).put({ files, at: Date.now() }, INBOX.shared);
+      tx.oncomplete = tx.onerror = tx.onabort = () => {
+        db.close();
+        resolve();
+      };
+    };
+  });
+}
+
+// The language to show shared files in: an open window's, else that of a
+// home page kept here. The page itself then follows the language used last.
+async function shareLocale() {
+  const lang = (path) => path.match(/^\/([a-z]{2}(?:-[a-z]{2})?)(?:\/|$)/)?.[1];
+  for (const c of await self.clients.matchAll({ type: "window", includeUncontrolled: true })) {
+    const l = lang(new URL(c.url).pathname);
+    if (l) return l;
+  }
+  const cache = await caches.open(CACHE);
+  for (const req of await cache.keys()) {
+    const path = new URL(req.url).pathname;
+    if (/^\/[a-z]{2}(?:-[a-z]{2})?$/.test(path)) return lang(path);
+  }
+  return "en";
+}
+
+async function receiveShare(req) {
+  try {
+    const form = await req.formData();
+    const files = form.getAll("files").filter((f) => typeof f !== "string" && f.size > 0);
+    if (files.length) await stashShared(files);
+  } catch {
+    /* nothing readable was shared: the page offers to choose files */
+  }
+  return Response.redirect(new URL(`/${await shareLocale()}/open`, location.origin).href, 303);
+}
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   const url = new URL(req.url);
+  if (req.method === "POST" && url.origin === location.origin && url.pathname === "/share") {
+    event.respondWith(receiveShare(req));
+    return;
+  }
   if (req.method !== "GET" || url.origin !== location.origin || url.pathname.startsWith("/api/")) return;
   // OCR language files are large and tesseract.js keeps its own IndexedDB copy.
   if (url.pathname.startsWith("/vendor/") && url.pathname.includes("/tessdata/")) return;

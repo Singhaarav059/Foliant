@@ -48,7 +48,9 @@
     "test:e2e:errors": "node tests/e2e/errors.mjs",
     "test:e2e:intake": "node tests/e2e/intake.mjs",
     "test:e2e:offline": "node tests/e2e/offline.mjs",
-    "test:e2e:compare": "node tests/e2e/compare.mjs"
+    "test:e2e:compare": "node tests/e2e/compare.mjs",
+    "test:handoff": "node tests/handoff.mjs",
+    "test:e2e:share": "node tests/e2e/share.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
