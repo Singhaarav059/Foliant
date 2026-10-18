@@ -44,11 +44,20 @@ export function getDb() {
       body TEXT NOT NULL,
       created_at INTEGER NOT NULL
     );
+    -- Signed-out sessions, kept until their token would have expired anyway.
+    CREATE TABLE IF NOT EXISTS revoked_sessions (
+      jti TEXT PRIMARY KEY,
+      expires_at INTEGER NOT NULL
+    );
   `);
+  // Bumped on a password change, which signs out every session of the user.
+  const columns = db.prepare("PRAGMA table_info(users)").all() as { name: string }[];
+  if (!columns.some((c) => c.name === "session_version"))
+    db.exec("ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0");
   return db;
 }
 
-export type UserRow = { id: number; email: string; name: string; pass_hash: string; created_at: number };
+export type UserRow = { id: number; email: string; name: string; pass_hash: string; created_at: number; session_version: number };
 export type PublicUser = { id: number; email: string; name: string };
 
 export const publicUser = (u: UserRow): PublicUser => ({

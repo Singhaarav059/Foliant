@@ -1,8 +1,12 @@
 import "server-only";
 import { existsSync } from "node:fs";
-import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
 import type { Browser, Page } from "playwright-core";
+import { BLOCKED_HEADER, startEgressProxy } from "./egress";
+import { HttpError } from "./errors";
+import { allowedScheme, publicHost } from "./net";
+import { limiter, withDeadline } from "./run";
+
+export { publicHost };
 
 const CANDIDATES = [
   process.env.CHROME_PATH,
@@ -19,15 +23,37 @@ export function chromePath() {
   return CANDIDATES.find((p) => existsSync(p)) ?? null;
 }
 
+// One Chrome for the process, launched with the egress proxy as its only way
+// out: it never resolves a host name itself (--host-resolver-rules), WebRTC
+// can't open its own UDP sockets, and the proxy checks every destination.
 let browser: Promise<Browser> | null = null;
+let proxy: ReturnType<typeof startEgressProxy> | null = null;
 
-async function getBrowser() {
+async function getBrowser(): Promise<Browser> {
   const path = chromePath();
-  if (!path) throw new Error("Chrome or Chromium isn't installed on the server. Set CHROME_PATH.");
+  if (!path) throw new HttpError(503, "Conversions that need Chrome aren't available on this server.");
+  proxy ??= startEgressProxy();
+  const { port } = await proxy;
   browser ??= import("playwright-core").then(({ chromium }) =>
-    chromium.launch({ executablePath: path, headless: true, args: ["--disable-dev-shm-usage"] }),
+    chromium.launch({
+      executablePath: path,
+      headless: true,
+      // Playwright adds --proxy-bypass-list=<-loopback>, so localhost isn't exempt.
+      proxy: { server: `http://127.0.0.1:${port}` },
+      args: [
+        "--disable-dev-shm-usage",
+        "--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1",
+        "--webrtc-ip-handling-policy=disable_non_proxied_udp",
+        "--force-webrtc-ip-handling-policy",
+        "--disable-background-networking",
+        "--js-flags=--max-old-space-size=512",
+      ],
+    }),
   );
-  const b = await browser;
+  const b = await browser.catch((e) => {
+    browser = null;
+    throw e;
+  });
   if (!b.isConnected()) {
     browser = null;
     return getBrowser();
@@ -35,29 +61,19 @@ async function getBrowser() {
   return b;
 }
 
-// ── Blocking private addresses, so a submitted URL can't reach the server's own network.
-function privateV4(ip: string) {
-  const [a, b] = ip.split(".").map(Number);
-  return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
-}
+// MAX_CHROME_JOBS pages at a time (default 2) and eight waiting; past that
+// the server answers busy. Each page also has a hard deadline.
+const gate = limiter(Number(process.env.MAX_CHROME_JOBS ?? 2), 8);
 
-function privateIp(ip: string) {
-  if (isIP(ip) === 4) return privateV4(ip);
-  const v = ip.toLowerCase();
-  if (v.startsWith("::ffff:")) return privateV4(v.slice(7));
-  return v === "::1" || v === "::" || v.startsWith("fc") || v.startsWith("fd") || v.startsWith("fe8") || v.startsWith("fe9") || v.startsWith("fea") || v.startsWith("feb");
-}
-
-export async function publicHost(hostname: string) {
-  if (/^localhost$|\.local$|\.internal$/i.test(hostname)) return false;
-  if (isIP(hostname)) return !privateIp(hostname);
-  try {
-    const addrs = await lookup(hostname, { all: true });
-    return addrs.length > 0 && addrs.every((a) => !privateIp(a.address));
-  } catch {
-    return false;
-  }
+// A first check in the page; the egress proxy is what enforces it.
+async function guard(page: Page) {
+  await page.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (!allowedScheme(url)) return route.abort("blockedbyclient");
+    if (url.protocol === "data:" || url.protocol === "blob:") return route.continue();
+    if (!(await publicHost(url.hostname))) return route.abort("blockedbyclient");
+    return route.continue();
+  });
 }
 
 const OVERLAY_CLEANUP = `
@@ -80,16 +96,9 @@ const OVERLAY_CLEANUP = `
 
 export type PrintOptions = { pageSize: string; orientation: string; screenWidth: number; hideOverlays: boolean };
 
-async function guard(page: Page) {
-  await page.route("**/*", async (route) => {
-    const url = new URL(route.request().url());
-    if (url.protocol === "data:" || url.protocol === "blob:") return route.continue();
-    if (!/^https?:$/.test(url.protocol) || !(await publicHost(url.hostname))) return route.abort("blockedbyclient");
-    return route.continue();
-  });
-}
+export const printToPdf = (source: { url?: string; html?: string }, o: PrintOptions) => gate(() => print(source, o));
 
-export async function printToPdf(source: { url?: string; html?: string }, o: PrintOptions): Promise<Uint8Array> {
+async function print(source: { url?: string; html?: string }, o: PrintOptions): Promise<Uint8Array> {
   const b = await getBrowser();
   const context = await b.newContext({
     viewport: { width: o.screenWidth, height: 900 },
@@ -99,18 +108,21 @@ export async function printToPdf(source: { url?: string; html?: string }, o: Pri
     serviceWorkers: "block",
   });
   const page = await context.newPage();
-  try {
+  const job = async () => {
     await guard(page);
     if (source.url) {
-      await page.goto(source.url, { waitUntil: "load", timeout: 45_000 });
+      const res = await page.goto(source.url, { waitUntil: "load", timeout: 45_000 });
+      if (res?.headers()[BLOCKED_HEADER]) throw new HttpError(400, "That address isn't reachable from the public internet.");
       await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => {});
     } else {
       await page.setContent(source.html ?? "", { waitUntil: "load", timeout: 30_000 });
     }
-    // Trigger lazy-loaded images by scrolling through once.
+    // Trigger lazy-loaded images by scrolling through once, for at most 60
+    // screens or 10 seconds, since an endless feed never reaches the bottom.
     await page.evaluate(async () => {
       const step = innerHeight;
-      for (let y = 0; y < document.body.scrollHeight; y += step) {
+      const until = Date.now() + 10_000;
+      for (let y = 0, n = 0; y < document.body.scrollHeight && n < 60 && Date.now() < until; y += step, n++) {
         scrollTo(0, y);
         await new Promise((r) => setTimeout(r, 120));
       }
@@ -130,34 +142,34 @@ export async function printToPdf(source: { url?: string; html?: string }, o: Pri
       printBackground: true,
       margin: { top: "12mm", bottom: "12mm", left: "10mm", right: "10mm" },
     });
-  } finally {
-    await context.close();
-  }
+  };
+  return withDeadline(job(), 100_000, () => context.close()).finally(() => context.close().catch(() => {}));
 }
 
 // Prints HTML we generated ourselves (office conversions, translations). CSS @page decides size.
-export async function htmlToPdf(html: string): Promise<Uint8Array> {
-  const b = await getBrowser();
-  const context = await b.newContext({ javaScriptEnabled: false, serviceWorkers: "block" });
-  const page = await context.newPage();
-  try {
-    await guard(page);
-    await page.setContent(html, { waitUntil: "load", timeout: 60_000 });
-    return await page.pdf({ preferCSSPageSize: true, printBackground: true });
-  } finally {
-    await context.close();
-  }
-}
+export const htmlToPdf = (html: string) =>
+  gate(async (): Promise<Uint8Array> => {
+    const b = await getBrowser();
+    const context = await b.newContext({ javaScriptEnabled: false, serviceWorkers: "block" });
+    const page = await context.newPage();
+    const job = async () => {
+      await guard(page);
+      await page.setContent(html, { waitUntil: "load", timeout: 60_000 });
+      return await page.pdf({ preferCSSPageSize: true, printBackground: true });
+    };
+    return withDeadline(job(), 90_000, () => context.close()).finally(() => context.close().catch(() => {}));
+  });
 
-// Runs a function inside a blank Chrome page, used for parsing XML with the browser's DOMParser.
+// Runs a function inside a blank Chrome page, used for parsing XML with the
+// browser's DOMParser. It has no network at all. Not gated: it runs while an
+// office conversion prepares the HTML it then hands to htmlToPdf.
 export async function inBrowser<T, A>(fn: (arg: A) => T | Promise<T>, arg: A): Promise<T> {
   const b = await getBrowser();
   const context = await b.newContext({ serviceWorkers: "block" });
   const page = await context.newPage();
-  try {
+  const job = async () => {
     await page.route("**/*", (r) => r.abort());
     return (await page.evaluate(fn as never, arg as never)) as T;
-  } finally {
-    await context.close();
-  }
+  };
+  return withDeadline(job(), 60_000, () => context.close()).finally(() => context.close().catch(() => {}));
 }

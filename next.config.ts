@@ -20,7 +20,18 @@ if (process.env.NOPLOAD_RELEASE === "1" && releaseGaps().length) {
 // Source code and issue links, from package.json unless set.
 const REPO_URL = process.env.NEXT_PUBLIC_REPO_URL || pkg.repository.url.replace(/^git\+/, "").replace(/\.git$/, "");
 
+// Headers only the server build sends (a static host gets its own from
+// scripts/static-extras.mjs): no framing by other sites, HTTPS from now on,
+// and API answers that are never cached.
+const serverHeaders = [
+  ...securityHeaders,
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
+  { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+  { key: "Strict-Transport-Security", value: "max-age=31536000" },
+];
+
 const nextConfig: NextConfig = {
+  poweredByHeader: false,
   // Both imply partial prerendering, which static exports can't do.
   cacheComponents: !STATIC,
   partialPrefetching: !STATIC,
@@ -52,7 +63,8 @@ const nextConfig: NextConfig = {
     : {
         async headers() {
           return [
-            { source: "/:path*", headers: securityHeaders },
+            { source: "/:path*", headers: serverHeaders },
+            { source: "/api/:path*", headers: [{ key: "Cache-Control", value: "no-store" }] },
             { source: "/sw.js", headers: [{ key: "Cache-Control", value: "no-cache" }] },
           ];
         },
