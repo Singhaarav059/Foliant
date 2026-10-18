@@ -3,7 +3,7 @@
 // that can't be read is an error that names it, never "no differences".
 //
 //   node tests/compare.mjs
-import { PDFDocument, StandardFonts } from "pdf-lib";
+import { PDFDocument, PDFName, StandardFonts, degrees } from "pdf-lib";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { load, root, check, eq } from "./lib/load.mjs";
@@ -97,6 +97,94 @@ await test("an unreadable file is an error naming it, not an empty diff", async 
     if (!error) throw new Error(`${a.name} vs ${b.name}: no error`);
     eq(`${error.code} ${error.fileName}`, `${code} ${name}`, `${a.name} vs ${b.name}`);
   }
+});
+
+// ── Exporting the differences (src/lib/pdf/compare-export.ts)
+
+const { annotatedCopy, changeReport } = await load("compare-export");
+// Keys and values, so the test reads what the export asked to say.
+const say = (key, vars) => (vars ? `${key} ${JSON.stringify(vars)}` : key);
+
+// Every annotation in a PDF: its page, subtype and dictionary.
+async function annotations(blob) {
+  const doc = await PDFDocument.load(new Uint8Array(await blob.arrayBuffer()));
+  return doc.getPages().flatMap((page, i) =>
+    (page.node.Annots()?.asArray() ?? []).map((ref) => {
+      const dict = doc.context.lookup(ref);
+      return { page: i, subtype: dict.get(PDFName.of("Subtype"))?.toString(), dict };
+    }),
+  );
+}
+const numbers = (dict, key) => dict.get(PDFName.of(key))?.asArray().map((n) => n.asNumber()) ?? [];
+
+await test("export: one word changed is one highlight over it, and a one-change report", async () => {
+  const revised = TEXT.costs.replace("eight", "nine");
+  const a = await pdf("report <draft>.pdf", [TEXT.intro, TEXT.costs, TEXT.hiring]);
+  const b = await pdf("report-final.pdf", [TEXT.intro, revised, TEXT.hiring]);
+  const rows = await textDiff(a, b);
+  eq(changed(rows).length, 1, "changes");
+
+  const copy = await annotatedCopy(b, rows, say);
+  eq(copy.name, "report-final-changes.pdf", "file name");
+  const all = await annotations(copy.blob);
+  const marks = all.filter((x) => x.subtype === "/Highlight");
+  eq(marks.length, 1, `highlights (all: ${all.map((x) => x.subtype).join()})`);
+  eq(marks[0].page, 1, "on the changed page");
+  // Over "nine": the words before it end where it starts (Helvetica 12 at x = 20, baseline 260).
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const x0 = 20 + font.widthOfTextAtSize("Operating costs fell by ", 12);
+  const x1 = x0 + font.widthOfTextAtSize("nine", 12);
+  const quad = numbers(marks[0].dict, "QuadPoints");
+  eq(quad.length, 8, "one quad");
+  const xs = quad.filter((_, i) => i % 2 === 0);
+  const ys = quad.filter((_, i) => i % 2 === 1);
+  if (Math.abs(Math.min(...xs) - x0) > 1.5 || Math.abs(Math.max(...xs) - x1) > 1.5) throw new Error(`x ${Math.min(...xs)}–${Math.max(...xs)}, expected ${x0}–${x1}`);
+  if (!(Math.min(...ys) < 260 && Math.max(...ys) > 268)) throw new Error(`y ${Math.min(...ys)}–${Math.max(...ys)} misses the baseline at 260`);
+  const contents = marks[0].dict.get(PDFName.of("Contents"))?.decodeText();
+  eq(contents, 'cmp.noteReplaced {"old":"eight"}', "note");
+  // Viewers that don't draw annotations themselves get an appearance.
+  eq(!!marks[0].dict.get(PDFName.of("AP")), true, "appearance stream");
+
+  const report = changeReport(a, b, rows, say, new Date("2026-10-18T09:30:00Z"));
+  eq(report.name, "report-final-changes.html", "report name");
+  const html = await report.blob.text();
+  eq((html.match(/<section data-change/g) ?? []).length, 1, "changes in the report");
+  eq(/<del>eight<\/del>/.test(html) && /<ins>nine<\/ins>/.test(html), true, "old and new words");
+  eq(html.includes("report &lt;draft&gt;.pdf") && !html.includes("<draft>"), true, "file names escaped");
+  eq(/https?:\/\//.test(html.replace(/<!--[\s\S]*?-->/g, "")), false, "loads nothing from anywhere");
+});
+
+await test("export: the highlight lands on the word on a rotated page too", async () => {
+  const turn = async (file) => {
+    const doc = await PDFDocument.load(new Uint8Array(await file.arrayBuffer()));
+    for (const page of doc.getPages()) page.setRotation(degrees(90));
+    return new File([await doc.save()], file.name, { type: "application/pdf" });
+  };
+  const a = await turn(await pdf("a.pdf", [TEXT.costs]));
+  const b = await turn(await pdf("b.pdf", [TEXT.costs.replace("eight", "nine")]));
+  const [mark] = (await annotations((await annotatedCopy(b, await textDiff(a, b), say)).blob)).filter((x) => x.subtype === "/Highlight");
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const x0 = 20 + font.widthOfTextAtSize("Operating costs fell by ", 12);
+  const quad = numbers(mark.dict, "QuadPoints");
+  const xs = quad.filter((_, i) => i % 2 === 0);
+  const ys = quad.filter((_, i) => i % 2 === 1);
+  // Same place in the page's own (unrotated) space.
+  if (Math.abs(Math.min(...xs) - x0) > 1.5 || !(Math.min(...ys) < 260 && Math.max(...ys) > 268)) throw new Error(`quad ${quad.map((n) => n.toFixed(1)).join(" ")}`);
+});
+
+await test("export: added and removed words, and an added page", async () => {
+  const a = await pdf("a.pdf", [TEXT.intro, TEXT.costs]);
+  const b = await pdf("b.pdf", [TEXT.cover, TEXT.intro.replace("revenue growth ", ""), TEXT.costs.replace("spring", "spring and summer")]);
+  const rows = await textDiff(a, b);
+  const all = await annotations((await annotatedCopy(b, rows, say)).blob);
+  const kinds = all.map((x) => `${x.page}:${x.subtype}:${x.dict.get(PDFName.of("Contents"))?.decodeText()}`).sort();
+  eq(kinds.join(" | "), [
+    "0:/Text:cmp.notePageAdded",
+    '1:/Text:cmp.noteRemoved {"old":"revenue growth"}',
+    "2:/Highlight:cmp.noteAdded",
+  ].join(" | "), "annotations");
 });
 
 console.log(results.failed ? `\n${results.failed} failed` : "\nall passed");

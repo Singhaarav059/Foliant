@@ -416,6 +416,15 @@ const en = {
   "cmp.pageMoved": "Page {a}, now page {b}",
   "cmp.noPage": "No matching page",
   "cmp.noText": "Neither file has text to compare, as with scans and drawings. Use the visual overlay, or run OCR on scans first.",
+  "cmp.exportReport": "Download report",
+  "cmp.exportPdf": "Download annotated PDF",
+  "cmp.exportFailed": "Couldn't make that file. The comparison here is unaffected.",
+  "cmp.noteAdded": "Added",
+  "cmp.noteReplaced": "Replaced: {old}",
+  "cmp.noteRemoved": "Removed: {old}",
+  "cmp.notePageAdded": "This page isn't in the original.",
+  "cmp.reportTitle": "Changes from {a} to {b}",
+  "cmp.reportMeta": "Changed pages: {n}. Compared on {date} in the browser; neither file was uploaded.",
 
   // Results
   "res.done": "Done",
