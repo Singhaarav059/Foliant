@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { useI18n } from "../I18n";
 import { PdfThumb } from "../PdfThumb";
 import type { PageDiff } from "@/lib/pdf/compare";
@@ -17,7 +18,7 @@ const sideOf = (e: unknown, a: File, b: File) => ((e as { side?: string }).side 
 // read goes to onError (the workspace shows why and drops it); nothing here
 // ever reads as "no changes" after a failure.
 export function CompareView({ a, b, onError }: { a: File; b: File; onError: (e: unknown, file: File) => void }) {
-  const { t } = useI18n();
+  const { t, href } = useI18n();
   const [view, setView] = useState<"text" | "visual" | "side">("text");
   const [rows, setRows] = useState<PageDiff[] | null>(null);
   const [row, setRow] = useState(0);
@@ -65,6 +66,8 @@ export function CompareView({ a, b, onError }: { a: File; b: File; onError: (e: 
   }, [view, pair, a, b, width, overlayKey]);
 
   const changed = rows?.filter((d) => d.status !== "same") ?? [];
+  // Scans and drawings have no text, so every page would read as unchanged.
+  const noText = !!rows && rows.every((d) => d.changes.every((c) => !c.value.trim()));
   const title = (d: PageDiff) =>
     d.a === null ? t("cmp.pageAdded", { n: d.b! + 1 })
     : d.b === null ? t("cmp.pageRemoved", { n: d.a + 1 })
@@ -82,7 +85,7 @@ export function CompareView({ a, b, onError }: { a: File; b: File; onError: (e: 
             </button>
           ))}
         </div>
-        {rows && <span className="tabular text-[14px] text-muted">{t("cmp.changes", { n: changed.length })}</span>}
+        {rows && !noText && <span className="tabular text-[14px] text-muted">{t("cmp.changes", { n: changed.length })}</span>}
         <span className="ms-auto flex items-center gap-3 text-[13px]">
           <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-sm bg-[#dc2626]" />{t("cmp.removed")}</span>
           <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-sm bg-[#2563eb]" />{t("cmp.added")}</span>
@@ -91,6 +94,14 @@ export function CompareView({ a, b, onError }: { a: File; b: File; onError: (e: 
 
       {view === "text" && (
         !rows ? <div className="h-40 animate-pulse rounded-xl bg-surface-2" /> :
+        noText ? (
+          <div className="card p-8 text-center text-muted">
+            <p>{t("cmp.noText")}</p>
+            <Link href={href("/ocr-pdf")} className="mt-3 inline-flex items-center gap-1 font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink">
+              {t("tool.ocr.name")} <ArrowRight size={15} className="rtl:rotate-180" />
+            </Link>
+          </div>
+        ) :
         changed.length === 0 ? <p className="card p-8 text-center text-muted">{t("cmp.noChanges")}</p> : (
           <div className="space-y-4">
             {changed.map((d) => (

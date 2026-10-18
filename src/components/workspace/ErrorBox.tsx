@@ -32,6 +32,9 @@ const MESSAGES: Record<ErrorCode, [key: string, fix?: Fix]> = {
   download_failed: ["err.download"],
   office_isolation: ["ws.officeReload"],
   office_memory: ["ws.officeMemory"],
+  // The server's own message is shown; this only covers one without it.
+  server: ["err.unknown"],
+  network: ["err.network"],
   unknown: ["err.unknown"],
 };
 
@@ -52,7 +55,7 @@ export function useProblem() {
     const [key, fix] = MESSAGES[err.code];
     // Unexpected failures keep their own text, folded away, for bug reports.
     const raw = (e as { message?: unknown })?.message ?? e;
-    return { text: t(key), file: err.fileName || undefined, fix, code: err.code, detail: err.code === "unknown" ? String(raw).slice(0, 400) : undefined };
+    return { text: err.text || t(key), file: err.fileName || undefined, fix, code: err.code, detail: err.code === "unknown" ? String(raw).slice(0, 400) : undefined };
   }, [t]);
 }
 

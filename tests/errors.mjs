@@ -96,6 +96,24 @@ await test("engine exceptions map to codes", async () => {
   eq(toPdfError(new TypeError("x is undefined"), "a.pdf", pdf).code, "unknown", "our own bug stays unknown");
 });
 
+await test("a server's own message is kept, not made unknown", async () => {
+  const { ServerError, toPdfError, forFile } = await load("errors");
+  // The API routes' messages are written for users (src/app/api/convert).
+  const busy = toPdfError(new ServerError(429, "Too many conversions. Wait a few minutes."), "page.html");
+  eq(busy.code, "server", "code");
+  eq(busy.text, "Too many conversions. Wait a few minutes.", "text");
+  // Office files go through forFile, which names the file.
+  const docx = asFile(new Uint8Array([80, 75, 3, 4]), "brief.docx");
+  const e = await thrown(() => forFile(docx, () => Promise.reject(new ServerError(415, "Unsupported file type."))));
+  eq(e.code, "server", "forFile code");
+  eq(e.text, "Unsupported file type.", "forFile text");
+  eq(e.fileName, "brief.docx", "forFile fileName");
+  // No answer at all: the connection, not the file.
+  eq(toPdfError(new ServerError(0)).code, "network", "status 0");
+  // A failure with no message from the route (a proxy's error page) stays unknown.
+  eq(toPdfError(new ServerError(502)).code, "unknown", "no message");
+});
+
 await test("the report link carries tool, code and browser only", async () => {
   const { reportUrl } = await load("errors");
   const url = new URL(reportUrl("https://github.com/example/foliant/", { tool: "compress", code: "damaged", browser: "Firefox 140" }));

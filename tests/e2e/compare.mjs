@@ -3,7 +3,7 @@
 // view.
 //
 //   node tests/e2e/compare.mjs [chromium] [firefox] [webkit]   (see kit.mjs)
-import { PDFDocument, StandardFonts } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -29,6 +29,17 @@ const PAGES = [
 const original = await pdf("original.pdf", PAGES);
 const inserted = await pdf("inserted.pdf", ["Cover letter from the finance team summarising this edition", ...PAGES]);
 
+// Pages with no text at all, like scans or drawings, that differ.
+async function shapes(name, x) {
+  const doc = await PDFDocument.create();
+  for (let i = 0; i < 3; i++) doc.addPage([420, 300]).drawRectangle({ x: x + i * 10, y: 50, width: 150, height: 100, color: rgb(0, 0, 0) });
+  const path = join(dir, name);
+  writeFileSync(path, await doc.save());
+  return path;
+}
+const drawingA = await shapes("drawing-a.pdf", 20);
+const drawingB = await shapes("drawing-b.pdf", 220);
+
 await suite(async ({ browser, test }) => {
   const ctx = await browser.newContext({ locale: "en-US", viewport: { width: 1280, height: 900 } });
   const page = await ctx.newPage();
@@ -48,6 +59,18 @@ await suite(async ({ browser, test }) => {
       return "alert, no '0 changes'";
     });
   }
+
+  await test("files without text don't claim 0 changes", async () => {
+    await open(page, "/en/compare-pdf");
+    await pick(page, [drawingA, drawingB]);
+    // Whichever the text view settles on.
+    await page.getByText(t["cmp.noChanges"]).or(page.getByText(t["cmp.noText"] ?? "\u0000")).first().waitFor({ timeout: 15000 });
+    const text = await main();
+    if (text.includes(fill("cmp.changes", { n: 0 })) || text.includes(t["cmp.noChanges"])) throw new Error("shows no changes");
+    if (!text.includes(t["cmp.noText"])) throw new Error("doesn't say there's no text");
+    if ((await page.getByRole("link", { name: t["tool.ocr.name"] }).getAttribute("href")) !== "/en/ocr-pdf") throw new Error("no OCR link");
+    return "says there's no text to compare";
+  });
 
   await test("an inserted page is one change", async () => {
     await open(page, "/en/compare-pdf");

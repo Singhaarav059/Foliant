@@ -2,7 +2,7 @@
 
 import { LIGHT_OFFICE, type ToolId } from "../tools";
 import { baseName, type Output, type Progress } from "./common";
-import { forFile, PdfError } from "./errors";
+import { forFile, PdfError, ServerError } from "./errors";
 import { STATIC } from "@/lib/mode";
 
 type Opts = Record<string, unknown>;
@@ -202,12 +202,6 @@ function hostName(url: string) {
   }
 }
 
-export class ServerError extends Error {
-  constructor(message: string, public status: number) {
-    super(message);
-  }
-}
-
 // XHR rather than fetch so uploads can report progress.
 export function upload(url: string, body: FormData, progress?: Progress): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -219,16 +213,16 @@ export function upload(url: string, body: FormData, progress?: Progress): Promis
     xhr.onload = async () => {
       if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response);
       else {
-        let msg = `Server error ${xhr.status}`;
+        let text: unknown;
         try {
-          msg = JSON.parse(await (xhr.response as Blob).text()).error ?? msg;
+          text = JSON.parse(await (xhr.response as Blob).text()).error;
         } catch {
           /* not JSON */
         }
-        reject(new ServerError(msg, xhr.status));
+        reject(new ServerError(xhr.status, typeof text === "string" ? text : undefined));
       }
     };
-    xhr.onerror = () => reject(new ServerError("Network error", 0));
+    xhr.onerror = () => reject(new ServerError(0));
     xhr.send(body);
   });
 }

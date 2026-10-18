@@ -25,22 +25,40 @@ export type ErrorCode =
   | "download_failed"
   | "office_isolation"
   | "office_memory"
+  | "server"
+  | "network"
   | "unknown";
 
 const CODES = new Set<string>([
   "not_pdf", "damaged", "unrecoverable", "encrypted", "wrong_password", "already_encrypted", "password_too_long", "no_pages",
   "image_unsupported", "page_too_large", "out_of_memory", "no_text", "no_images", "bad_ranges", "empty_document",
-  "missing_image", "download_failed", "office_isolation", "office_memory", "unknown",
+  "missing_image", "download_failed", "office_isolation", "office_memory", "server", "network", "unknown",
 ]);
 
 export class PdfError extends Error {
   code: ErrorCode;
   fileName: string;
+  // A message already written for the user, shown as it is (a "server" error's).
+  text?: string;
   constructor(code: ErrorCode, fileName = "", cause?: unknown) {
     super(fileName ? `${code}: ${fileName}` : code, cause === undefined ? undefined : { cause });
     this.name = "PdfError";
     this.code = code;
     this.fileName = fileName;
+  }
+}
+
+// A request to this site's API (the server build's conversions) that failed.
+// The routes answer with a message written for users, kept as `text`. No
+// answer at all (status 0) is the connection's fault; an answer without a
+// message (a proxy's error page) is an unknown failure.
+export class ServerError extends Error {
+  code?: ErrorCode;
+  text?: string;
+  constructor(public status: number, text?: string) {
+    super(text || `Server error ${status}`);
+    this.code = status === 0 ? "network" : text ? "server" : undefined;
+    this.text = text || undefined;
   }
 }
 
@@ -59,10 +77,12 @@ const isPdfName = (name: string) => /\.pdf$/i.test(name);
 // "not a PDF at all" from "a damaged PDF"; leave it out when the input
 // isn't meant to be a PDF.
 export function toPdfError(e: unknown, fileName = "", head?: Uint8Array): PdfError {
-  const err = (e ?? {}) as { code?: unknown; fileName?: unknown; name?: unknown; message?: unknown };
+  const err = (e ?? {}) as { code?: unknown; fileName?: unknown; text?: unknown; name?: unknown; message?: unknown };
   if (typeof err.code === "string" && CODES.has(err.code)) {
     if (e instanceof PdfError && (e.fileName || !fileName)) return e;
-    return new PdfError(err.code as ErrorCode, (typeof err.fileName === "string" && err.fileName) || fileName, e);
+    const typed = new PdfError(err.code as ErrorCode, (typeof err.fileName === "string" && err.fileName) || fileName, e);
+    if (typeof err.text === "string") typed.text = err.text;
+    return typed;
   }
   const name = typeof err.name === "string" ? err.name : "";
   const message = String(err.message ?? e ?? "");

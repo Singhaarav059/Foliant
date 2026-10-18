@@ -370,6 +370,7 @@ const en = {
   "cmp.pageRemoved": "Page {n} removed",
   "cmp.pageMoved": "Page {a}, now page {b}",
   "cmp.noPage": "No matching page",
+  "cmp.noText": "Neither file has text to compare, as with scans and drawings. Use the visual overlay, or run OCR on scans first.",
 
   // Results
   "res.done": "Done",
@@ -406,6 +407,7 @@ const en = {
   "err.emptyDocument": "This document has nothing to convert.",
   "err.missingImage": "Choose an image for the watermark.",
   "err.download": "Couldn't download part of this tool. Check your connection and try again.",
+  "err.network": "Couldn't reach the server. Check your connection and try again.",
   "err.unknown": "Something went wrong. Try again, or try a different file.",
   "err.details": "Technical details",
   "err.report": "Report this problem",
