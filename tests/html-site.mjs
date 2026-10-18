@@ -74,6 +74,42 @@ await test("zip without an HTML page is refused", async () => {
   eq(/no HTML page/.test(error?.message ?? ""), true, `error: ${error?.message}`);
 });
 
+// Sets the uncompressed size a zip declares for `name`, in its local and central headers.
+function claimSize(zip, name, size) {
+  const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+  const bytes = Buffer.from(name);
+  for (let i = 0; i < zip.length - 4; i++) {
+    const sig = view.getUint32(i, true);
+    const [nameAt, sizeAt] = sig === 0x04034b50 ? [30, 22] : sig === 0x02014b50 ? [46, 24] : [];
+    if (nameAt && Buffer.from(zip.subarray(i + nameAt, i + nameAt + bytes.length)).equals(bytes)) view.setUint32(i + sizeAt, size, true);
+  }
+  return zip;
+}
+
+// Files the page can't use aren't unpacked, and what it can use is capped,
+// so a small zip can't take gigabytes of a phone's memory.
+await test("zip: only page files are unpacked, up to a total size", async () => {
+  // An entry that would fail to inflate: unpacking it at all throws.
+  const zip = zipSync({ "index.html": strToU8("<p>Hello</p>"), "backup.bin": new Uint8Array(4096).fill(7) }, { level: 9 });
+  const at = Buffer.from(zip).indexOf(Buffer.from("backup.bin")) + "backup.bin".length;
+  zip.fill(0xff, at, at + 16);
+  let error = null;
+  try {
+    eq(/Hello/.test(await siteFromZip(zip)), true, "page read");
+  } catch (e) {
+    error = e;
+  }
+  eq(error, null, `an unused entry was unpacked: ${error?.message}`);
+  // A media file that says it is 300 MB.
+  let big = null;
+  try {
+    await siteFromZip(claimSize(zipSync({ "index.html": strToU8('<video src="v.mp4"></video>'), "v.mp4": new Uint8Array(10) }, { level: 0 }), "v.mp4", 300 * 2 ** 20));
+  } catch (e) {
+    big = e;
+  }
+  eq(/too (big|large)/i.test(big?.message ?? ""), true, `error: ${big?.message}`);
+});
+
 await test("remote URLs are replaced and counted; links stay", async () => {
   const { html, blocked, cspIn, cspFirst } = await blockRemote(`<!doctype html><html><head>
     <base href="https://example.com/">
