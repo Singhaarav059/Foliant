@@ -145,35 +145,50 @@ const mul = (m: Matrix, n: Matrix): Matrix => [
   m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3],
   m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5],
 ];
-const isMatrix = (v: unknown): v is Matrix => Array.isArray(v) && v.length === 6 && v.every((x) => typeof x === "number");
+// pdf.js hands some matrices over as typed arrays (a form XObject's /Matrix is a Float32Array).
+const asMatrix = (v: unknown): Matrix | null =>
+  (Array.isArray(v) || ArrayBuffer.isView(v)) && (v as ArrayLike<unknown>).length === 6 && Array.from(v as ArrayLike<unknown>).every((x) => typeof x === "number")
+    ? (Array.from(v as ArrayLike<number>) as Matrix)
+    : null;
 
-// The largest share of the page one picture covers: pictures are drawn into
-// the unit square under the current transform, which save, restore,
-// transform and form XObjects change.
+// Cells per side of the grid the page's picture coverage is measured on.
+const COVER_GRID = 64;
+
+// The share of the page pictures cover together, so a scan stored as strips
+// or tiles counts like one stored whole: pictures are drawn into the unit
+// square under the current transform, which save, restore, transform and
+// form XObjects change.
 function imageCover(ops: { fnArray: number[]; argsArray: unknown[][] }, OPS: Record<string, number>, view: number[], images: Set<number>) {
   const [vx0, vy0, vx1, vy1] = view;
-  const area = Math.abs((vx1 - vx0) * (vy1 - vy0)) || 1;
+  const [px0, px1, py0, py1] = [Math.min(vx0, vx1), Math.max(vx0, vx1), Math.min(vy0, vy1), Math.max(vy0, vy1)];
+  const cw = (px1 - px0) / COVER_GRID || 1, ch = (py1 - py0) / COVER_GRID || 1;
+  const covered = new Uint8Array(COVER_GRID * COVER_GRID);
   let ctm: Matrix = [1, 0, 0, 1, 0, 0];
   const stack: Matrix[] = [];
-  let best = 0;
   ops.fnArray.forEach((fn, i) => {
     const args = ops.argsArray[i];
     if (fn === OPS.save) stack.push(ctm);
     else if (fn === OPS.restore) ctm = stack.pop() ?? ctm;
-    else if (fn === OPS.transform && isMatrix(args)) ctm = mul(ctm, args);
-    else if (fn === OPS.paintFormXObjectBegin) {
+    else if (fn === OPS.transform) {
+      const m = asMatrix(args);
+      if (m) ctm = mul(ctm, m);
+    } else if (fn === OPS.paintFormXObjectBegin) {
       stack.push(ctm);
-      if (isMatrix(args?.[0])) ctm = mul(ctm, args[0]);
+      const m = asMatrix(args?.[0]);
+      if (m) ctm = mul(ctm, m);
     } else if (fn === OPS.paintFormXObjectEnd) ctm = stack.pop() ?? ctm;
     else if (images.has(fn)) {
       const xs = [ctm[4], ctm[0] + ctm[4], ctm[2] + ctm[4], ctm[0] + ctm[2] + ctm[4]];
       const ys = [ctm[5], ctm[1] + ctm[5], ctm[3] + ctm[5], ctm[1] + ctm[3] + ctm[5]];
-      const w = Math.min(Math.max(...xs), Math.max(vx0, vx1)) - Math.max(Math.min(...xs), Math.min(vx0, vx1));
-      const h = Math.min(Math.max(...ys), Math.max(vy0, vy1)) - Math.max(Math.min(...ys), Math.min(vy0, vy1));
-      if (w > 0 && h > 0) best = Math.max(best, (w * h) / area);
+      // Mark the grid cells whose centres the picture's bounds hold.
+      const gx0 = Math.max(0, Math.ceil((Math.min(...xs) - px0) / cw - 0.5));
+      const gx1 = Math.min(COVER_GRID - 1, Math.floor((Math.max(...xs) - px0) / cw - 0.5));
+      const gy0 = Math.max(0, Math.ceil((Math.min(...ys) - py0) / ch - 0.5));
+      const gy1 = Math.min(COVER_GRID - 1, Math.floor((Math.max(...ys) - py0) / ch - 0.5));
+      for (let y = gy0; y <= gy1; y++) covered.fill(1, y * COVER_GRID + gx0, y * COVER_GRID + gx1 + 1);
     }
   });
-  return best;
+  return covered.reduce((s, c) => s + c, 0) / covered.length;
 }
 
 type Rect = { x0: number; y0: number; x1: number; y1: number };

@@ -11,7 +11,7 @@ import { join } from "node:path";
 import JSZip from "jszip";
 import { createWorker, createScheduler } from "tesseract.js";
 import { createCanvas } from "@napi-rs/canvas";
-import { PDFDocument, StandardFonts } from "pdf-lib";
+import { PDFDocument, PDFName, StandardFonts } from "pdf-lib";
 import { root, vendorDir, load, openPdf, check, eq, nodeCanvas } from "./lib/load.mjs";
 
 nodeCanvas();
@@ -185,6 +185,56 @@ await test("a short title over a full-page picture doesn't come out twice", asyn
   const text = (await out.blob.text()).replace(/\s+/g, " ").trim();
   for (const w of ["Annual", "Report", "2026"]) eq(text.split(w).length - 1, 1, `"${w}" in "${text}"`);
 });
+
+// A scan stored in ways some scanners write it: one picture drawn through a
+// form XObject that has a /Matrix, or a page made of several picture strips.
+// The pictures are scanned.pdf's page, rendered.
+const scanCanvas = await (async () => {
+  const page = await (await openPdf(new Uint8Array(readFileSync(join(root, "tests/fixtures/scanned.pdf"))))).getPage(1);
+  const viewport = page.getViewport({ scale: 2 });
+  const c = createCanvas(Math.round(viewport.width), Math.round(viewport.height));
+  await page.render({ canvasContext: c.getContext("2d"), viewport }).promise;
+  return c;
+})();
+const picture = (doc, sy = 0, sh = scanCanvas.height) => {
+  const c = createCanvas(scanCanvas.width, sh);
+  c.getContext("2d").drawImage(scanCanvas, 0, sy, scanCanvas.width, sh, 0, 0, scanCanvas.width, sh);
+  return doc.embedPng(c.toBuffer("image/png"));
+};
+async function scanInForm() {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([612, 792]);
+  const img = await picture(doc);
+  const form = doc.context.register(doc.context.stream("/Im0 Do", {
+    Type: "XObject", Subtype: "Form", BBox: [0, 0, 1, 1], Matrix: [612, 0, 0, 792, 0, 0],
+    Resources: { XObject: { Im0: img.ref } },
+  }));
+  page.node.setXObject(PDFName.of("Fm0"), form);
+  page.node.set(PDFName.of("Contents"), doc.context.register(doc.context.stream("q /Fm0 Do Q")));
+  return new File([await doc.save()], "form-scan.pdf");
+}
+async function scanInStrips() {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([612, 792]);
+  const h = scanCanvas.height / 4;
+  // Strip i (from the top of the picture) is drawn i quarters down the page.
+  for (let i = 0; i < 4; i++) page.drawImage(await picture(doc, Math.round(i * h), Math.round(h)), { x: 0, y: (3 - i) * 198, width: 612, height: 198 });
+  return new File([await doc.save()], "strip-scan.pdf");
+}
+// Word and Markdown also must keep the words of a scan stored as strips,
+// rather than taking the strips for figures with their text inside.
+for (const [name, make] of [["drawn through a form XObject with a matrix", scanInForm], ["stored as four picture strips", scanInStrips]]) {
+  for (const id of ["pdfToWord", "pdfToMarkdown"]) {
+    await test(`${id}: a scan ${name} is read`, async () => {
+      asked.length = 0;
+      const out = await run(id, await make());
+      eq(asked.length, 1, "OCR runs");
+      eq(out.note, "ocrUsed", "note");
+      const text = await textOf[id](out.blob);
+      if (!/4471/.test(text)) throw new Error(`text was "${text.slice(0, 80)}"`);
+    });
+  }
+}
 
 await test("a scan locked only against editing (no password to open) is still read", async () => {
   const { runQpdf } = await load("qpdf");
