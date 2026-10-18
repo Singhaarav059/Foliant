@@ -5,7 +5,7 @@
 //
 //   node tests/organize.mjs
 import {
-  PDFDocument, PDFName, PDFString, PDFRawStream, PDFArray, PDFDict, PDFRef, PDFNull, StandardFonts, decodePDFRawStream,
+  PDFDocument, PDFName, PDFString, PDFHexString, PDFNumber, PDFRawStream, PDFArray, PDFDict, PDFRef, PDFNull, StandardFonts, decodePDFRawStream,
   pushGraphicsState, popGraphicsState, concatTransformationMatrix, drawObject,
 } from "pdf-lib";
 import { load, openPdf, check, eq } from "./lib/load.mjs";
@@ -340,17 +340,39 @@ await test("a file that needs an open password is still refused, as encrypted", 
   }
   eq(error?.code, "encrypted", "error code");
 });
-for (const [tool, run] of Object.entries(RUNS)) {
+// Redact isn't here: its output comes from pdfium, which follows the
+// cross-reference table, so it showed the right text before P1-03 too.
+for (const [tool, run] of Object.entries(RUNS).filter(([tool]) => tool !== "redact")) {
   await test(`${tool} on duplicate object numbers shows what readers show`, async () => {
     const { text } = await readable(await run(fxFile("dup-ids.pdf")).catch(async (e) => {
-      // Only three-page runs (redact marks page 3, organize keeps 3 pages); dup-ids has one.
-      if (tool === "redact" || tool === "split") return (tool === "redact" ? (await redact(fxFile("dup-ids.pdf"), [], { redactDpi: "150" }))[0].blob : buildFromPlan([fxFile("dup-ids.pdf")], [{ file: 0, page: 0, rotate: 0 }]));
+      // Organize keeps 3 pages; dup-ids has one.
+      if (tool === "split") return buildFromPlan([fxFile("dup-ids.pdf")], [{ file: 0, page: 0, rotate: 0 }]);
       throw e;
     }));
     eq(text.includes("XREFTEXT"), true, "XREFTEXT shown");
     eq(text.includes("SHADOWTEXT"), false, "SHADOWTEXT shown");
   });
 }
+// Big plain files skip the qpdf pass (it rewrites the whole file, seconds for
+// a few hundred megabytes); anything pdf-lib could read differently from a
+// reader still goes through it. The threshold drops to 0 here.
+await test("big plain files open without qpdf; encrypted or duplicate-numbered ones still use it", async () => {
+  const open_ = await load("open");
+  const keep = open_.directOpen.minBytes;
+  open_.directOpen.minBytes = 0;
+  try {
+    const plain = new Uint8Array(fx["base.pdf"]);
+    eq((await open_.openForEdit(plain)).bytes === plain, true, "a plain file is read as it is");
+    for (const name of ["dup-ids.pdf", "enc-aes256-owner.pdf"]) {
+      const input = new Uint8Array(fx[name]);
+      eq((await open_.openForEdit(input)).bytes === input, false, `${name} goes through qpdf`);
+    }
+    const { text } = await readable(await buildFromPlan([fxFile("dup-ids.pdf")], [{ file: 0, page: 0, rotate: 0 }]));
+    eq(text.includes("XREFTEXT") && !text.includes("SHADOWTEXT"), true, "dup-ids shows what readers show");
+  } finally {
+    open_.directOpen.minBytes = keep;
+  }
+});
 await test("rotating pages with /Rotate 45 turns them from where readers show them", async () => {
   const [out] = await rotateAll(fxFile("odd-boxes.pdf"), 90);
   const pdf = await openPdf(new Uint8Array(await out.blob.arrayBuffer()));
@@ -457,6 +479,54 @@ await test("organize with several files keeps fields, attachments and bookmarks 
   eq(tree.map((t) => `${t.title}@${t.page}`).join(), "Chapter 1@2,Chapter 3@0", "bookmarks");
   eq(fields.length >= 5, true, `fields ${JSON.stringify(fields)}`);
   eq(attachments.length, 2, "attachments");
+});
+
+// A Type 3 font with no /Resources of its own draws its glyphs with the
+// page's resources (ISO 32000-1, 9.6.5), so what its glyphs name stays.
+await test("a part keeps what a Type 3 font's glyphs draw from the page's resources", async () => {
+  const doc = await PDFDocument.create();
+  const ctx = doc.context;
+  const img = ctx.register(ctx.stream(new Uint8Array(3 * 4 * 4).fill(200), { Type: "XObject", Subtype: "Image", Width: 4, Height: 4, ColorSpace: "DeviceRGB", BitsPerComponent: 8 }));
+  const proc = ctx.register(ctx.stream("1000 0 0 0 1000 1000 d1 q 1000 0 0 1000 0 0 cm /GlyphImg Do Q"));
+  const t3 = ctx.register(ctx.obj({
+    Type: "Font", Subtype: "Type3", FontBBox: [0, 0, 1000, 1000], FontMatrix: [0.001, 0, 0, 0.001, 0, 0], CharProcs: { a: proc },
+    Encoding: { Type: "Encoding", Differences: [97, PDFName.of("a")] }, FirstChar: 97, LastChar: 97, Widths: [1000],
+  }));
+  const res = ctx.register(ctx.obj({ Font: { T3: t3 }, XObject: { GlyphImg: img } }));
+  for (let i = 0; i < 2; i++) {
+    const p = doc.addPage([300, 300]);
+    p.node.set(PDFName.of("Resources"), res);
+    p.node.set(PDFName.of("Contents"), ctx.register(ctx.stream("BT /T3 50 Tf 50 50 Td (a) Tj ET")));
+  }
+  const bytes = await doc.save();
+  const parts = await split(file(bytes, "t3.pdf"), { splitMode: "every", every: 1, ranges: "", maxMb: 1, mergeRanges: false });
+  for (let i = 0; i < parts.length; i++) eq(images((await open(parts[i].blob)).doc), 1, `part ${i + 1} images`);
+  eq(images((await open(await buildFromPlan([file(bytes, "t3.pdf")], [{ file: 0, page: 1, rotate: 0 }]))).doc), 1, "organized page images");
+});
+
+// Bookmarks nested thousands deep (a chain, each the only child of the last).
+async function deepOutline(depth) {
+  const doc = await PDFDocument.create();
+  const ctx = doc.context;
+  const page = doc.addPage([300, 300]);
+  const root = ctx.nextRef();
+  const refs = Array.from({ length: depth }, () => ctx.nextRef());
+  refs.forEach((r, i) => ctx.assign(r, ctx.obj({
+    Title: PDFHexString.fromText(`L${i}`), Parent: i ? refs[i - 1] : root, Dest: [page.ref, PDFName.of("Fit")],
+    ...(i < depth - 1 ? { First: refs[i + 1], Last: refs[i + 1], Count: PDFNumber.of(1) } : {}),
+  })));
+  ctx.assign(root, ctx.obj({ Type: "Outlines", First: refs[0], Last: refs[0], Count: PDFNumber.of(1) }));
+  doc.catalog.set(PDFName.of("Outlines"), root);
+  return doc.save();
+}
+await test("bookmarks nested 3000 deep don't stop merge or organize", async () => {
+  const bytes = await deepOutline(3000);
+  const [merged] = await merge([file(bytes, "deep.pdf"), file(bytes, "deep2.pdf")], { bookmarks: true });
+  const { tree, pages } = await extras(merged.blob);
+  eq(pages, 2, "merged pages");
+  eq(tree.map((t) => t.title).join(), "deep,deep2", "file bookmarks");
+  const organized = await extras(await buildFromPlan([file(bytes, "deep.pdf")], [{ file: 0, page: 0, rotate: 0 }]));
+  eq(organized.tree[0]?.title, "L0", "top bookmark kept");
 });
 
 process.exit(results.failed ? 1 : 0);

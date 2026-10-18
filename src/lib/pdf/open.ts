@@ -8,8 +8,11 @@
 // the table, decrypts with the empty password when that is all it takes, and
 // leaves out what nothing refers to. Streams stay as they are stored (nothing
 // is inflated). When qpdf can't read the file (damage it doesn't repair, or
-// no qpdf at all, offline), pdf-lib reads the original bytes.
-import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFPage, PDFPageLeaf, PDFRef } from "pdf-lib";
+// no qpdf at all, offline), pdf-lib reads the original bytes. A big file
+// that pdf-lib alone reads as readers do skips qpdf (see readDirect).
+import {
+  PDFArray, PDFContext, PDFDict, PDFDocument, PDFInvalidObject, PDFName, PDFNumber, PDFPage, PDFPageLeaf, PDFParser, PDFRef,
+} from "pdf-lib";
 import { PdfError, toPdfError } from "./errors";
 import { QpdfError, runQpdf } from "./qpdf";
 
@@ -23,22 +26,29 @@ export type Opened = {
 
 const isEncrypted = (e: unknown) => /is encrypted/i.test(String((e as { message?: unknown })?.message ?? ""));
 
+// qpdf rewrites the whole file, which for a few hundred megabytes takes
+// seconds and a second copy in memory. A big file that pdf-lib reads exactly
+// as readers do skips it (tests lower the threshold).
+export const directOpen = { minBytes: 20 * 1024 * 1024 };
+
 export async function openForEdit(input: Uint8Array, name = "file.pdf"): Promise<Opened> {
   let bytes = input;
   let decrypted = false;
-  try {
-    const { output } = await runQpdf(input, (i, o) => ["--decrypt", "--decode-level=none", i, o]);
-    decrypted = hasEncrypt(input);
-    bytes = output;
-  } catch (e) {
-    // It needs an open password: nothing else will open it either.
-    if (e instanceof QpdfError && e.wrongPassword) throw new PdfError("encrypted", name, e);
-  }
-  let doc: PDFDocument;
-  try {
-    doc = await PDFDocument.load(bytes, { updateMetadata: false });
-  } catch (e) {
-    throw isEncrypted(e) ? new PdfError("encrypted", name, e) : toPdfError(e, name, input.subarray(0, 1024));
+  let doc = input.length >= directOpen.minBytes ? await readDirect(input) : null;
+  if (!doc) {
+    try {
+      const { output } = await runQpdf(input, (i, o) => ["--decrypt", "--decode-level=none", i, o]);
+      decrypted = hasEncrypt(input);
+      bytes = output;
+    } catch (e) {
+      // It needs an open password: nothing else will open it either.
+      if (e instanceof QpdfError && e.wrongPassword) throw new PdfError("encrypted", name, e);
+    }
+    try {
+      doc = await PDFDocument.load(bytes, { updateMetadata: false });
+    } catch (e) {
+      throw isEncrypted(e) ? new PdfError("encrypted", name, e) : toPdfError(e, name, input.subarray(0, 1024));
+    }
   }
   let count: number;
   try {
@@ -49,6 +59,31 @@ export async function openForEdit(input: Uint8Array, name = "file.pdf"): Promise
   }
   if (!count) throw new PdfError("no_pages", name);
   return { doc, bytes, decrypted };
+}
+
+// pdf-lib reads every object in file order, so it reads the file as
+// readers do when the file defines each object once (in place or in an
+// object stream), isn't encrypted and has nothing pdf-lib had to guess at.
+// Returns null when any of that fails.
+async function readDirect(bytes: Uint8Array): Promise<PDFDocument | null> {
+  try {
+    // 100 objects a tick, as PDFDocument.load parses by default.
+    const parser = PDFParser.forBytesWithOptions(bytes, 100);
+    const ctx = (parser as unknown as { context: PDFContext }).context;
+    let plain = true;
+    const assign = ctx.assign;
+    ctx.assign = (ref, object) => {
+      if (ctx.lookup(ref) !== undefined || object instanceof PDFInvalidObject) plain = false;
+      assign.call(ctx, ref, object);
+    };
+    await parser.parseDocument();
+    delete (ctx as { assign?: unknown }).assign;
+    if (!plain || ctx.trailerInfo.Encrypt) return null;
+    // What PDFDocument.load does with the parsed context.
+    return new (PDFDocument as unknown as new (c: PDFContext, ignoreEncryption: boolean, updateMetadata: boolean) => PDFDocument)(ctx, false, false);
+  } catch {
+    return null;
+  }
 }
 
 // A trailer names an encryption dictionary. Trailers (or the dictionaries of

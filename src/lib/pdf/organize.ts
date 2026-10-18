@@ -202,8 +202,9 @@ export function pageCopier(src: PDFDocument, dest: PDFDocument, keep: Iterable<n
 // one-page part would carry them all. A page uses a resource only by naming
 // it in its content, so the names its content mentions (anywhere: an
 // over-count only keeps a little more) are the ones kept. Nothing is cut when
-// the content can't be decoded, or when a form it draws has no resources of
-// its own and borrows the page's.
+// the content can't be decoded, or when something it draws has no resources
+// of its own and so borrows the page's: a form, a Type 3 font's glyphs or a
+// tiling pattern (ISO 32000-1, 8.10.1, 9.6.5, 8.7.3.3).
 const NAMED = ["XObject", "Font", "ExtGState", "Pattern", "Shading", "ColorSpace", "Properties"];
 function ownResources(src: PDFDocument, leaf: PDFPageLeaf, page: PDFPageLeaf): PDFDict | undefined {
   const ctx = src.context;
@@ -212,11 +213,19 @@ function ownResources(src: PDFDocument, leaf: PDFPageLeaf, page: PDFPageLeaf): P
   if (!namesOf.has(page)) namesOf.set(page, contentNames(src, page) ?? null);
   const used = namesOf.get(page);
   if (!used) return undefined;
-  const xobjects = resources.lookupMaybe(N("XObject"), PDFDict);
-  for (const [key, value] of xobjects?.entries() ?? []) {
-    const x = ctx.lookup(value);
-    if (used.has(key.decodeText()) && x instanceof PDFStream && x.dict.get(N("Subtype")) === N("Form") && !x.dict.has(N("Resources"))) return undefined;
-  }
+  const borrows = (category: string, own: (dict: PDFDict) => boolean) => {
+    for (const [key, value] of resources.lookupMaybe(N(category), PDFDict)?.entries() ?? []) {
+      const x = ctx.lookup(value);
+      const dict = x instanceof PDFStream ? x.dict : x instanceof PDFDict ? x : undefined;
+      if (dict && used.has(key.decodeText()) && own(dict) && !dict.has(N("Resources"))) return true;
+    }
+    return false;
+  };
+  if (
+    borrows("XObject", (d) => d.get(N("Subtype")) === N("Form")) ||
+    borrows("Font", (d) => d.get(N("Subtype")) === N("Type3")) ||
+    borrows("Pattern", (d) => d.lookupMaybe(N("PatternType"), PDFNumber)?.asNumber() === 1)
+  ) return undefined;
   const out = resources.clone(ctx);
   for (const category of NAMED) {
     const sub = resources.lookupMaybe(N(category), PDFDict);
@@ -395,7 +404,10 @@ type OutlineItem = {
 };
 
 // A source's bookmarks, pointing at its pages' copies. One for a page that
-// was left out goes, unless bookmarks under it stay.
+// was left out goes, unless bookmarks under it stay. Bookmarks nested deeper
+// than MAX_OUTLINE_DEPTH are left out: reading and writing them recurses
+// once per level, and no reader's panel shows that many levels anyway.
+const MAX_OUTLINE_DEPTH = 256;
 function outlineOf(s: Source): OutlineItem[] {
   const { doc } = s;
   const ctx = doc.context;
@@ -416,8 +428,9 @@ function outlineOf(s: Source): OutlineItem[] {
     return destOf(dests.get(key), depth + 1);
   };
   const seen = new Set<PDFDict>();
-  const walk = (first: PDFObject | undefined): OutlineItem[] => {
+  const walk = (first: PDFObject | undefined, depth = 0): OutlineItem[] => {
     const items: OutlineItem[] = [];
+    if (depth >= MAX_OUTLINE_DEPTH) return items;
     for (let o = first && ctx.lookup(first); o instanceof PDFDict && !seen.has(o); o = ctx.lookup(o.get(N("Next")) ?? PDFNull)) {
       seen.add(o);
       const action = o.lookupMaybe(N("A"), PDFDict);
@@ -425,7 +438,7 @@ function outlineOf(s: Source): OutlineItem[] {
       const dest = destOf(o.get(N("Dest")) ?? (goTo ? action?.get(N("D")) : undefined));
       const target = dest?.get(0);
       const page = target instanceof PDFRef && index.has(target) ? s.pageAt(index.get(target)!) : undefined;
-      const children = walk(o.get(N("First")));
+      const children = walk(o.get(N("First")), depth + 1);
       const other = !goTo && action && !o.has(N("Dest")) ? s.take.object(action) : undefined;
       if (page === undefined && !other && !children.length) continue;
       const count = o.lookupMaybe(N("Count"), PDFNumber)?.asNumber() ?? 0;
@@ -537,7 +550,9 @@ export async function split(
 export type PagePlan = { file: number; page: number; rotate: number; blank?: boolean }[];
 
 export async function buildFromPlan(files: File[], plan: PagePlan): Promise<Blob> {
-  const docs = await Promise.all(files.map((f) => loadPdf(f, f.name)));
+  // One at a time: each opening runs qpdf over a copy of the file.
+  const docs: PDFDocument[] = [];
+  for (const f of files) docs.push(await loadPdf(f, f.name));
   const out = await PDFDocument.create();
   const takers = docs.map((doc, fi) => pageCopier(doc, out, plan.filter((p) => p.file === fi && !p.blank).map((p) => p.page)));
   // Where each source page first lands, for bookmarks.
