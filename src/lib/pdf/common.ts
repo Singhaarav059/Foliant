@@ -5,7 +5,8 @@ import { VENDOR } from "../vendor";
 import { PdfError, toPdfError } from "./errors";
 
 // `print`: the blob is HTML to save through the browser's print dialog (static build).
-export type Output = { name: string; blob: Blob; note?: string; print?: boolean };
+// `unrestricted`: an input's owner-password restrictions were left behind.
+export type Output = { name: string; blob: Blob; note?: string; print?: boolean; unrestricted?: boolean };
 export type Progress = (done: number, total: number) => void;
 
 let pdfjsPromise: Promise<typeof import("pdfjs-dist")> | null = null;

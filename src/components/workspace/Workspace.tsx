@@ -17,7 +17,7 @@ import { PrintResults } from "./PrintResults";
 import { clearHandoff, peekHandoff } from "@/lib/handoff";
 import { fileExt, type Output, type Progress } from "@/lib/pdf/common";
 import { fileError } from "@/lib/pdf/errors";
-import { PERMISSIONS, protectProblem } from "@/lib/pdf/password";
+import { markUnrestricted, PERMISSIONS, protectProblem } from "@/lib/pdf/password";
 import { pageCount } from "@/lib/pdf/thumbs";
 import { defaultOptions, LIGHT_OFFICE, LIMITS, toolById, type ToolId } from "@/lib/tools";
 
@@ -178,7 +178,8 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
     setProgress({ value: 0 });
     setStage("busy");
     try {
-      const out = await job((done, total) => ticket === run.current && setProgress((p) => ({ ...p, value: total ? Math.min(1, done / total) : 0 })));
+      const made = await job((done, total) => ticket === run.current && setProgress((p) => ({ ...p, value: total ? Math.min(1, done / total) : 0 })));
+      const out = tool.id === "protect" || tool.id === "unlock" ? made : await markUnrestricted(files, made);
       if (ticket !== run.current) return;
       if (!out.length) throw new Error(t("res.error"));
       setOutputs(out);

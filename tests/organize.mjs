@@ -327,9 +327,21 @@ for (const fixture of ["enc-aes256-owner.pdf", "enc-rc4-40-owner.pdf"]) {
   }
 }
 await test("the result says when the owner password's restrictions were left behind", async () => {
-  eq((await rotateAll(fxFile("enc-aes256-owner.pdf"), 90))[0].note, "unrestricted", "note for an owner-password file");
-  eq((await merge([fxFile("base.pdf"), fxFile("enc-rc4-40-owner.pdf")], { bookmarks: false }))[0].note, "unrestricted", "note for a merge");
-  eq((await rotateAll(fxFile("base.pdf"), 90))[0].note, undefined, "no note for a plain file");
+  eq((await rotateAll(fxFile("enc-aes256-owner.pdf"), 90))[0].unrestricted, true, "an owner-password file");
+  eq((await merge([fxFile("base.pdf"), fxFile("enc-rc4-40-owner.pdf")], { bookmarks: false }))[0].unrestricted, true, "a merge");
+  eq((await rotateAll(fxFile("base.pdf"), 90))[0].unrestricted, undefined, "a plain file");
+});
+// Every tool's result (compress, watermark, organize, redact …) is marked
+// the same way once it's made, alongside a note of its own.
+await test("any tool's result is marked when an input had restrictions", async () => {
+  const { markUnrestricted } = await load("password");
+  const made = () => [{ name: "a.pdf", blob: new Blob(["x"]), note: "notSmaller" }, { name: "b.pdf", blob: new Blob(["y"]) }];
+  const [first, second] = await markUnrestricted([fxFile("base.pdf"), fxFile("enc-aes256-owner.pdf")], made());
+  eq(first.unrestricted, true, "marked");
+  eq(first.note, "notSmaller", "its own note kept");
+  eq(second.unrestricted, undefined, "only the first result carries it");
+  eq((await markUnrestricted([fxFile("base.pdf")], made()))[0].unrestricted, undefined, "not for a plain file");
+  eq((await markUnrestricted([new File(["/Encrypt 5 0 R"], "notes.txt")], made()))[0].unrestricted, undefined, "not for a file that isn't a PDF");
 });
 await test("a file that needs an open password is still refused, as encrypted", async () => {
   let error;

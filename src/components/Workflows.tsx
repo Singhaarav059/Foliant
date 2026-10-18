@@ -11,7 +11,7 @@ import { Results } from "./workspace/Results";
 import { ErrorBox, useProblem, type Problem } from "./workspace/ErrorBox";
 import { defaultOptions, TOOLS, toolById, type ToolId } from "@/lib/tools";
 import type { Output } from "@/lib/pdf/common";
-import { PERMISSIONS, protectProblem, withoutSecrets } from "@/lib/pdf/password";
+import { markUnrestricted, PERMISSIONS, protectProblem, withoutSecrets } from "@/lib/pdf/password";
 import { BRAND } from "@/lib/brand";
 import { STATIC } from "@/lib/mode";
 
@@ -152,7 +152,7 @@ export function Workflows() {
         out = await runTool(s.tool, current, s.options, undefined, { page: tOr("ws.page", "Page {n}"), pageOf: tOr("ws.processingPage", "Page {n} of {total}"), nOf: tOr("fmt.nOfTotal", "{n} of {total}") });
         current = out.map((o) => new File([o.blob], o.name, { type: "application/pdf" }));
       }
-      setOutputs(out);
+      setOutputs(steps.some((s) => s.tool === "protect" || s.tool === "unlock") ? out : await markUnrestricted(files, out));
     } catch (e) {
       setError(problem(e));
     } finally {

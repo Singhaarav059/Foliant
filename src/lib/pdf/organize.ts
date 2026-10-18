@@ -22,7 +22,7 @@ async function loadNoting(file: File) {
   return { doc, note: (outputs: Output[]) => noted(outputs, decrypted) };
 }
 const noted = (outputs: Output[], decrypted: boolean) =>
-  decrypted && outputs[0] && !outputs[0].note ? [{ ...outputs[0], note: "unrestricted" }, ...outputs.slice(1)] : outputs;
+  decrypted && outputs[0] ? [{ ...outputs[0], unrestricted: true }, ...outputs.slice(1)] : outputs;
 
 // The same as PdfError("encrypted"), for callers that throw it by name.
 export class EncryptedError extends PdfError {

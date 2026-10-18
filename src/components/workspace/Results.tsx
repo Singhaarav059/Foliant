@@ -72,7 +72,7 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
       {first?.note === "rebuilt" && <p className="mt-2 text-[15px] text-muted">{t("res.rebuilt")}</p>}
       {first?.note === "ocrNone" && <p className="mt-2 text-[15px] text-muted">{t("res.ocrNone")}</p>}
       {first?.note === "ocrDoubtful" && <p className="mt-2 text-[15px] text-muted">{t("res.ocrDoubtful")}</p>}
-      {first?.note === "unrestricted" && <p className="mt-2 text-[15px] text-muted">{t("res.unrestricted")}</p>}
+      {outputs.some((o) => o.unrestricted) && <p className="mt-2 text-[15px] text-muted">{t("res.unrestricted")}</p>}
       <p className="mt-2 flex items-center justify-center gap-1.5 text-[13px] text-muted">
         {tool.runtime === "browser" ? <ShieldCheck size={14} strokeWidth={1.75} /> : <Server size={14} strokeWidth={1.75} />}
         {tool.runtime === "browser" ? t("ws.processedLocally") : t("ws.processedServer")}
