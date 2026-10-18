@@ -5,7 +5,10 @@
 //
 //   node tests/pdfa.mjs
 //   VERAPDF=/path/to/verapdf node tests/pdfa.mjs   (also validates with veraPDF)
-import { PDFDocument, PDFName, PDFString, PDFDict, PDFArray, PDFRawStream, StandardFonts, rgb, cmyk, decodePDFRawStream } from "pdf-lib";
+import {
+  PDFDocument, PDFName, PDFString, PDFDict, PDFArray, PDFRawStream, StandardFonts, rgb, cmyk, decodePDFRawStream,
+  pushGraphicsState, popGraphicsState, concatTransformationMatrix, drawObject, PDFOperator,
+} from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { execFileSync } from "node:child_process";
 import { writeFileSync, mkdtempSync } from "node:fs";
@@ -18,7 +21,7 @@ const { fixForPdfA } = await load("pdfa");
 const results = { failed: 0 };
 const test = check(results);
 
-async function build({ cmykPage = false, symbolPage = false } = {}) {
+async function build({ cmykPage = false, symbolPage = false, separationPage = false } = {}) {
   const doc = await PDFDocument.create();
   doc.setTitle("Annual report");
   doc.setAuthor("Finance team");
@@ -38,10 +41,35 @@ async function build({ cmykPage = false, symbolPage = false } = {}) {
   }));
   const link = ctx.register(ctx.obj({ Type: "Annot", Subtype: "Link", Rect: [50, 600, 250, 660], F: 2, Border: [0, 0, 0], A: { S: "URI", URI: PDFString.of("https://example.com/") } }));
   const note = ctx.register(ctx.obj({ Type: "Annot", Subtype: "Text", Rect: [300, 700, 320, 720], Contents: PDFString.of("note") }));
-  p.node.set(PDFName.of("Annots"), ctx.obj([link, note]));
+  // A link that runs a script when clicked and when the pointer enters it.
+  const jsLink = ctx.register(ctx.obj({
+    Type: "Annot", Subtype: "Link", Rect: [50, 500, 250, 540], Border: [0, 0, 0],
+    A: { S: "JavaScript", JS: PDFString.of("app.alert('click')") }, AA: { E: { S: "JavaScript", JS: PDFString.of("1") } },
+  }));
+  p.node.set(PDFName.of("Annots"), ctx.obj([link, note, jsLink]));
+  // A script that runs when the page opens.
+  p.node.set(PDFName.of("AA"), ctx.obj({ O: { S: "JavaScript", JS: PDFString.of("app.alert('page')") } }));
+  // A bookmark whose action is a script.
+  const outlines = ctx.nextRef();
+  const item = ctx.register(ctx.obj({ Title: PDFString.of("Summary"), Parent: outlines, A: { S: "JavaScript", JS: PDFString.of("1") } }));
+  ctx.assign(outlines, ctx.obj({ Type: "Outlines", First: item, Last: item, Count: 1 }));
+  doc.catalog.set(PDFName.of("Outlines"), outlines);
+  // A small RGB picture that asks for interpolation.
+  const pixels = ctx.flateStream(new Uint8Array([255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 0]), {
+    Type: "XObject", Subtype: "Image", Width: 2, Height: 2, ColorSpace: "DeviceRGB", BitsPerComponent: 8, Interpolate: true,
+  });
+  const im = p.node.newXObject("Im", ctx.register(pixels));
+  p.pushOperators(pushGraphicsState(), concatTransformationMatrix(40, 0, 0, 40, 300, 600), drawObject(im), popGraphicsState());
   const gs = ctx.obj({ Type: "ExtGState", TR: PDFName.of("Identity"), HT: PDFName.of("Default") });
   p.node.Resources().set(PDFName.of("ExtGState"), ctx.obj({ GS1: ctx.register(gs) }));
   if (cmykPage) doc.addPage([595, 842]).drawRectangle({ x: 50, y: 600, width: 100, height: 100, color: cmyk(0, 1, 1, 0) });
+  if (separationPage) {
+    // A spot colour whose fallback is DeviceCMYK, which an sRGB output intent can't stand for.
+    const sep = doc.addPage([595, 842]);
+    const tint = ctx.obj({ FunctionType: 2, Domain: [0, 1], C0: [0, 0, 0, 0], C1: [0, 0.5, 1, 0], N: 1 });
+    sep.node.Resources().set(PDFName.of("ColorSpace"), ctx.obj({ CS0: ctx.obj([PDFName.of("Separation"), PDFName.of("Orange"), PDFName.of("DeviceCMYK"), ctx.register(tint)]) }));
+    sep.pushOperators(PDFOperator.of("cs", [PDFName.of("CS0")]), PDFOperator.of("scn", [ctx.obj(1)]), PDFOperator.of("re", [50, 600, 100, 100].map((n) => ctx.obj(n))), PDFOperator.of("f"));
+  }
   if (symbolPage) doc.addPage([595, 842]).drawText("αβγ", { x: 50, y: 700, size: 14, font: await doc.embedFont(StandardFonts.Symbol) });
   return doc.save();
 }
@@ -92,9 +120,15 @@ await test("blockers removed: scripts, attachments, hidden flags, transfer funct
   const names = doc.catalog.lookupMaybe(PDFName.of("Names"), PDFDict);
   eq(Boolean(names?.get(PDFName.of("JavaScript")) || names?.get(PDFName.of("EmbeddedFiles"))), false, "scripts and attachments");
   const annots = doc.getPage(0).node.lookup(PDFName.of("Annots"), PDFArray).asArray().map((r) => doc.context.lookup(r));
-  eq(annots.map((a) => `${a.get(PDFName.of("Subtype"))}:${a.get(PDFName.of("F"))}`).join(","), "/Link:4", "annotations (note without appearance dropped, link printable)");
+  eq(annots.map((a) => `${a.get(PDFName.of("Subtype"))}:${a.get(PDFName.of("F"))}`).join(","), "/Link:4,/Link:4", "annotations (note without appearance dropped, links printable)");
+  eq(annots.map((a) => `${a.lookup(PDFName.of("A"))?.get(PDFName.of("S")) ?? "-"}:${a.has(PDFName.of("AA"))}`).join(","), "/URI:false,-:false", "link actions (web link kept, script and additional actions gone)");
   const gs = doc.context.enumerateIndirectObjects().map(([, o]) => o).find((o) => o instanceof PDFDict && o.get(PDFName.of("Type")) === PDFName.of("ExtGState"));
   eq(Boolean(gs.get(PDFName.of("TR")) || gs.get(PDFName.of("HT"))), false, "TR and HT");
+  eq(doc.getPage(0).node.has(PDFName.of("AA")), false, "page additional actions");
+  const item = doc.catalog.lookup(PDFName.of("Outlines"), PDFDict).lookup(PDFName.of("First"), PDFDict);
+  eq(`${item.lookup(PDFName.of("Title")).decodeText()}:${item.has(PDFName.of("A"))}`, "Summary:false", "bookmark kept without its script");
+  const image = doc.context.enumerateIndirectObjects().map(([, o]) => o).find((o) => o instanceof PDFRawStream && o.dict.get(PDFName.of("Subtype")) === PDFName.of("Image"));
+  eq(image.dict.has(PDFName.of("Interpolate")), false, "image interpolation");
 });
 
 await test("PDF/A identification, output intent and matching metadata", () => {
@@ -103,13 +137,13 @@ await test("PDF/A identification, output intent and matching metadata", () => {
   eq(xmp.includes("Finance team") && xmp.includes("Figures for the year") && xmp.includes("Annual report"), true, "author, subject and title in XMP");
   eq(String(doc.catalog.lookup(PDFName.of("OutputIntents"), PDFArray).lookup(0, PDFDict).get(PDFName.of("S"))), "/GTS_PDFA1", "output intent");
   const images = doc.context.enumerateIndirectObjects().filter(([, o]) => o instanceof PDFRawStream && o.dict.get(PDFName.of("Subtype")) === PDFName.of("Image"));
-  eq(images.length, 0, "no page turned into an image");
+  eq(images.map(([, o]) => o.dict.get(PDFName.of("Width"))).join(","), "2", "only the original picture, no page turned into an image");
 });
 
-await test("CMYK and Symbol pages are flagged for rendering, others are not", async () => {
-  const d = await PDFDocument.load(await build({ cmykPage: true, symbolPage: true }));
+await test("CMYK, spot colour over CMYK and Symbol pages are flagged for rendering, others are not", async () => {
+  const d = await PDFDocument.load(await build({ cmykPage: true, separationPage: true, symbolPage: true }));
   const { raster } = await fixForPdfA(d);
-  eq([...raster].sort().join(","), "1,2", "pages to render");
+  eq([...raster].sort().join(","), "1,2,3", "pages to render");
 });
 
 // Full validation, when a veraPDF command line is available.
