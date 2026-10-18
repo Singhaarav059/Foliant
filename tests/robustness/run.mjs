@@ -21,7 +21,7 @@
 // (a new problem, an error, a hang or a crash) counts as a new failure.
 // When you fix one, run with --known --prune and commit the shorter list.
 import { spawn } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { availableParallelism, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,8 +36,17 @@ const filter = filterArg ? new RegExp(filterArg) : null;
 const TIME_LIMIT = Number(process.env.ROBUST_TIME_LIMIT_S ?? 60) * 1000;
 const RSS_LIMIT = Number(process.env.ROBUST_RSS_MB ?? 800);
 const KILL = Number(process.env.ROBUST_KILL_S ?? 180) * 1000;
+// known-failures.json holds what fails everywhere; known-failures.<platform>.json
+// (process.platform: linux, darwin, win32) adds or replaces cases for one OS, and
+// maps a case to null to drop a shared entry there, since memory, time and
+// rendering differ between the Linux runners and a Mac. --prune edits the file
+// a fixed case came from.
 const knownPath = join(here, "known-failures.json");
-const known = JSON.parse(readFileSync(knownPath, "utf8"));
+const platformPath = join(here, `known-failures.${process.platform}.json`);
+const shared = JSON.parse(readFileSync(knownPath, "utf8"));
+const platform = existsSync(platformPath) ? JSON.parse(readFileSync(platformPath, "utf8")) : {};
+const known = { ...shared, ...platform };
+for (const [k, v] of Object.entries(platform)) if (v === null) delete known[k];
 for (const [k, v] of Object.entries(known)) {
   if (typeof v?.why !== "string" || !Array.isArray(v.fails) || !v.fails.length) throw new Error(`known-failures.json: "${k}" needs "why" and a non-empty "fails" list`);
 }
@@ -132,11 +141,26 @@ console.log(`\n${results.length - failed.length}/${results.length} cases pass; $
 for (const r of unexpected) console.log(`  new failure: ${r.key}  ${describe(r)}${known[r.key] ? `  (listed as failing with ${JSON.stringify(known[r.key].fails)})` : ""}`);
 for (const r of fixed) console.log(`  now passes: ${r.key}  (listed for ${known[r.key].why})`);
 
+// On GitHub Actions the difference from the ledger also goes into an error
+// annotation, which can be read without signing in to see the log.
+if (process.env.GITHUB_ACTIONS && (unexpected.length || (fixed.length && flag("--known")))) {
+  const diff = [
+    `${process.platform}: ${failed.length - unexpected.length} known, ${unexpected.length} new, ${fixed.length} now pass`,
+    ...unexpected.map((r) => `+ ${r.key}  ${describe(r)}`),
+    ...fixed.map((r) => `- ${r.key}`),
+  ];
+  const esc = (s) => s.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+  // A step keeps at most 10 error annotations: split a long diff over a few.
+  for (let i = 0; i < diff.length && i < 400; i += 40) console.log(`::error title=Hostile inputs vs known-failures (${process.platform})::${esc(diff.slice(i, i + 40).join("\n"))}`);
+}
+
 if (flag("--prune") && fixed.length) {
-  for (const r of fixed) delete known[r.key];
   // One case per line, sorted, so a fix shows up as removed lines.
-  writeFileSync(knownPath, `{\n${Object.keys(known).sort((a, b) => a.localeCompare(b)).map((k) => `  ${JSON.stringify(k)}: ${JSON.stringify(known[k])}`).join(",\n")}\n}\n`);
-  console.log(`  removed ${fixed.length} from known-failures.json`);
+  const write = (path, list) => writeFileSync(path, `{\n${Object.keys(list).sort((a, b) => a.localeCompare(b)).map((k) => `  ${JSON.stringify(k)}: ${JSON.stringify(list[k])}`).join(",\n")}\n}\n`);
+  for (const r of fixed) delete (r.key in platform ? platform : shared)[r.key];
+  write(knownPath, shared);
+  if (existsSync(platformPath)) write(platformPath, platform);
+  console.log(`  removed ${fixed.length} from the known failures`);
 }
 if (flag("--known")) process.exit(unexpected.length || (fixed.length && !flag("--prune")) ? 1 : 0);
 process.exit(failed.length ? 1 : 0);
