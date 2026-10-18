@@ -121,15 +121,26 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
     case "pptToPdf":
     case "excelToPdf": {
       if (STATIC) {
-        // High fidelity (LibreOffice) when chosen, or when a file is in a format only it reads.
-        // The whole batch goes one way, so results are all PDFs or all print pages.
+        // LibreOffice writes the PDF unless Standard is chosen; formats only it reads always use it.
+        // Automatic (the workspace has already ruled out phones) prints instead when
+        // LibreOffice can't run here or fails. The whole batch goes one way, so
+        // results are all PDFs or all print pages.
         const ext = (f: File) => f.name.split(".").pop()?.toLowerCase() ?? "";
-        if (o.fidelity === "high" || files.some((f) => !LIGHT_OFFICE.includes(ext(f)))) {
-          const { officeToPdf } = await import("@/lib/office/libreoffice");
-          return each(files, progress, async (f, p) => [await officeToPdf(f, p)]);
+        const light = files.every((f) => LIGHT_OFFICE.includes(ext(f)));
+        const print = async () => {
+          const { printable } = await import("@/lib/office/print");
+          return each(files, progress, async (f) => [await printable(f, { orientation: s(o.orientation || "auto") })]);
+        };
+        if (light && o.fidelity === "standard") return print();
+        const { officeAvailable, officeToPdf } = await import("@/lib/office/libreoffice");
+        const fallback = light && o.fidelity !== "high";
+        if (fallback && !officeAvailable()) return print();
+        try {
+          return await each(files, progress, async (f, p) => [await officeToPdf(f, p)]);
+        } catch (e) {
+          if (!fallback) throw e;
+          return print();
         }
-        const { printable } = await import("@/lib/office/print");
-        return each(files, progress, async (f) => [await printable(f, { orientation: s(o.orientation || "auto") })]);
       }
       return each(files, progress, async (f, p) => {
         const form = new FormData();

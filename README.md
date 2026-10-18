@@ -17,9 +17,9 @@ Also: saved workflows that run several tools in a row, "continue with" another t
 
 ## Two ways to run it
 
-**Static build (free to host).** Plain files for any static host. Every tool runs in the browser. Word, Excel, PowerPoint and HTML files are laid out in the browser and saved through its print dialog ("Save as PDF"), or, with **High fidelity**, converted by LibreOffice running in the browser into a real PDF (also the only way to open .doc, .xls, .ppt and OpenDocument files there). There are no accounts and nothing to run on a server.
+**Static build (free to host).** Plain files for any static host. Every tool runs in the browser. Word, Excel and PowerPoint files become a real PDF file through LibreOffice running in the browser (also the only way to open .doc, .xls, .ppt and OpenDocument files there). On phones and small devices, or with **Standard** fidelity, they are laid out in the browser and saved through its print dialog ("Save as PDF") instead, as HTML files always are. There are no accounts and nothing to run on a server.
 
-High fidelity downloads about 79 MB the first time and needs about 1 GB of memory, so it's for desktops. LibreOffice runs threads, which browsers only allow on cross-origin isolated pages: the site sends `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` headers (from `security-headers.json`, written into `_headers` for Cloudflare Pages and Netlify), and on hosts that can't send headers, such as GitHub Pages, the service worker adds them from the second page load on.
+LibreOffice downloads about 79 MB the first time (the tool asks once) and needs about 1 GB of memory, so **Automatic**, the default, uses it on computers with 4 GB or more and prints elsewhere. LibreOffice runs threads, which browsers only allow on cross-origin isolated pages: the site sends `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` headers (from `security-headers.json`, written into `_headers` for Cloudflare Pages and Netlify), and on hosts that can't send headers, such as GitHub Pages, the service worker adds them: the first conversion keeps the files in IndexedDB, reloads the page once and carries on.
 
 **Server build (self-hosted).** A Node.js app. It adds:
 
@@ -145,7 +145,7 @@ npx playwright-core install chromium firefox webkit
 npm run test:e2e
 ```
 
-Pass browser names to run only some (`npm run test:e2e -- webkit`), and set `CHROME_PATH` to use an installed Chrome. `serve:static` sends the headers from `out/_headers`, as Cloudflare Pages does. New end-to-end tests go in `tests/e2e/`, one file per area.
+Pass browser names to run only some (`npm run test:e2e -- webkit`), and set `CHROME_PATH` to use an installed Chrome. `serve:static` sends the headers from `out/_headers`, as Cloudflare Pages does. New end-to-end tests go in `tests/e2e/`, one file per area. `npm run test:e2e-office` converts Word and Excel files with the default options in a fresh browser, serving the build itself without the isolation headers, as GitHub Pages would.
 
 The engine suites (`npm run test:tables`, `test:layout`, `test:compress`, `test:ocr`, `test:redact`, `test:office`, `test:libreoffice`, `test:ocr-accuracy`, `test:pdfa`) run in Node; `test:office` and `test:ocr-accuracy` also drive Chrome.
 

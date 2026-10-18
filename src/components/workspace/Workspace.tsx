@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowRight, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { AlertTriangle, ArrowRight, Download, Loader2 } from "lucide-react";
 import { useI18n } from "../I18n";
 import { useUser, postJson } from "../User";
 import { Dropzone, useFileIntake } from "./Dropzone";
@@ -19,10 +19,11 @@ import { fileExt, type Output, type Progress } from "@/lib/pdf/common";
 import { fileError } from "@/lib/pdf/errors";
 import { passwordTooLong } from "@/lib/pdf/password";
 import { pageCount } from "@/lib/pdf/thumbs";
-import { defaultOptions, LIMITS, toolById, type ToolId } from "@/lib/tools";
+import { defaultOptions, LIGHT_OFFICE, LIMITS, toolById, type ToolId } from "@/lib/tools";
 
 type Stage = "select" | "work" | "busy" | "done";
 type Caps = { chrome: boolean; libreoffice: boolean };
+type Job = { files: File[]; options: Record<string, unknown>; reloaded: boolean; agreed?: boolean };
 
 const uid = () => crypto.randomUUID();
 
@@ -42,10 +43,16 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [url, setUrl] = useState("");
   const [caps, setCaps] = useState<Caps | null>(null);
+  // An Office job waiting for the user to agree to LibreOffice's download,
+  // and one brought back over a reload.
+  const [ask, setAsk] = useState<Job | null>(null);
+  const [resumed, setResumed] = useState<Job | null>(null);
   const run = useRef(0);
   const files = useMemo(() => items.map((i) => i.file), [items]);
   // Rotate turns every page by the chosen angle, on top of each page's own turn.
   const turn = tool.id === "rotate" ? Number(options.angle) || 0 : 0;
+  // Office → PDF in the static build, which has a fidelity choice.
+  const office = tool.options.some((o) => o.key === "fidelity");
 
   useEffect(() => {
     if (tool.runtime === "browser") return;
@@ -196,10 +203,66 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
     return null;
   };
 
+  // Office → PDF (src/lib/office/route.ts): LibreOffice once the user has agreed
+  // to its one-time download, after a reload when the page must become
+  // cross-origin isolated first; the print route otherwise.
+  const convertOffice = async (job: Job) => {
+    setError(null);
+    const { officeRoute, officeEnv, officeConsented, consentToOffice } = await import("@/lib/office/route");
+    if (job.agreed) consentToOffice();
+    const route = officeRoute(String(job.options.fidelity), job.files.map((f) => f.name), await officeEnv(job.reloaded));
+    if (route === "unavailable") return setError({ text: t("ws.officeReload") });
+    if (route !== "print" && !job.agreed && !officeConsented()) return setAsk(job);
+    if (route === "reload") {
+      try {
+        const { saveJob } = await import("@/lib/resume");
+        await saveJob({ tool: tool.id, files: job.files, options: job.options, agreed: job.agreed });
+        location.reload();
+        return;
+      } catch {
+        // Nowhere to keep the files over a reload: carry on as if it had happened and not helped.
+        return convertOffice({ ...job, reloaded: true });
+      }
+    }
+    void execute(async (progress) => {
+      const { runTool } = await import("@/lib/pdf/run");
+      return runTool(tool.id, job.files, { ...job.options, fidelity: route === "print" ? "standard" : job.options.fidelity }, progress);
+    });
+  };
+
+  // Back from that reload: the job's files and options are put back, and once
+  // they show, it carries on by itself (a failure then leaves them in place).
+  useEffect(() => {
+    if (!office) return;
+    let live = true;
+    import("@/lib/resume")
+      .then(async ({ peekJob, clearJob }) => {
+        const job = await peekJob(tool.id);
+        if (!live || !job) return;
+        await clearJob(tool.id);
+        setItems(job.files.map((file) => ({ id: uid(), file })));
+        setOptions(job.options);
+        setStage("work");
+        setResumed({ files: job.files, options: job.options, reloaded: true, agreed: job.agreed });
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [office, tool.id]);
+  const resume = useEffectEvent((job: Job) => void convertOffice(job));
+  useEffect(() => {
+    if (resumed) resume(resumed);
+  }, [resumed]);
+
   const start = () => {
     const problem = validate();
     if (problem) {
       setError({ text: problem });
+      return;
+    }
+    if (office) {
+      void convertOffice({ files, options, reloaded: false });
       return;
     }
     if (tool.mode === "pages") {
@@ -239,6 +302,26 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   }
 
   const errorBox = error && <ErrorBox problem={error} toolId={tool.id} />;
+
+  const printable = ask?.files.every((f) => LIGHT_OFFICE.includes(fileExt(f.name)));
+  const consent = ask && (
+    <section aria-labelledby="office-consent" className="rise mx-auto mb-5 max-w-[760px] rounded-xl border border-line bg-surface p-5">
+      <p id="office-consent" className="text-[16px] font-medium">{t("ws.officeConsentTitle")}</p>
+      <p className="mt-1 text-[15px] text-ink-2">{t("ws.officeConsentBody")}</p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button className="btn btn-primary" autoFocus onClick={() => { setAsk(null); void convertOffice({ ...ask, agreed: true }); }}>
+          <Download size={18} /> {t("ws.officeConsentYes")}
+        </button>
+        {printable ? (
+          <button className="btn btn-quiet" onClick={() => { setAsk(null); void convertOffice({ ...ask, options: { ...ask.options, fidelity: "standard" } }); }}>
+            {t("ws.officeConsentPrint")}
+          </button>
+        ) : (
+          <button className="btn btn-quiet" onClick={() => setAsk(null)}>{t("ws.officeConsentLater")}</button>
+        )}
+      </div>
+    </section>
+  );
 
   const warn = unavailable && (
     <p className="mx-auto mb-5 flex max-w-[760px] items-start gap-2 rounded-xl border border-line bg-surface p-4 text-[14px] text-ink-2">
@@ -348,6 +431,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
       {dropHint}
       {warn}
       {errorBox}
+      {consent}
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
         <div className="min-w-0">{board}</div>
         <aside className="card h-max p-5 lg:sticky lg:top-[88px]">

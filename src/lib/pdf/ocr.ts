@@ -18,7 +18,8 @@ const NOISY = 4;
 type Box = { x0: number; y0: number; x1: number; y1: number };
 type TessWord = { text: string; confidence: number; bbox: Box };
 type TessLine = { words: TessWord[]; baseline?: Box & { has_baseline?: boolean } };
-type TessPage = { confidence: number; blocks: { paragraphs: { lines: TessLine[] }[] }[] | null };
+// `found`: the text lines PaddleOCR detected, read or not (Tesseract doesn't say).
+type TessPage = { confidence: number; blocks: { paragraphs: { lines: TessLine[] }[] }[] | null; found?: number };
 export type Recognise = (image: Gray) => Promise<TessPage>;
 
 // Tests replace this with workers that read language data from disk.
@@ -63,8 +64,8 @@ const wordCount = (page: TessPage) =>
   (page.blocks ?? []).reduce((n, b) => n + b.paragraphs.reduce((m, p) => m + p.lines.reduce((k, l) => k + l.words.length, 0), 0), 0);
 
 // Reads one rendered page. Returns words as corner points in the original
-// image (baseline start, baseline end, top of the start) and the clockwise
-// quarter turns that make the page upright.
+// image (baseline start, baseline end, top of the start), the clockwise
+// quarter turns that make the page upright, and whether the reading is doubtful.
 export async function readPage(recognise: Recognise, image: Gray) {
   // Speckle (phone photos, fax-grade scans) first, before flattening the background amplifies it.
   const clean = flattenBackground(noiseLevel(image) > NOISY ? median3(image) : image);
@@ -80,12 +81,17 @@ export async function readPage(recognise: Recognise, image: Gray) {
     if (skew) g = deskew(g, skew);
     const page = await recognise(g);
     const s = score(page);
+    const n = wordCount(page);
     if (!best || s > best.score) best = { page, score: s, turns: turns % 4, skew };
     // Confident, or almost nothing to read (a photo, a blank page): stop turning.
-    if (s >= 60 || wordCount(page) < 3) break;
+    // Lines PaddleOCR finds but can't read at all are text on its side: keep turning.
+    if (s >= 60 || (n < 3 && !(n === 0 && page.found))) break;
   }
   const { page, turns, skew } = best!;
   const unmap: Unmap = unmapper(image, turns, skew);
+  // A doubtful page (a poor scan, a photo) keeps only the words read with confidence.
+  const doubtful = best!.score < 45;
+  const floor = doubtful ? 70 : 25;
 
   const words: { text: string; corners: [number, number][] }[] = [];
   for (const block of page.blocks ?? [])
@@ -95,12 +101,12 @@ export async function readPage(recognise: Recognise, image: Gray) {
         const base = (x: number, fallback: number) =>
           b && b.has_baseline !== false && b.x1 !== b.x0 ? b.y0 + ((b.y1 - b.y0) * (x - b.x0)) / (b.x1 - b.x0) : fallback;
         for (const w of line.words) {
-          if (!w.text.trim() || w.confidence < 25) continue;
+          if (!w.text.trim() || w.confidence < floor) continue;
           const { x0, y0, x1, y1 } = w.bbox;
           words.push({ text: w.text, corners: [unmap(x0, base(x0, y1)), unmap(x1, base(x1, y1)), unmap(x0, y0)] });
         }
       }
-  return { words, turns, skew, confidence: best!.score };
+  return { words, turns, skew, confidence: best!.score, doubtful: doubtful && words.length > 0 };
 }
 
 export function toWord(text: string, corners: [number, number][], viewport: PageViewport): Word {
@@ -130,6 +136,7 @@ export async function ocr(file: File, o: { ocrLang: string; dpi: string; ocrEngi
   const accurate = o.ocrEngine === "accurate" && PADDLE_LANGS.includes(o.ocrLang);
   const count = accurate ? 1 : Math.max(1, Math.min(4, Math.floor(cores / 2), todo.length));
   let recognised = 0;
+  let doubtfulPages = 0;
   let done = src.numPages - todo.length;
   progress?.(done, src.numPages);
   const ocrEngine = !todo.length ? null : accurate ? { recognise: paddlePage as Recognise, stop: async () => {} } : await engine.create(o.ocrLang, count);
@@ -145,8 +152,9 @@ export async function ocr(file: File, o: { ocrLang: string; dpi: string; ocrEngi
         const image = grayOf(canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height));
         canvas.width = canvas.height = 0;
         page.cleanup();
-        const { words, turns, confidence } = await readPage(ocrEngine!.recognise, image);
+        const { words, turns, confidence, doubtful } = await readPage(ocrEngine!.recognise, image);
         if (words.length) recognised++;
+        if (doubtful) doubtfulPages++;
         addInvisibleText(doc, pages[i - 1], words.map((w) => toWord(w.text, w.corners, viewport)));
         // Scanned sideways or upside down: turn the page so it displays (and reads) upright.
         if (turns && confidence >= 60) pages[i - 1].setRotation(degrees((pages[i - 1].getRotation().angle + turns * 90) % 360));
@@ -157,6 +165,6 @@ export async function ocr(file: File, o: { ocrLang: string; dpi: string; ocrEngi
     await ocrEngine?.stop();
     await closePdf(src);
   }
-  const note = recognised === 0 ? "ocrNone" : undefined;
+  const note = recognised === 0 ? "ocrNone" : doubtfulPages ? "ocrDoubtful" : undefined;
   return [{ name: `${baseName(file.name)}-ocr.pdf`, blob: pdfBlob(await doc.save({ useObjectStreams: true })), note }];
 }

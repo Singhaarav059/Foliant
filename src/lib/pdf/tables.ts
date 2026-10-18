@@ -10,8 +10,10 @@ import type { PDFPageProxy } from "pdfjs-dist";
 import { groupLines, type Line, type PageText, type Run } from "./text";
 
 export type Edge = { x0: number; y0: number; x1: number; y1: number };
-// `images` are the boxes images are painted in; the operator list is walked once for both.
-export type Edges = { h: Edge[]; v: Edge[]; images?: Rect[] };
+// `images` are the boxes images are painted in, and `glyphs` counts the
+// characters drawn, `hidden` those drawn invisibly (an OCR text layer); the
+// operator list is walked once for all of them.
+export type Edges = { h: Edge[]; v: Edge[]; images?: Rect[]; glyphs?: { all: number; hidden: number } };
 export type TableCell = {
   row: number; col: number; rowSpan: number; colSpan: number;
   x: number; y: number; w: number; h: number;
@@ -56,6 +58,10 @@ export async function pageEdges(page: PDFPageProxy, rotation?: number): Promise<
   const area = viewport.width * viewport.height;
   let ctm: M = [1, 0, 0, 1, 0, 0];
   const stack: M[] = [];
+  // Text render mode, part of the graphics state: 3 draws nothing, 7 only clips.
+  let mode = 0;
+  const modes: number[] = [];
+  const glyphs = { all: 0, hidden: 0 };
 
   const add = (ax: number, ay: number, bx: number, by: number) => {
     const [x0, y0] = viewport.convertToViewportPoint(ax * ctm[0] + ay * ctm[2] + ctm[4], ax * ctm[1] + ay * ctm[3] + ctm[5]);
@@ -68,13 +74,27 @@ export async function pageEdges(page: PDFPageProxy, rotation?: number): Promise<
   for (let i = 0; i < fnArray.length; i++) {
     const fn = fnArray[i];
     const a = argsArray[i] as unknown[];
-    if (fn === OPS.save) stack.push(ctm);
-    else if (fn === OPS.restore) ctm = stack.pop() ?? ctm;
-    else if (fn === OPS.transform) ctm = mul(asMatrix(a), ctm);
+    if (fn === OPS.save) {
+      stack.push(ctm);
+      modes.push(mode);
+    } else if (fn === OPS.restore) {
+      ctm = stack.pop() ?? ctm;
+      mode = modes.pop() ?? mode;
+    } else if (fn === OPS.transform) ctm = mul(asMatrix(a), ctm);
     else if (fn === OPS.paintFormXObjectBegin) {
       stack.push(ctm);
+      modes.push(mode);
       if (a[0] && typeof a[0] === "object") ctm = mul(asMatrix(a[0]), ctm);
-    } else if (fn === OPS.paintFormXObjectEnd) ctm = stack.pop() ?? ctm;
+    } else if (fn === OPS.paintFormXObjectEnd) {
+      ctm = stack.pop() ?? ctm;
+      mode = modes.pop() ?? mode;
+    } else if (fn === OPS.setTextRenderingMode) mode = Number(a[0]);
+    else if (fn === OPS.showText) {
+      // pdf.js turns every text-showing operator into showText: glyphs, and numbers for spacing.
+      const n = ((a[0] ?? []) as unknown[]).filter((g) => g && typeof g === "object").length;
+      glyphs.all += n;
+      if (mode === 3 || mode === 7) glyphs.hidden += n;
+    }
     else if (fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject || fn === OPS.paintImageMaskXObject) {
       // Images fill the unit square of the current matrix.
       const pts = [[0, 0], [1, 0], [0, 1], [1, 1]].map(([x, y]) => viewport.convertToViewportPoint(x * ctm[0] + y * ctm[2] + ctm[4], x * ctm[1] + y * ctm[3] + ctm[5]));
@@ -103,7 +123,7 @@ export async function pageEdges(page: PDFPageProxy, rotation?: number): Promise<
       }
     }
   }
-  return { h, v, images };
+  return { h, v, images, glyphs };
 }
 
 // ── Snapping and joining

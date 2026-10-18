@@ -34,6 +34,7 @@ const MESSAGES: Record<ErrorCode, [key: string, fix?: Fix]> = {
   download_failed: ["err.download"],
   office_isolation: ["ws.officeReload"],
   office_memory: ["ws.officeMemory"],
+  office_stalled: ["ws.officeStalled"],
   // The server's own message is shown; this only covers one without it.
   server: ["err.unknown"],
   network: ["err.network"],
@@ -56,7 +57,8 @@ export function useProblem() {
     const err = toPdfError(e, fileName);
     const [key, fix] = MESSAGES[err.code];
     // Unexpected failures keep their own text, folded away, for bug reports.
-    const raw = (e as { message?: unknown })?.message ?? e;
+    const cause = err.cause ?? e;
+    const raw = (cause as { message?: unknown })?.message ?? cause;
     // Protect's too-long password says how many characters would fit.
     const max = (e as { max?: unknown })?.max;
     const text = err.text || (err.code === "password_too_long" && typeof max === "number" ? t("ws.passwordTooLong", { max }) : t(key));
