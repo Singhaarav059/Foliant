@@ -90,6 +90,9 @@ jobs:
       - name: Content-Security-Policy and privacy chip
         if: success() || failure()
         run: npm run test:e2e:csp -- ${{ matrix.browser }}
+      - name: Home page promise and comparison
+        if: success() || failure()
+        run: npm run test:e2e:promise -- ${{ matrix.browser }}
       - name: Office to PDF with LibreOffice, first visit
         if: matrix.browser == 'chromium'
         run: npm run test:e2e-office

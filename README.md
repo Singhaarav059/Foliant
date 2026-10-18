@@ -1,6 +1,15 @@
 # Nopload
 
-A free, open-source PDF toolkit that works in your browser. Most tools never upload your files: the work happens on your own device, and the site keeps working offline once installed.
+Nopload is a free, open-source (MIT) PDF toolkit that runs in your web browser. In the static build, every tool works on your own device: files are never uploaded, the browser itself blocks connections to other sites, and the site keeps working offline once opened. Anyone can host their own copy for free, for example a school or an office on Cloudflare Pages.
+
+## At a glance
+
+- **31 tools**: merge, split, compress, OCR, convert to and from Word, Excel, PowerPoint and images, PDF/A, edit, sign, redact, compare, protect and more (full list below).
+- **Free, with no daily or hourly limits and no account.** Each task takes files up to 200 MB, up to 100 at a time.
+- **Private by construction.** Processing happens in the browser tab with WebAssembly builds of PDF.js, qpdf, PDFium, Tesseract and LibreOffice. A Content-Security-Policy stops the page from contacting any other site, and each tool page shows a live count of bytes uploaded (0).
+- **Works offline** after the first visit, and installs as an app.
+- **26 interface languages**, including right-to-left Arabic.
+- **No analytics, ads or tracking cookies.**
 
 ## Tools
 
@@ -27,6 +36,29 @@ LibreOffice downloads about 79 MB the first time (the tool asks once) and needs 
 - web page capture from a URL (needs Chrome on the server)
 - accounts, with workflows that sync across devices and recent activity
 - a contact form
+
+## Limitations
+
+Honest ones, so you can decide whether it fits:
+
+- **Your device does the work.** Large files take as long as your computer or phone needs, and memory is the real limit: very large or many-page files can fail on phones.
+- **Word, Excel and PowerPoint to PDF** at full fidelity uses LibreOffice in the browser: a 79 MB download the first time and about 1 GB of memory. On phones and small devices the file is laid out in the browser and saved through the print dialog instead, which is less faithful for complex documents. In Safari LibreOffice can stop partway; Automatic then prints instead too.
+- **OCR** reads 26 languages. Accuracy depends on the scan; the high-accuracy engine (PaddleOCR) is a further 36 MB download.
+- **Redaction** rebuilds pages that have redactions as images, so nothing hidden survives; the text outside the redacted areas stays searchable.
+- **Web pages by address**, accounts, synced workflows and the contact form need the server build. The static build converts HTML files, not URLs.
+- **Hosting**: the site must be served from the root of a domain, not a sub-path.
+
+## Deploy your own on Cloudflare Pages
+
+For a school, an office or anyone who wants their own copy: the static build is plain files, and Cloudflare Pages' free plan serves it with unlimited bandwidth. Nothing runs on a server, so there is nothing to maintain beyond updating the code.
+
+1. Fork this repository on GitHub (or push a copy to your own Git host).
+2. In the Cloudflare dashboard, create a Pages project connected to that repository (under **Workers & Pages**).
+3. Build settings: framework preset **None**, build command `NOPLOAD_RELEASE=1 npm run build:static`, build output directory `out`. If the build reports the wrong Node.js version, add the environment variable `NODE_VERSION` with the version in `.node-version`.
+4. Add the environment variables from the table in [Deploying the static build](#deploying-the-static-build): your site's address, who runs it and how to reach them. The release build stops until they are set, so placeholders can't go live.
+5. Deploy, then add your own domain under **Custom domains** if you have one.
+
+Cloudflare Pages reads the `_headers` file the build writes: the Content-Security-Policy, cross-origin isolation (so Office conversion works from the first visit) and long-term caching all apply without further setup. The build fails rather than produce something the free plan won't take (more than 18,000 files or a file over 24 MiB). To check the live site every week, see [Keeping an eye on the live site](#keeping-an-eye-on-the-live-site).
 
 ## Quick start
 

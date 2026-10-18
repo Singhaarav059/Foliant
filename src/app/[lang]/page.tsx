@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
 import { ToolGrid } from "@/components/ToolGrid";
+import { Comparison } from "@/components/Comparison";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { hasLocale } from "@/lib/i18n/locales";
 import { TOOLS } from "@/lib/tools";
@@ -37,6 +38,20 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
           {t["home.title"]}
         </h1>
         <p className="mt-6 max-w-[560px] text-pretty text-[17px] leading-[1.6] text-ink-2 sm:text-[18px]">{t["home.subtitle"]}</p>
+        <div data-promise className="mt-8 max-w-[760px]">
+          <h2 className="sr-only">{t["home.promiseLabel"]}</h2>
+          <ul className="grid gap-x-8 gap-y-2 text-[15px] text-ink-2 sm:grid-cols-2">
+            {(["home.promise1", "home.promise2", STATIC ? "home.promise3" : "home.promise3Server", "home.promise4"] as const).map((k) => (
+              <li key={k} className="flex items-start gap-2">
+                <Check size={16} strokeWidth={2} className="mt-1 shrink-0 text-success" aria-hidden />
+                {t[k]}
+              </li>
+            ))}
+          </ul>
+          <Link href={`/${lang}/security#check`} className="mt-3 inline-block text-[14px] text-muted underline decoration-line-strong underline-offset-2 transition-colors hover:text-ink">
+            {t["home.promiseCheck"]}
+          </Link>
+        </div>
       </section>
 
       <ToolGrid />
@@ -82,6 +97,8 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
           ))}
         </dl>
       </section>
+
+      <Comparison t={t} lang={lang} />
     </div>
   );
 }
