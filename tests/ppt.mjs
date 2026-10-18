@@ -202,4 +202,98 @@ await test("a picture wholly off the page gives no picture; no negative sizes", 
   eq((x.match(/<p:pic>/g) ?? []).length, 1, "pictures");
 });
 
+// Enough of an XML checker for slide parts: tags nest, attribute values are
+// quoted with no raw <, & or ", and text has no raw < or &.
+function wellFormed(xml) {
+  const entity = /&(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);/g;
+  const attrs = String.raw`(?:\s+[\w:.-]+="[^"<&]*")*`;
+  const tag = new RegExp(String.raw`<(/?)([\w:.-]+)(${attrs})\s*(/?)>`, "y");
+  const src = xml.replace(/^<\?xml[^>]*\?>\s*/, "").replace(entity, "");
+  const stack = [];
+  let i = 0;
+  while (i < src.length) {
+    const lt = src.indexOf("<", i);
+    const text = src.slice(i, lt < 0 ? src.length : lt);
+    if (text.includes("&")) return `raw & in text at ${i}`;
+    if (lt < 0) break;
+    tag.lastIndex = lt;
+    const m = tag.exec(src);
+    if (!m) return `bad tag at ${lt}: ${src.slice(lt, lt + 80)}`;
+    if (m[1]) { if (stack.pop() !== m[2]) return `mismatched </${m[2]}> at ${lt}`; }
+    else if (!m[4]) stack.push(m[2]);
+    i = tag.lastIndex;
+  }
+  return stack.length ? `unclosed <${stack.at(-1)}>` : "";
+}
+
+await test("font names with & and quotes still give well-formed slides", async () => {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([W, H]);
+  const names = ["AT&T-Sans", 'Foo"Bar', "Less<More"];
+  for (const [k, n] of names.entries()) {
+    const f = await doc.embedFont(StandardFonts.Helvetica);
+    page.drawText(`Line ${k}`, { x: 40, y: 300 - k * 40, size: SIZE, font: f });
+    await doc.flush?.();
+    doc.context.lookup(f.ref).set(PDFName.of("BaseFont"), PDFName.of(n));
+  }
+  const b = new Uint8Array(await doc.save());
+  const [o] = await pdfToPpt(new File([b], "fonts.pdf"), { pptText: true });
+  const z = await JSZip.loadAsync(await o.blob.arrayBuffer());
+  for (const name of Object.keys(z.files).filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))) {
+    const x = await z.file(name).async("string");
+    eq(wellFormed(x), "", name);
+    eq(boxes(x).map((bx) => bx.text).join("|"), "Line 0|Line 1|Line 2", "text");
+  }
+});
+
+await test("a picture half off the page is left out of the background", async () => {
+  const doc = await PDFDocument.create();
+  const img = await doc.embedPng(png(200, 30, 30));
+  const page = doc.addPage([W, H]);
+  page.drawRectangle({ x: 600, y: 20, width: 60, height: 40, color: rgb(0, 0, 0) }); // so there is a background
+  page.drawImage(img, { x: -100, y: 100, width: 200, height: 150 });
+  const b = new Uint8Array(await doc.save());
+  const [o] = await pdfToPpt(new File([b], "half.pdf"), { pptText: true });
+  const z = await JSZip.loadAsync(await o.blob.arrayBuffer());
+  const x = await z.file("ppt/slides/slide1.xml").async("string");
+  eq(pics(x).length, 1, "pictures");
+  const id = x.match(/<p:bg>[\s\S]*?r:embed="([^"]+)"/)?.[1];
+  eq(Boolean(id), true, "background image");
+  const rels = await z.file("ppt/slides/_rels/slide1.xml.rels").async("string");
+  const target = rels.match(new RegExp(`Id="${id}"[^>]*Target="([^"]+)"`))[1];
+  const { createCanvas, loadImage } = createRequire(join(root, "package.json"))("@napi-rs/canvas");
+  const im = await loadImage(await z.file(join("ppt/slides", target).replace(/\\/g, "/")).async("nodebuffer"));
+  const c = createCanvas(im.width, im.height);
+  c.getContext("2d").drawImage(im, 0, 0);
+  const k = im.width / W;
+  const px = [...c.getContext("2d").getImageData(Math.round(50 * k), Math.round((H - 200) * k), 1, 1).data.slice(0, 3)];
+  eq(px.every((v) => v > 235), true, `background under the picture is white (got ${px})`);
+});
+
+await test("a photo becomes a JPEG picture; flat pictures stay PNG", async () => {
+  const { createCanvas } = createRequire(join(root, "package.json"))("@napi-rs/canvas");
+  const c = createCanvas(512, 512);
+  const ctx = c.getContext("2d");
+  const data = ctx.createImageData(512, 512);
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  for (let y = 0; y < 512; y++) for (let x = 0; x < 512; x++) {
+    const k = (y * 512 + x) * 4, n = rnd() * 60;
+    data.data[k] = (x / 2 + n) | 0; data.data[k + 1] = (y / 2 + n) | 0; data.data[k + 2] = ((x + y) / 4 + n) | 0; data.data[k + 3] = 255;
+  }
+  ctx.putImageData(data, 0, 0);
+  const doc = await PDFDocument.create();
+  const img = await doc.embedJpg(new Uint8Array(c.toBuffer("image/jpeg", 90)));
+  doc.addPage([W, H]).drawImage(img, { x: 40, y: 10, width: 380, height: 380 });
+  const b = new Uint8Array(await doc.save());
+  const [o] = await pdfToPpt(new File([b], "photo.pdf"), { pptText: true });
+  const z = await JSZip.loadAsync(await o.blob.arrayBuffer());
+  const media = (zz) => Object.keys(zz.files).filter((n) => /^ppt\/media\/./.test(n) && !zz.files[n].dir);
+  eq(JSON.stringify(media(z).map((n) => n.split(".").pop())), JSON.stringify(["jpeg"]), `photo media ${media(z)}`);
+  eq(o.blob.size < 600_000, true, `deck size ${o.blob.size}`);
+  // The flat pictures on slide 1 of the main deck.
+  const flat = media(zip).filter((n) => /image-1-[2-9]/.test(n));
+  eq(flat.length > 0 && flat.every((n) => n.endsWith(".png")), true, `flat media ${media(zip)}`);
+});
+
 process.exit(results.failed ? 1 : 0);

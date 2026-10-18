@@ -438,9 +438,12 @@ export async function pdfToPpt(file: File, o: { pptText: boolean }, progress?: P
           crop.width = w;
           crop.height = h;
           crop.getContext("2d")!.drawImage(shown, Math.round(f.x0 * SCALE), Math.round(f.y0 * SCALE), w, h, 0, 0, w, h);
-          // Small pictures (logos, charts) stay sharp as PNG; photos go to JPEG.
+          // Flat pictures (logos, charts) stay sharp as PNG; photos, where PNG
+          // comes out much larger, go to JPEG.
+          const png = await imageData(crop, "png");
+          const jpg = await imageData(crop, "jpg");
           slide.addImage({
-            data: await imageData(crop, w * h < 600_000 ? "png" : "jpg"),
+            data: png.length <= jpg.length * 2 ? png : jpg,
             x: inch(f.x0 * sx), y: inch(f.y0 * sy), w: inch((f.x1 - f.x0) * sx), h: inch((f.y1 - f.y0) * sy),
           });
         }
@@ -532,7 +535,12 @@ async function slidePictures(page: PDFPageProxy): Promise<{ figures: Figure[]; o
   // or inside out, and its picture stays out (OOXML sizes must be positive).
   const figures = figuresOf(images.map((m) => ({ ...m.rect })), view.width, view.height).figures.filter((f) => f.x1 - f.x0 >= 16 && f.y1 - f.y0 >= 16);
   const inside = (f: Figure, r: Figure) => r.x0 >= f.x0 - 3 && r.x1 <= f.x1 + 3 && r.y0 >= f.y0 - 3 && r.y1 <= f.y1 + 3;
-  const ops = new Set(images.filter((m) => figures.some((f) => inside(f, m.rect))).map((m) => m.op));
+  // Compared clamped as the figures are, so a picture partly off the page
+  // is still left out of the background.
+  const onPage = (r: Figure): Figure => ({
+    x0: Math.max(0, r.x0), y0: Math.max(0, r.y0), x1: Math.min(view.width, r.x1), y1: Math.min(view.height, r.y1),
+  });
+  const ops = new Set(images.filter((m) => figures.some((f) => inside(f, onPage(m.rect)))).map((m) => m.op));
   return { figures, ops };
 }
 
@@ -596,7 +604,7 @@ function lineSegments(l: Line): { x: number; w: number; pieces: Piece[] }[] {
         owner = r;
       } else {
         owner = r;
-        pieces.push({ text: text[k], color: hex(r.color), bold: r.bold, italic: r.italic, font: r.font ?? "Arial", size: r.size });
+        pieces.push({ text: text[k], color: hex(r.color), bold: r.bold, italic: r.italic, font: face(r.font), size: r.size });
       }
     }
     const last = runs[runs.length - 1];
@@ -605,8 +613,11 @@ function lineSegments(l: Line): { x: number; w: number; pieces: Piece[] }[] {
 }
 
 const hex = (c?: string) => (c && /^#[0-9a-f]{6}$/i.test(c) ? c.slice(1).toUpperCase() : "000000");
+// pptxgenjs 4 writes the font name into the XML as it is: characters that
+// would need escaping are left out.
+const face = (f?: string) => (f ?? "").replace(/[&<>"']/g, "").trim() || "Arial";
 const sameLook = (p: Piece, r: Run) =>
-  p.color === hex(r.color) && p.bold === r.bold && p.italic === r.italic && p.font === (r.font ?? "Arial") && Math.abs(p.size - r.size) < 0.6;
+  p.color === hex(r.color) && p.bold === r.bold && p.italic === r.italic && p.font === face(r.font) && Math.abs(p.size - r.size) < 0.6;
 
 // ── PDF → PDF/A (1b, 2b, 2u, 3b, 3u)
 // Pages stay as they are (real text, vector graphics); pdfa.ts fixes what the
