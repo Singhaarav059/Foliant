@@ -202,4 +202,48 @@ await test("a picture wholly off the page gives no picture; no negative sizes", 
   eq((x.match(/<p:pic>/g) ?? []).length, 1, "pictures");
 });
 
+// Enough of an XML checker for slide parts: tags nest, attribute values are
+// quoted with no raw <, & or ", and text has no raw < or &.
+function wellFormed(xml) {
+  const entity = /&(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);/g;
+  const attrs = String.raw`(?:\s+[\w:.-]+="[^"<&]*")*`;
+  const tag = new RegExp(String.raw`<(/?)([\w:.-]+)(${attrs})\s*(/?)>`, "y");
+  const src = xml.replace(/^<\?xml[^>]*\?>\s*/, "").replace(entity, "");
+  const stack = [];
+  let i = 0;
+  while (i < src.length) {
+    const lt = src.indexOf("<", i);
+    const text = src.slice(i, lt < 0 ? src.length : lt);
+    if (text.includes("&")) return `raw & in text at ${i}`;
+    if (lt < 0) break;
+    tag.lastIndex = lt;
+    const m = tag.exec(src);
+    if (!m) return `bad tag at ${lt}: ${src.slice(lt, lt + 80)}`;
+    if (m[1]) { if (stack.pop() !== m[2]) return `mismatched </${m[2]}> at ${lt}`; }
+    else if (!m[4]) stack.push(m[2]);
+    i = tag.lastIndex;
+  }
+  return stack.length ? `unclosed <${stack.at(-1)}>` : "";
+}
+
+await test("font names with & and quotes still give well-formed slides", async () => {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([W, H]);
+  const names = ["AT&T-Sans", 'Foo"Bar', "Less<More"];
+  for (const [k, n] of names.entries()) {
+    const f = await doc.embedFont(StandardFonts.Helvetica);
+    page.drawText(`Line ${k}`, { x: 40, y: 300 - k * 40, size: SIZE, font: f });
+    await doc.flush?.();
+    doc.context.lookup(f.ref).set(PDFName.of("BaseFont"), PDFName.of(n));
+  }
+  const b = new Uint8Array(await doc.save());
+  const [o] = await pdfToPpt(new File([b], "fonts.pdf"), { pptText: true });
+  const z = await JSZip.loadAsync(await o.blob.arrayBuffer());
+  for (const name of Object.keys(z.files).filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))) {
+    const x = await z.file(name).async("string");
+    eq(wellFormed(x), "", name);
+    eq(boxes(x).map((bx) => bx.text).join("|"), "Line 0|Line 1|Line 2", "text");
+  }
+});
+
 process.exit(results.failed ? 1 : 0);

@@ -596,7 +596,7 @@ function lineSegments(l: Line): { x: number; w: number; pieces: Piece[] }[] {
         owner = r;
       } else {
         owner = r;
-        pieces.push({ text: text[k], color: hex(r.color), bold: r.bold, italic: r.italic, font: r.font ?? "Arial", size: r.size });
+        pieces.push({ text: text[k], color: hex(r.color), bold: r.bold, italic: r.italic, font: face(r.font), size: r.size });
       }
     }
     const last = runs[runs.length - 1];
@@ -605,8 +605,11 @@ function lineSegments(l: Line): { x: number; w: number; pieces: Piece[] }[] {
 }
 
 const hex = (c?: string) => (c && /^#[0-9a-f]{6}$/i.test(c) ? c.slice(1).toUpperCase() : "000000");
+// pptxgenjs 4 writes the font name into the XML as it is: characters that
+// would need escaping are left out.
+const face = (f?: string) => (f ?? "").replace(/[&<>"']/g, "").trim() || "Arial";
 const sameLook = (p: Piece, r: Run) =>
-  p.color === hex(r.color) && p.bold === r.bold && p.italic === r.italic && p.font === (r.font ?? "Arial") && Math.abs(p.size - r.size) < 0.6;
+  p.color === hex(r.color) && p.bold === r.bold && p.italic === r.italic && p.font === face(r.font) && Math.abs(p.size - r.size) < 0.6;
 
 // ── PDF → PDF/A-2b
 // Pages stay as they are (real text, vector graphics); pdfa.ts fixes what the
