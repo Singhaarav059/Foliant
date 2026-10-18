@@ -103,12 +103,13 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   // PDF/A: resolution and text layer only matter when some page has to become an image.
   const pdfaLevel = tool.id === "pdfToPdfa" ? String(options.pdfaLevel) : null;
   useEffect(() => {
-    if (!pdfaLevel || !files.length) return;
+    if (!pdfaLevel) return;
     let live = true;
     void import("@/lib/pdf/pdfa").then(async (m) => {
       const level = m.PDFA_LEVELS.find((l) => l === pdfaLevel) ?? "2b";
-      const raster = await Promise.all(files.map((f) => m.pdfaNeedsRaster(f, level).catch(() => true)));
-      if (live) setOptions((o) => ({ ...o, pdfaRaster: raster.some(Boolean) }));
+      // One file at a time, stopping at the first that needs rendering; a newer run cancels this one.
+      const raster = await m.pdfaPreflight(files, level, () => live);
+      if (raster !== undefined) setOptions((o) => (o.pdfaRaster === raster ? o : { ...o, pdfaRaster: raster }));
     });
     return () => {
       live = false;

@@ -569,16 +569,34 @@ function cleanDocument(doc: PDFDocument, removed: Set<string>, part: number) {
 // image, which is when the resolution and text-layer options matter.
 export async function pdfaNeedsRaster(file: Blob, level: PdfaLevel): Promise<boolean> {
   const doc = await PDFDocument.load(new Uint8Array(await file.arrayBuffer()), { updateMetadata: false });
-  return (await fixForPdfA(doc, level)).raster.size > 0;
+  return (await fixForPdfA(doc, level, true)).raster.size > 0;
 }
 
-export async function fixForPdfA(doc: PDFDocument, level: PdfaLevel = "2b"): Promise<PdfaReport> {
+// Files larger than this aren't opened just to decide whether to show the render options.
+export const PDFA_PREFLIGHT_MAX = 50 * 1024 * 1024;
+
+// Whether any of the files needs the render options: one file at a time, so only one
+// is in memory, stopping at the first that does. Undefined when live() turns false.
+export async function pdfaPreflight(files: Blob[], level: PdfaLevel, live: () => boolean = () => true): Promise<boolean | undefined> {
+  for (const file of files) {
+    if (!live()) return undefined;
+    if (file.size > PDFA_PREFLIGHT_MAX) return true;
+    const needs = await pdfaNeedsRaster(file, level).catch(() => true);
+    if (!live()) return undefined;
+    if (needs) return true;
+  }
+  return false;
+}
+
+// scanOnly: only find the pages that must be rendered; the document isn't cleaned
+// and no font is embedded (what pdfaNeedsRaster needs, at a fraction of the work).
+export async function fixForPdfA(doc: PDFDocument, level: PdfaLevel = "2b", scanOnly = false): Promise<PdfaReport> {
   const c = { doc };
   const part = Number(level[0]);
   const removed = new Set<string>();
   const raster = new Set<number>();
   const substituted = new Map<string, string>();
-  cleanDocument(doc, removed, part);
+  if (!scanOnly) cleanDocument(doc, removed, part);
 
   // Per page: annotations, then everything the page draws.
   const fontPages = new Map<PDFDict, Set<number>>();
@@ -690,6 +708,7 @@ export async function fixForPdfA(doc: PDFDocument, level: PdfaLevel = "2b"): Pro
       return cp !== 0x20 && cp !== 0xa0 && !kit.hasGlyphForCodePoint(cp);
     });
     if (missing) { fail(); continue; }
+    if (scanOnly) continue;
 
     // PDF/A-1: a non-symbolic TrueType font names WinAnsi or MacRoman, with no Differences
     // (ISO 19005-1, 6.3.7). When the codes drawn mean what WinAnsi says they mean, it is

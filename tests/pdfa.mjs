@@ -384,6 +384,27 @@ await test("PDF/A-2u: a ToUnicode map counts only for the codes it really maps",
   eq((await fixForPdfA(await composite(mapOf(1)), "2u")).level, "2b", "composite font whose map misses a code drawn");
 });
 
+await test("render-options preflight: one file at a time, stops at the first that needs rendering, skips huge files", async () => {
+  const { pdfaPreflight, PDFA_PREFLIGHT_MAX } = await load("pdfa");
+  const reads = [];
+  const blob = (name, bytes, size = bytes.length) => ({ size, arrayBuffer: async () => { reads.push(name); return bytes.slice().buffer; } });
+  const cmykFile = await build({ cmykPage: true });
+  eq(await pdfaPreflight([blob("plain", input), blob("cmyk", cmykFile), blob("after", input)], "2b"), true, "needs rendering");
+  eq(reads.join(","), "plain,cmyk", "stopped at the first file that needs rendering");
+  reads.length = 0;
+  eq(await pdfaPreflight([blob("huge", input, PDFA_PREFLIGHT_MAX + 1), blob("after", input)], "2b"), true, "a huge file shows the options");
+  eq(reads.join(","), "", "a huge file isn't read");
+  reads.length = 0;
+  let live = true;
+  const first = { size: 1, arrayBuffer: async () => { live = false; reads.push("first"); return input.slice().buffer; } };
+  eq(await pdfaPreflight([first, blob("second", cmykFile)], "2b", () => live), undefined, "a cancelled run gives no answer");
+  eq(reads.join(","), "first", "a cancelled run stops reading");
+  eq(await pdfaPreflight([], "2b"), false, "no files: no options");
+  // The scan-only pass finds the same pages as the full conversion.
+  for (const [bytes, lvl] of [[input, "2b"], [transparent, "1b"], [await build({ cmykPage: true, separationPage: true, symbolPage: true }), "2b"], [legacyQuote, "1b"]])
+    eq([...(await fixForPdfA(await PDFDocument.load(bytes), lvl, true)).raster].join(","), [...(await fixForPdfA(await PDFDocument.load(bytes), lvl)).raster].join(","), `scan-only pages at ${lvl}`);
+});
+
 // Full validation, when a veraPDF command line is available (CI).
 if (process.env.VERAPDF) {
   const dir = mkdtempSync(join(tmpdir(), "pdfa-"));
