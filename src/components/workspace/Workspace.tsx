@@ -17,6 +17,7 @@ import { PrintResults } from "./PrintResults";
 import { clearHandoff, peekHandoff } from "@/lib/handoff";
 import { fileExt, type Output, type Progress } from "@/lib/pdf/common";
 import { fileError } from "@/lib/pdf/errors";
+import { passwordTooLong } from "@/lib/pdf/password";
 import { pageCount } from "@/lib/pdf/thumbs";
 import { defaultOptions, LIMITS, toolById, type ToolId } from "@/lib/tools";
 
@@ -43,6 +44,8 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   const [caps, setCaps] = useState<Caps | null>(null);
   const run = useRef(0);
   const files = useMemo(() => items.map((i) => i.file), [items]);
+  // Rotate turns every page by the chosen angle, on top of each page's own turn.
+  const turn = tool.id === "rotate" ? Number(options.angle) || 0 : 0;
 
   useEffect(() => {
     if (tool.runtime === "browser") return;
@@ -183,6 +186,8 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
     if (tool.id === "protect") {
       if (!String(options.password ?? "")) return t("ws.passwordEmpty");
       if (options.password !== options.confirmPassword) return t("ws.passwordMismatch");
+      const max = passwordTooLong(String(options.password));
+      if (max !== null) return t("ws.passwordTooLong", { max });
     }
     if (tool.minFiles && files.length < tool.minFiles) return t("ws.needMore", { n: tool.minFiles });
     if (tool.id === "extract" && selected.size === 0) return t("ws.pickPages");
@@ -206,7 +211,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
           if (options.separate) return org.extractSeparate(files[0], chosen.map((p) => p.page));
           return [{ name: `${stem}-extracted.pdf`, blob: await org.buildFromPlan(files, chosen) }];
         }
-        const plan = tool.id === "remove" ? pages.filter((p) => !selected.has(p.key)) : pages;
+        const plan = tool.id === "remove" ? pages.filter((p) => !selected.has(p.key)) : pages.map((p) => ({ ...p, rotate: (p.rotate + turn) % 360 }));
         const suffix = tool.id === "remove" ? "trimmed" : tool.id === "rotate" ? "rotated" : "organised";
         return [{ name: `${stem}-${suffix}.pdf`, blob: await org.buildFromPlan(files, plan) }];
       });
@@ -324,7 +329,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
 
   const board =
     tool.mode === "pages" ? (
-      <PageBoard mode={tool.id} files={files} pages={pages} setPages={setPages} selected={selected} setSelected={setSelected}
+      <PageBoard mode={tool.id} files={files} pages={pages} setPages={setPages} selected={selected} setSelected={setSelected} turn={turn}
         toolbar={tool.multiple ? <Dropzone tool={tool} onFiles={addFiles} compact /> : null} />
     ) : tool.mode === "url" ? (
       <div className="card flex items-center gap-3 p-5">

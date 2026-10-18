@@ -20,6 +20,7 @@ const MESSAGES: Record<ErrorCode, [key: string, fix?: Fix]> = {
   wrong_password: ["ws.wrongPassword"],
   already_encrypted: ["err.alreadyEncrypted", "unlock"],
   password_too_long: ["err.passwordTooLong"],
+  protect_unverified: ["ws.protectUnverified"],
   no_pages: ["err.noPages"],
   image_unsupported: ["err.imageUnsupported"],
   page_too_large: ["err.pageTooLarge"],
@@ -45,7 +46,7 @@ const FIXES: Record<Fix, { path: string; tool: string }> = {
 };
 
 // Failures that may be ours rather than the file's, so worth a report.
-const REPORTABLE = new Set<ErrorCode>(["damaged", "unrecoverable", "no_pages", "page_too_large", "out_of_memory", "unknown"]);
+const REPORTABLE = new Set<ErrorCode>(["damaged", "unrecoverable", "no_pages", "page_too_large", "out_of_memory", "protect_unverified", "unknown"]);
 
 // Turns anything thrown into a Problem.
 export function useProblem() {
@@ -55,7 +56,10 @@ export function useProblem() {
     const [key, fix] = MESSAGES[err.code];
     // Unexpected failures keep their own text, folded away, for bug reports.
     const raw = (e as { message?: unknown })?.message ?? e;
-    return { text: err.text || t(key), file: err.fileName || undefined, fix, code: err.code, detail: err.code === "unknown" ? String(raw).slice(0, 400) : undefined };
+    // Protect's too-long password says how many characters would fit.
+    const max = (e as { max?: unknown })?.max;
+    const text = err.text || (err.code === "password_too_long" && typeof max === "number" ? t("ws.passwordTooLong", { max }) : t(key));
+    return { text, file: err.fileName || undefined, fix, code: err.code, detail: err.code === "unknown" ? String(raw).slice(0, 400) : undefined };
   }, [t]);
 }
 

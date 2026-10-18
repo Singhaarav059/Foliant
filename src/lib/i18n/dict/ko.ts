@@ -272,6 +272,8 @@ const d: { [K in DictKey]?: string } = {
   "ws.passwordMismatch": "비밀번호가 일치하지 않습니다.",
   "ws.passwordEmpty": "비밀번호를 입력하세요.",
   "ws.wrongPassword": "비밀번호가 틀렸습니다. 확인 후 다시 시도하세요.",
+  "ws.passwordTooLong": "이 비밀번호는 PDF에 쓰기에는 너무 깁니다. {max}자 이하로 입력하세요.",
+  "ws.protectUnverified": "보호한 파일이 입력한 비밀번호로 열리지 않아 폐기했습니다. 다른 비밀번호로 시도하세요.",
   "ws.officeReload": "높은 충실도를 쓰려면 페이지를 새로 불러와야 합니다. 새로 고친 뒤 다시 시도하세요.",
   "ws.officeMemory": "이 기기에는 높은 충실도에 필요한 여유 메모리가 부족합니다. 표준을 쓰거나 컴퓨터를 이용하세요.",
   "ws.needsChrome": "이 도구는 서버에 Chrome 또는 LibreOffice가 필요한데, 아직 둘 다 설치되어 있지 않습니다.",

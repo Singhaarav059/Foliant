@@ -272,6 +272,8 @@ const d: { [K in DictKey]?: string } = {
   "ws.passwordMismatch": "Parolalar eşleşmiyor.",
   "ws.passwordEmpty": "Bir parola girin.",
   "ws.wrongPassword": "Parola yanlış. Kontrol edip yeniden deneyin.",
+  "ws.passwordTooLong": "Bu parola bir PDF için çok uzun. En fazla {max} karakter kullanın.",
+  "ws.protectUnverified": "Korunan dosya parolanızla açılmadığı için atıldı. Başka bir parola deneyin.",
   "ws.officeReload": "Yüksek uygunluk için sayfanın yeniden yüklenmesi gerekir. Sayfayı yenileyip tekrar deneyin.",
   "ws.officeMemory": "Bu cihazda yüksek uygunluk için yeterli boş bellek yok. Standart’ı deneyin ya da bir bilgisayar kullanın.",
   "ws.needsChrome": "Bu araç sunucuda Chrome veya LibreOffice gerektiriyor ve ikisi de henüz yüklü değil.",

@@ -13,6 +13,7 @@ export type ErrorCode =
   | "wrong_password"
   | "already_encrypted"
   | "password_too_long"
+  | "protect_unverified"
   | "no_pages"
   | "image_unsupported"
   | "page_too_large"
@@ -30,7 +31,7 @@ export type ErrorCode =
   | "unknown";
 
 const CODES = new Set<string>([
-  "not_pdf", "damaged", "unrecoverable", "encrypted", "wrong_password", "already_encrypted", "password_too_long", "no_pages",
+  "not_pdf", "damaged", "unrecoverable", "encrypted", "wrong_password", "already_encrypted", "password_too_long", "protect_unverified", "no_pages",
   "image_unsupported", "page_too_large", "out_of_memory", "no_text", "no_images", "bad_ranges", "empty_document",
   "missing_image", "download_failed", "office_isolation", "office_memory", "server", "network", "unknown",
 ]);

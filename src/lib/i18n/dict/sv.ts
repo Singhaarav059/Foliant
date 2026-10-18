@@ -272,6 +272,8 @@ const d: { [K in DictKey]?: string } = {
   "ws.passwordMismatch": "Lösenorden matchar inte.",
   "ws.passwordEmpty": "Ange ett lösenord.",
   "ws.wrongPassword": "Fel lösenord. Kontrollera det och försök igen.",
+  "ws.passwordTooLong": "Lösenordet är för långt för en PDF. Använd högst {max} tecken.",
+  "ws.protectUnverified": "Den skyddade filen gick inte att öppna med lösenordet, så den sparades inte. Prova ett annat lösenord.",
   "ws.officeReload": "Hög återgivning kräver att sidan laddas om. Ladda om sidan och försök igen.",
   "ws.officeMemory": "Enheten har inte tillräckligt med ledigt minne för hög återgivning. Prova Standard eller en dator.",
   "ws.needsChrome": "Det här verktyget kräver Chrome eller LibreOffice på servern, och inget av dem är installerat än.",

@@ -1,0 +1,253 @@
+// Page-subset tests: split, extract, remove and organize must carry only the
+// pages they output. A link's destination names another page, and copying a
+// page by following everything it refers to brought every linked page along
+// as hidden content (a one-page part of a linked book held the whole book).
+//
+//   node tests/organize.mjs
+import {
+  PDFDocument, PDFName, PDFString, PDFRawStream, PDFArray, PDFDict, PDFRef, PDFNull, StandardFonts, decodePDFRawStream,
+  pushGraphicsState, popGraphicsState, concatTransformationMatrix, drawObject,
+} from "pdf-lib";
+import { load, openPdf, check, eq } from "./lib/load.mjs";
+
+const { split, buildFromPlan, extractSeparate, merge } = await load("organize");
+const results = { failed: 0 };
+const test = check(results);
+const CHAPTERS = 60;
+
+// A 61-page book: a contents page linking to 60 chapters, each with its own
+// photo-like image and a secret line, and a "back to contents" link. Half of
+// the contents links use /Dest, half a GoTo action. Each chapter also has a
+// "next" button (a GoTo that isn't a link), a form field whose parent is
+// shared by every chapter's field, as in forms exported from layout tools,
+// and a note, with its pop-up, that replies to the previous chapter's note.
+async function book() {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const contents = doc.addPage([400, 600]);
+  contents.drawText("Contents", { x: 40, y: 560, size: 18, font });
+  let seed = 11;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) >> 16) & 0xff;
+  const form = doc.context.register(doc.context.obj({ T: PDFString.of("applicant"), Kids: [] }));
+  const pages = [contents, ...Array.from({ length: CHAPTERS }, () => doc.addPage([400, 600]))];
+  let note;
+  for (let n = 1; n <= CHAPTERS; n++) {
+    const page = pages[n];
+    page.drawText(`Chapter ${n}`, { x: 40, y: 560, size: 18, font });
+    page.drawText(`SECRET-CHAPTER-${n}`, { x: 40, y: 530, size: 12, font });
+    // 64×64 noise doesn't compress: about 12 KB per chapter.
+    const px = Uint8Array.from({ length: 64 * 64 * 3 }, rnd);
+    const img = doc.context.register(doc.context.flateStream(px, { Type: "XObject", Subtype: "Image", Width: 64, Height: 64, ColorSpace: "DeviceRGB", BitsPerComponent: 8 }));
+    page.node.setXObject(PDFName.of("Im1"), img);
+    page.pushOperators(pushGraphicsState(), concatTransformationMatrix(200, 0, 0, 200, 100, 200), drawObject("Im1"), popGraphicsState());
+    const back = doc.context.register(doc.context.obj({ Type: "Annot", Subtype: "Link", Rect: [40, 20, 200, 40], Border: [0, 0, 0], Dest: [contents.ref, PDFName.of("Fit")] }));
+    const next = doc.context.register(doc.context.obj({
+      Type: "Annot", Subtype: "Widget", FT: PDFName.of("Btn"), Ff: 65536, T: PDFString.of(`next${n}`), Rect: [220, 20, 300, 40], P: page.ref,
+      A: { S: "GoTo", D: [pages[(n + 1) % pages.length].ref, PDFName.of("Fit")] },
+    }));
+    const field = doc.context.register(doc.context.obj({ FT: PDFName.of("Tx"), T: PDFString.of(`answer${n}`), V: PDFString.of(`SECRET-FIELD-${n}`), Parent: form, Kids: [] }));
+    const widget = doc.context.register(doc.context.obj({ Type: "Annot", Subtype: "Widget", Rect: [40, 480, 300, 500], P: page.ref, Parent: field }));
+    doc.context.lookup(field, PDFDict).lookup(PDFName.of("Kids"), PDFArray).push(widget);
+    doc.context.lookup(form, PDFDict).lookup(PDFName.of("Kids"), PDFArray).push(field);
+    const reply = doc.context.register(doc.context.obj({ Type: "Annot", Subtype: "Text", Rect: [320, 560, 340, 580], P: page.ref, Contents: PDFString.of(`SECRET-NOTE-${n}`), ...(note ? { IRT: note } : {}) }));
+    const popup = doc.context.register(doc.context.obj({ Type: "Annot", Subtype: "Popup", Rect: [340, 480, 400, 560], P: page.ref, Parent: reply }));
+    doc.context.lookup(reply, PDFDict).set(PDFName.of("Popup"), popup);
+    note = reply;
+    page.node.set(PDFName.of("Annots"), doc.context.obj([back, next, widget, reply, popup]));
+  }
+  const links = [];
+  for (let n = 1; n <= CHAPTERS; n++) {
+    const target = doc.getPage(n).ref;
+    const y = 540 - n * 8;
+    const dest = [target, PDFName.of("XYZ"), null, null, null];
+    links.push(doc.context.register(doc.context.obj(n % 2
+      ? { Type: "Annot", Subtype: "Link", Rect: [40, y, 200, y + 7], Border: [0, 0, 0], Dest: dest }
+      : { Type: "Annot", Subtype: "Link", Rect: [40, y, 200, y + 7], Border: [0, 0, 0], A: { S: "GoTo", D: dest } })));
+  }
+  contents.node.set(PDFName.of("Annots"), doc.context.obj(links));
+  return doc.save();
+}
+
+const input = await book();
+const file = (bytes = input, name = "book.pdf") => new File([bytes], name, { type: "application/pdf" });
+const open = async (blob) => {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  return { bytes, doc: await PDFDocument.load(bytes) };
+};
+
+// Every object in the file, reachable or not, as text: decoded streams plus
+// literal and hex strings, so a secret in any form shows up.
+function everything(doc) {
+  const parts = [];
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    if (obj instanceof PDFRawStream) {
+      let data;
+      try {
+        data = decodePDFRawStream(obj).decode();
+      } catch {
+        data = obj.contents;
+      }
+      parts.push(obj.dict.toString(), Buffer.from(data).toString("latin1"));
+    } else parts.push(obj.toString());
+  }
+  const raw = parts.join("\n");
+  // Hex strings (as pdf-lib writes text) decoded too.
+  return raw + raw.replace(/<([0-9A-Fa-f\s]+)>/g, (_, h) => Buffer.from(h.replace(/\s/g, ""), "hex").toString("latin1"));
+}
+const images = (doc) => doc.context.enumerateIndirectObjects().filter(([, o]) => o instanceof PDFRawStream && o.dict.get(PDFName.of("Subtype")) === PDFName.of("Image")).length;
+const pageObjects = (doc) => doc.context.enumerateIndirectObjects().filter(([, o]) => o instanceof PDFDict && o.get(PDFName.of("Type")) === PDFName.of("Page")).length;
+const secrets = (doc, kind = "CHAPTER") => [...new Set(everything(doc).match(new RegExp(`SECRET-${kind}-\\d+`, "g")) ?? [])].sort();
+const linkTargets = (doc, i) => {
+  const annots = doc.getPage(i).node.lookupMaybe(PDFName.of("Annots"), PDFArray)?.asArray() ?? [];
+  return annots.map((r) => doc.context.lookup(r, PDFDict)).filter((a) => a.get(PDFName.of("Subtype")) === PDFName.of("Link")).map((a) => {
+    const d = a.lookupMaybe(PDFName.of("Dest"), PDFArray) ?? a.lookupMaybe(PDFName.of("A"), PDFDict)?.lookupMaybe(PDFName.of("D"), PDFArray);
+    const target = d?.get(0);
+    return target instanceof PDFRef ? doc.getPages().findIndex((p) => p.ref === target) : target === PDFNull ? "null" : String(target);
+  });
+};
+
+await test("the book really links every page (else this test proves nothing)", async () => {
+  const doc = await PDFDocument.load(input);
+  eq(doc.getPageCount(), 61, "pages");
+  eq(images(doc), CHAPTERS, "images");
+  eq(linkTargets(doc, 0).length, CHAPTERS, "contents links");
+});
+
+await test("split every page: each part holds only its own page", async () => {
+  const parts = await split(file(), { splitMode: "every", every: 1, ranges: "", maxMb: 1, mergeRanges: false });
+  eq(parts.length, 61, "parts");
+  const sizes = [];
+  for (let i = 0; i < parts.length; i++) {
+    const { bytes, doc } = await open(parts[i].blob);
+    sizes.push(bytes.length);
+    if (bytes.length >= 40 * 1024) throw new Error(`part ${i + 1} is ${Math.round(bytes.length / 1024)} KB`);
+    eq(doc.getPageCount(), 1, `part ${i + 1} pages`);
+    eq(pageObjects(doc), 1, `part ${i + 1} page objects`);
+    eq(images(doc), i ? 1 : 0, `part ${i + 1} images`);
+    eq(secrets(doc).join(), i ? `SECRET-CHAPTER-${i}` : "", `part ${i + 1} secrets`);
+    eq(secrets(doc, "FIELD").join(), i ? `SECRET-FIELD-${i}` : "", `part ${i + 1} form values`);
+    eq(secrets(doc, "NOTE").join(), i ? `SECRET-NOTE-${i}` : "", `part ${i + 1} notes`);
+  }
+  return `largest ${Math.round(Math.max(...sizes) / 1024)} KB`;
+});
+
+await test("organize keeping only the contents page stores no chapter", async () => {
+  const { doc } = await open(await buildFromPlan([file()], [{ file: 0, page: 0, rotate: 0 }]));
+  eq(doc.getPageCount(), 1, "pages");
+  eq(images(doc), 0, "images");
+  eq(secrets(doc).length, 0, "chapter secrets");
+  eq(secrets(doc, "FIELD").length, 0, "form values");
+  // Links to pages that aren't in the file are dropped, not left pointing nowhere.
+  eq(linkTargets(doc, 0).length, 0, "links");
+});
+
+await test("remove pages: the removed chapters are gone, links between kept pages still work", async () => {
+  const plan = Array.from({ length: 61 }, (_, i) => ({ file: 0, page: i, rotate: 0 })).filter((p) => p.page < 11 || p.page > 20);
+  const { doc } = await open(await buildFromPlan([file()], plan));
+  eq(doc.getPageCount(), 51, "pages");
+  eq(pageObjects(doc), 51, "page objects");
+  eq(images(doc), 50, "images");
+  const left = secrets(doc);
+  for (let n = 11; n <= 20; n++) if (left.includes(`SECRET-CHAPTER-${n}`)) throw new Error(`chapter ${n} still inside`);
+  // Contents links now go to the right pages of the new file: chapter n is page n (n ≤ 10) or n − 10.
+  const targets = linkTargets(doc, 0);
+  eq(targets.length, 50, "contents links");
+  eq(targets.join(), [...Array.from({ length: 10 }, (_, i) => i + 1), ...Array.from({ length: 40 }, (_, i) => i + 11)].join(), "contents link targets");
+  eq(linkTargets(doc, 30).join(), "0", "back link of a chapter");
+});
+
+await test("extract separately and as one file", async () => {
+  const parts = await extractSeparate(file(), [5, 40]);
+  for (const [i, n] of [[0, 5], [1, 40]]) {
+    const { doc } = await open(parts[i].blob);
+    eq(images(doc), 1, `page ${n} images`);
+    eq(secrets(doc).join(), `SECRET-CHAPTER-${n}`, `page ${n} secrets`);
+  }
+  const { doc } = await open(await buildFromPlan([file()], [{ file: 0, page: 5, rotate: 0 }, { file: 0, page: 40, rotate: 90 }]));
+  eq(images(doc), 2, "images");
+  eq(secrets(doc).join(), "SECRET-CHAPTER-40,SECRET-CHAPTER-5", "secrets");
+  eq(doc.getPage(1).getRotation().angle, 90, "rotation");
+});
+
+await test("split by ranges, merged into one file", async () => {
+  const [part] = await split(file(), { splitMode: "ranges", every: 1, ranges: "2-3, 60", maxMb: 1, mergeRanges: true });
+  const { doc } = await open(part.blob);
+  eq(doc.getPageCount(), 3, "pages");
+  eq(secrets(doc).join(), "SECRET-CHAPTER-1,SECRET-CHAPTER-2,SECRET-CHAPTER-59", "secrets");
+});
+
+await test("split by size counts only the pages in each part", async () => {
+  // 61 pages of ~12 KB: about 7 parts of 100 KB, not 61 parts of a whole book each.
+  const parts = await split(file(), { splitMode: "size", every: 1, ranges: "", maxMb: 0.1, mergeRanges: false });
+  if (parts.length > 12) throw new Error(`${parts.length} parts`);
+  let pages = 0;
+  for (const p of parts) pages += (await open(p.blob)).doc.getPageCount();
+  eq(pages, 61, "pages over all parts");
+  return `${parts.length} parts`;
+});
+
+// /T is optional, so a parent field can be a bare { Kids }. Each page also
+// has a reset button naming that parent, so it's reached before its widgets.
+// Some files leave out the fields' /Parent, and the form's field tree still
+// lists the parent; broken ones list nothing either.
+for (const shape of ["", " (no /Parent)", " (no /Parent, no field list)"]) await test(`a form whose top field has no name still splits page by page${shape}`, async () => {
+  const doc = await PDFDocument.create();
+  const parent = doc.context.register(doc.context.obj({ Kids: [] }));
+  const linked = !shape;
+  if (shape === " (no /Parent)") doc.catalog.set(PDFName.of("AcroForm"), doc.context.obj({ Fields: [parent] }));
+  for (let i = 0; i < 3; i++) {
+    const page = doc.addPage([200, 200]);
+    const field = doc.context.register(doc.context.obj({ FT: PDFName.of("Tx"), T: PDFString.of(`f${i}`), V: PDFString.of(`SECRET-FIELD-${i}`), ...(linked ? { Parent: parent } : {}), Kids: [] }));
+    const widget = doc.context.register(doc.context.obj({ Type: "Annot", Subtype: "Widget", Rect: [0, 0, 50, 20], P: page.ref, Parent: field }));
+    const reset = doc.context.register(doc.context.obj({
+      Type: "Annot", Subtype: "Widget", FT: PDFName.of("Btn"), Ff: 65536, T: PDFString.of(`reset${i}`), Rect: [60, 0, 100, 20], P: page.ref,
+      A: { S: "ResetForm", Fields: [parent] },
+    }));
+    doc.context.lookup(field, PDFDict).lookup(PDFName.of("Kids"), PDFArray).push(widget);
+    doc.context.lookup(parent, PDFDict).lookup(PDFName.of("Kids"), PDFArray).push(field);
+    page.node.set(PDFName.of("Annots"), doc.context.obj([reset, widget]));
+  }
+  const parts = await split(file(await doc.save(), "form.pdf"), { splitMode: "every", every: 1, ranges: "", maxMb: 1, mergeRanges: false });
+  eq(parts.length, 3, "parts");
+  for (let i = 0; i < 3; i++) eq(secrets((await open(parts[i].blob)).doc, "FIELD").join(), `SECRET-FIELD-${i}`, `part ${i + 1} form values`);
+});
+
+await test("a duplicated page is a page of its own", async () => {
+  const { doc } = await open(await buildFromPlan([file()], [{ file: 0, page: 3, rotate: 0 }, { file: 0, page: 3, rotate: 180 }]));
+  eq(doc.getPageCount(), 2, "pages");
+  eq(doc.getPage(0).ref === doc.getPage(1).ref, false, "distinct page objects");
+  eq(doc.getPage(0).getRotation().angle, 0, "first rotation");
+  eq(doc.getPage(1).getRotation().angle, 180, "second rotation");
+  eq(images(doc), 1, "the shared image is stored once");
+  // Each copy has annotations of its own, on it: a shared one would be
+  // edited or deleted on both pages at once. A note and its pop-up stay a pair.
+  const annots = [0, 1].map((i) => doc.getPage(i).node.lookup(PDFName.of("Annots"), PDFArray).asArray());
+  eq(annots.map((a) => a.length).join(), "4,4", "annotations");
+  eq(annots[0].some((r) => annots[1].includes(r)), false, "annotations shared by both pages");
+  const get = (ref, key) => doc.context.lookup(ref, PDFDict).get(PDFName.of(key));
+  for (const i of [0, 1]) {
+    eq(annots[i].every((r) => get(r, "P") === doc.getPage(i).ref), true, `page ${i + 1} annotations on their page`);
+    const reply = annots[i].find((r) => get(r, "Subtype") === PDFName.of("Text"));
+    eq(annots[i].includes(get(reply, "Popup")) && get(get(reply, "Popup"), "Parent") === reply, true, `page ${i + 1} note and pop-up`);
+  }
+});
+
+await test("merge keeps each file's links inside that file", async () => {
+  const [out] = await merge([file(), file(input, "copy.pdf")], { bookmarks: false });
+  const { doc } = await open(out.blob);
+  eq(doc.getPageCount(), 122, "pages");
+  eq(pageObjects(doc), 122, "page objects");
+  eq(images(doc), 120, "images");
+  eq(linkTargets(doc, 61).join(), Array.from({ length: 60 }, (_, i) => 62 + i).join(), "second contents links");
+});
+
+await test("outputs open in pdf.js with working links", async () => {
+  const { bytes } = await open(await buildFromPlan([file()], [{ file: 0, page: 0, rotate: 0 }, { file: 0, page: 7, rotate: 0 }]));
+  const pdf = await openPdf(bytes);
+  const annots = await (await pdf.getPage(1)).getAnnotations();
+  eq(annots.length, 1, "links on the contents page");
+  eq(await pdf.getPageIndex(annots[0].dest[0]), 1, "link target page");
+  await pdf.loadingTask.destroy();
+});
+
+process.exit(results.failed ? 1 : 0);

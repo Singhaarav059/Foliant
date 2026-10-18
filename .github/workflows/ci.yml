@@ -79,6 +79,12 @@ jobs:
       - name: Compare
         if: success() || failure()
         run: npm run test:e2e:compare -- ${{ matrix.browser }}
+      - name: Rotate
+        if: success() || failure()
+        run: npm run test:e2e:rotate -- ${{ matrix.browser }}
+      - name: Protect
+        if: success() || failure()
+        run: npm run test:e2e:protect -- ${{ matrix.browser }}
 
   pdf:
     name: PDF engine tests
@@ -112,6 +118,10 @@ jobs:
         run: npm run test:errors
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:compare
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:organize
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:protect
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:layout
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}

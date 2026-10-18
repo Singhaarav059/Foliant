@@ -272,6 +272,8 @@ const d: { [K in DictKey]?: string } = {
   "ws.passwordMismatch": "As senhas não coincidem.",
   "ws.passwordEmpty": "Digite uma senha.",
   "ws.wrongPassword": "Essa senha está incorreta. Confira e tente novamente.",
+  "ws.passwordTooLong": "Essa senha é longa demais para um PDF. Use no máximo {max} caracteres.",
+  "ws.protectUnverified": "O arquivo protegido não abria com a sua senha, por isso foi descartado. Tente outra senha.",
   "ws.officeReload": "A alta fidelidade precisa de um novo carregamento da página. Recarregue e tente novamente.",
   "ws.officeMemory": "Este dispositivo não tem memória livre suficiente para alta fidelidade. Tente Padrão ou use um computador.",
   "ws.needsChrome": "Esta ferramenta precisa do Chrome ou do LibreOffice no servidor, e nenhum dos dois está instalado ainda.",

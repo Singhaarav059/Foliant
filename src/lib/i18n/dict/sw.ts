@@ -272,6 +272,8 @@ const d: { [K in DictKey]?: string } = {
   "ws.passwordMismatch": "Manenosiri hayalingani.",
   "ws.passwordEmpty": "Weka nenosiri.",
   "ws.wrongPassword": "Nenosiri si sahihi. Likague kisha ujaribu tena.",
+  "ws.passwordTooLong": "Nenosiri hili ni refu mno kwa PDF. Tumia herufi {max} au chache zaidi.",
+  "ws.protectUnverified": "Faili lililolindwa halikufunguka kwa nenosiri lako, kwa hiyo limetupwa. Jaribu nenosiri jingine.",
   "ws.officeReload": "Uaminifu wa juu unahitaji kupakia ukurasa upya. Pakia upya kisha ujaribu tena.",
   "ws.officeMemory": "Kifaa hiki hakina kumbukumbu ya kutosha kwa uaminifu wa juu. Jaribu Kawaida au tumia kompyuta.",
   "ws.needsChrome": "Zana hii inahitaji Chrome au LibreOffice kwenye seva, na hakuna kati ya hizo iliyosakinishwa bado.",
