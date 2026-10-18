@@ -1,5 +1,4 @@
 {
-  "compress bomb-image.pdf": {"why":"P1-07 compress inflates everything: memory over the limit","fails":["MB of memory (limit"]},
   "images bomb-image.pdf": {"why":"P1-09 a decompression-bomb image: memory over the limit","fails":["MB of memory (limit"]},
   "images huge-page.pdf": {"why":"P1-09 an oversized page fails the whole job","fails":["error: Create skia surface failed"]},
   "images huge-scan.pdf": {"why":"P1-09 an oversized page fails the whole job","fails":["error: Create skia surface failed"]},
