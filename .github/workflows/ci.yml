@@ -82,6 +82,9 @@ jobs:
       - name: Rotate
         if: success() || failure()
         run: npm run test:e2e:rotate -- ${{ matrix.browser }}
+      - name: Page board
+        if: success() || failure()
+        run: npm run test:e2e:pageboard -- ${{ matrix.browser }}
       - name: Protect
         if: success() || failure()
         run: npm run test:e2e:protect -- ${{ matrix.browser }}
@@ -123,6 +126,8 @@ jobs:
         run: npm run test:compare
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:organize
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:pageboard
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:protect
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}

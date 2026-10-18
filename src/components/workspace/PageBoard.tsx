@@ -1,15 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent,
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Check, Copy, FilePlus2, RotateCcw, RotateCw, Trash2 } from "lucide-react";
+import { ArrowDownUp, ArrowUpDown, Check, Copy, FilePlus2, RectangleHorizontal, RectangleVertical, RotateCcw, RotateCw, Shuffle, Trash2, Undo2 } from "lucide-react";
 import { PdfThumb } from "../PdfThumb";
 import { useI18n } from "../I18n";
 import { parseRanges } from "@/lib/pdf/common";
+import { byOrientation, interleave, rangeKeys, reverse, sortByOriginal } from "@/lib/pageplan";
 import type { ToolId } from "@/lib/tools";
 
 export type PageItem = { key: string; file: number; page: number; rotate: number; blank?: boolean };
@@ -20,7 +21,7 @@ function PageCard({
   item, files, index, mode, turn, selected, onToggle, onRotate, onDelete, onDuplicate, onBlank, multiFile,
 }: {
   item: PageItem; files: File[]; index: number; mode: ToolId; turn: number; selected: boolean; multiFile: boolean;
-  onToggle: () => void; onRotate: (d: number) => void; onDelete: () => void; onDuplicate: () => void; onBlank: () => void;
+  onToggle: (shift: boolean) => void; onRotate: (d: number) => void; onDelete: () => void; onDuplicate: () => void; onBlank: () => void;
 }) {
   const { t } = useI18n();
   const sortable = mode === "organize";
@@ -40,7 +41,7 @@ function PageCard({
     >
       <button
         type="button"
-        onClick={selectable ? onToggle : undefined}
+        onClick={selectable ? (e) => onToggle(e.shiftKey) : undefined}
         tabIndex={selectable ? 0 : -1}
         aria-pressed={selectable ? selected : undefined}
         aria-label={t("ws.page", { n: index + 1 })}
@@ -83,14 +84,17 @@ function PageCard({
 }
 
 // `turn` is added to every page on top of its own rotation (Rotate's "Rotate all by").
+// `original` is the board as the files first listed it, which Reset goes back to.
 export function PageBoard({
-  mode, files, pages, setPages, selected, setSelected, toolbar, turn = 0,
+  mode, files, pages, setPages, selected, setSelected, toolbar, turn = 0, original,
 }: {
   mode: ToolId; files: File[]; pages: PageItem[]; setPages: React.Dispatch<React.SetStateAction<PageItem[]>>; turn?: number;
-  selected: Set<string>; setSelected: React.Dispatch<React.SetStateAction<Set<string>>>; toolbar?: React.ReactNode;
+  selected: Set<string>; setSelected: React.Dispatch<React.SetStateAction<Set<string>>>; toolbar?: React.ReactNode; original?: PageItem[];
 }) {
   const { t } = useI18n();
   const [range, setRange] = useState("");
+  // The page last clicked without Shift: a Shift-click selects from there.
+  const anchor = useRef<string | undefined>(undefined);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 6 } }),
@@ -113,6 +117,27 @@ export function PageBoard({
     setRange(value);
     const picked = new Set(parseRanges(value, pages.length).flat().map((i) => pages[i].key));
     setSelected(picked);
+  };
+  const toggle = (key: string, shift: boolean) => {
+    const span = shift ? rangeKeys(ids, anchor.current, key) : [];
+    if (span.length > 1) {
+      setSelected((cur) => new Set([...cur, ...span]));
+      return;
+    }
+    anchor.current = key;
+    setSelected((cur) => {
+      const next = new Set(cur);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+  const turnBy = (d: number, keys?: Set<string>) =>
+    setPages((list) => list.map((p) => (!keys || keys.has(p.key) ? { ...p, rotate: (p.rotate + d + 360) % 360 } : p)));
+  const turnShaped = async (want: "portrait" | "landscape") => {
+    const { pageSizes } = await import("@/lib/pdf/thumbs");
+    const sizes = await Promise.all(files.map((f) => pageSizes(f).catch(() => [])));
+    turnBy(90, new Set(byOrientation(pages, sizes, want)));
   };
   const hint = mode === "remove" ? t("ws.pickPagesRemove") : mode === "rotate" ? t("ws.pickPagesRotate") : mode === "organize" ? t("ws.dragToReorder") : t("ws.pickPages");
 
@@ -137,16 +162,46 @@ export function PageBoard({
         )}
         {(mode === "rotate" || mode === "organize") && (
           <>
-            <button className="btn btn-quiet btn-sm" onClick={() => setPages((list) => list.map((p) => ({ ...p, rotate: (p.rotate + 270) % 360 })))}>
+            <button className="btn btn-quiet btn-sm" onClick={() => turnBy(270)}>
               <RotateCcw size={16} /> {t("ws.rotateLeft")}
             </button>
-            <button className="btn btn-quiet btn-sm" onClick={() => setPages((list) => list.map((p) => ({ ...p, rotate: (p.rotate + 90) % 360 })))}>
+            <button className="btn btn-quiet btn-sm" onClick={() => turnBy(90)}>
               <RotateCw size={16} /> {t("ws.rotateRight")}
             </button>
           </>
         )}
+        {mode === "rotate" && (
+          <>
+            <button className="btn btn-quiet btn-sm" onClick={() => void turnShaped("portrait")}>
+              <RectangleVertical size={16} /> {t("ws.rotatePortrait")}
+            </button>
+            <button className="btn btn-quiet btn-sm" onClick={() => void turnShaped("landscape")}>
+              <RectangleHorizontal size={16} /> {t("ws.rotateLandscape")}
+            </button>
+          </>
+        )}
+        {mode === "organize" && (
+          <>
+            {files.length > 1 && (
+              <button className="btn btn-quiet btn-sm" onClick={() => setPages(interleave)}>
+                <Shuffle size={16} /> {t("ws.interleave")}
+              </button>
+            )}
+            <button className="btn btn-quiet btn-sm" onClick={() => setPages(reverse)}>
+              <ArrowDownUp size={16} /> {t("ws.reverse")}
+            </button>
+            <button className="btn btn-quiet btn-sm" onClick={() => setPages(sortByOriginal)}>
+              <ArrowUpDown size={16} /> {t("ws.sortPages")}
+            </button>
+          </>
+        )}
+        {(mode === "rotate" || mode === "organize") && original && (
+          <button className="btn btn-quiet btn-sm" onClick={() => setPages(original)}>
+            <Undo2 size={16} /> {t("ws.resetPages")}
+          </button>
+        )}
       </div>
-      <p className="mb-3 text-[14px] text-muted">{hint}</p>
+      <p className="mb-3 text-[14px] text-muted">{hint}{selectable && ` ${t("ws.shiftRange")}`}</p>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={ids} strategy={rectSortingStrategy}>
           <ul className="grid grid-cols-[repeat(auto-fill,minmax(152px,1fr))] gap-1">
@@ -160,14 +215,7 @@ export function PageBoard({
                 turn={turn}
                 multiFile={files.length > 1}
                 selected={selected.has(p.key)}
-                onToggle={() =>
-                  setSelected((cur) => {
-                    const next = new Set(cur);
-                    if (next.has(p.key)) next.delete(p.key);
-                    else next.add(p.key);
-                    return next;
-                  })
-                }
+                onToggle={(shift) => toggle(p.key, shift)}
                 onRotate={(d) => update(p.key, (x) => ({ ...x, rotate: (x.rotate + d + 360) % 360 }))}
                 onDelete={() => setPages((list) => list.filter((x) => x.key !== p.key))}
                 onDuplicate={() => insertAfter(p.key, { ...p, key: crypto.randomUUID() })}

@@ -40,6 +40,8 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   const [outputs, setOutputs] = useState<Output[]>([]);
   const [error, setError] = useState<Problem | null>(null);
   const [pages, setPages] = useState<PageItem[]>([]);
+  // The pages as the files list them, for the board's Reset.
+  const [original, setOriginal] = useState<PageItem[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [url, setUrl] = useState("");
   const [caps, setCaps] = useState<Caps | null>(null);
@@ -125,6 +127,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
       }
       // Dropping a file re-runs this with the files that are left.
       if (!live || failed) return;
+      setOriginal(built);
       setPages((prev) => {
         const existing = new Map(prev.map((p) => [p.key, p]));
         const kept = built.map((p) => ({ ...(existing.get(p.key) ?? p), file: p.file }));
@@ -274,6 +277,12 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
           if (options.separate) return org.extractSeparate(files[0], chosen.map((p) => p.page));
           return [{ name: `${stem}-extracted.pdf`, blob: await org.buildFromPlan(files, chosen) }];
         }
+        // Rotate: one PDF back for each file in.
+        if (tool.id === "rotate" && files.length > 1) {
+          const { byFile } = await import("@/lib/pageplan");
+          const plans = byFile(pages.map((p) => ({ ...p, rotate: (p.rotate + turn) % 360 })), files.length);
+          return Promise.all(files.map(async (f, fi) => ({ name: `${f.name.replace(/\.pdf$/i, "")}-rotated.pdf`, blob: await org.buildFromPlan([f], plans[fi]) })));
+        }
         const plan = tool.id === "remove" ? pages.filter((p) => !selected.has(p.key)) : pages.map((p) => ({ ...p, rotate: (p.rotate + turn) % 360 }));
         const suffix = tool.id === "remove" ? "trimmed" : tool.id === "rotate" ? "rotated" : "organised";
         return [{ name: `${stem}-${suffix}.pdf`, blob: await org.buildFromPlan(files, plan) }];
@@ -412,7 +421,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
 
   const board =
     tool.mode === "pages" ? (
-      <PageBoard mode={tool.id} files={files} pages={pages} setPages={setPages} selected={selected} setSelected={setSelected} turn={turn}
+      <PageBoard mode={tool.id} files={files} pages={pages} setPages={setPages} selected={selected} setSelected={setSelected} turn={turn} original={original}
         toolbar={tool.multiple ? <Dropzone tool={tool} onFiles={addFiles} compact /> : null} />
     ) : tool.mode === "url" ? (
       <div className="card flex items-center gap-3 p-5">
