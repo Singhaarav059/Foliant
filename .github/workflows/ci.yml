@@ -34,6 +34,8 @@ jobs:
         run: npm run build:static
       - name: Search and sharing (sitemap, canonical, hreflang, cards, icons)
         run: npm run test:seo
+      - name: Tool page content and structured data
+        run: npm run test:content
       - name: Licences, operator and contact
         run: npm run test:legal
 

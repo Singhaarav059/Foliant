@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getDictionary, type DictKey } from "./dictionary";
+import { getDictionary, type Dict, type DictKey } from "./dictionary";
 import { hasLocale } from "./locales";
 import { pageMetadata } from "../seo";
 
@@ -15,4 +15,13 @@ export function titleFrom(key: DictKey, page?: { path: string; description: Dict
     const description = t[page.description];
     return { title: t[key], description, ...pageMetadata({ lang, path: page.path, title: t[key], description }) };
   };
+}
+
+// Texts only server-rendered pages use: each tool page's long-form content
+// (src/components/ToolContent.tsx). Left out of the dictionary the browser
+// receives, which every page carries, so they don't weigh on every page.
+const SERVER_ONLY = /^(tp\.|tool\.[^.]+\.(title|meta|intro|private|step\d+|q\d+|a\d+)$)/;
+
+export function clientDict(dict: Dict): Dict {
+  return Object.fromEntries(Object.entries(dict).filter(([k]) => !SERVER_ONLY.test(k))) as Dict;
 }

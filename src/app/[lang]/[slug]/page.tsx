@@ -5,8 +5,9 @@ import { notFound } from "next/navigation";
 import { ShieldCheck, Server, ArrowRight } from "lucide-react";
 import { Workspace } from "@/components/workspace/Workspace";
 import { ToolIcon } from "@/components/ToolIcon";
+import { ToolContent, toolText } from "@/components/ToolContent";
 import { getDictionary, format, type Dict, type DictKey } from "@/lib/i18n/dictionary";
-import { hasLocale, LOCALE_CODES } from "@/lib/i18n/locales";
+import { hasLocale, LOCALE_CODES, type Locale } from "@/lib/i18n/locales";
 import { CATEGORIES, LIMITS, TOOLS, toolBySlug, type Tool } from "@/lib/tools";
 import { LEGAL, LEGAL_UPDATED } from "@/lib/legal";
 import { BRAND, OPERATOR } from "@/lib/brand";
@@ -40,8 +41,8 @@ export async function generateMetadata({ params }: PageProps<"/[lang]/[slug]">):
   const t = await getDictionary(lang);
   const tool = toolBySlug(slug);
   if (tool) {
-    const title = t[`tool.${tool.id}.name` as DictKey];
-    const description = t[`tool.${tool.id}.desc` as DictKey];
+    const title = toolText(t, tool, "title");
+    const description = toolText(t, tool, "meta");
     return { title, description, ...pageMetadata({ lang, path: `/${slug}`, title, description, image: tool.slug }) };
   }
   if ((INFO as readonly string[]).includes(slug)) {
@@ -54,7 +55,10 @@ export async function generateMetadata({ params }: PageProps<"/[lang]/[slug]">):
 
 // Params are read inside a Suspense boundary so navigations between tools
 // can show the shared shell instantly while the page content resolves.
+// The static build has no navigations to wait for: every page is a file, so
+// its content goes in the HTML as it is, readable before any script runs.
 export default function SlugPage({ params }: PageProps<"/[lang]/[slug]">) {
+  if (STATIC) return <SlugContent params={params} />;
   return (
     <Suspense fallback={<div className="min-h-[70vh]" />}>
       <SlugContent params={params} />
@@ -72,7 +76,7 @@ async function SlugContent({ params }: { params: PageProps<"/[lang]/[slug]">["pa
   notFound();
 }
 
-function ToolPage({ tool, t, lang }: { tool: Tool; t: Dict; lang: string }) {
+function ToolPage({ tool, t, lang }: { tool: Tool; t: Dict; lang: Locale }) {
   const k = (s: string) => t[s as DictKey];
   const related = TOOLS.filter((x) => x.category === tool.category && x.id !== tool.id).slice(0, 4);
   const Badge = tool.runtime === "browser" ? ShieldCheck : Server;
@@ -95,14 +99,7 @@ function ToolPage({ tool, t, lang }: { tool: Tool; t: Dict; lang: string }) {
       <Workspace toolId={tool.id} />
 
       <section className="mx-auto mt-28 max-w-[960px]">
-        <ol className="grid border-y border-line sm:grid-cols-3">
-          {(["guide.step1", "guide.step2", "guide.step3"] as const).map((s, i) => (
-            <li key={s} className="flex flex-col gap-2 border-line py-6 not-first:border-t sm:px-6 sm:not-first:border-s sm:not-first:border-t-0 sm:first:ps-0">
-              <span className="eyebrow">{String(i + 1).padStart(2, "0")}</span>
-              <span className="text-[15px] text-ink-2">{t[s]}</span>
-            </li>
-          ))}
-        </ol>
+        <ToolContent tool={tool} t={t} lang={lang} />
         {related.length > 0 && (
           <div className="mt-14">
             <h2 className="eyebrow mb-3">{t[`cat.${tool.category}` as DictKey]}</h2>

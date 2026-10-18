@@ -42,6 +42,7 @@
     "test:robust": "node tests/robustness/run.mjs",
     "test:static": "node tests/static-extras.mjs && node tests/serve-static.mjs",
     "test:seo": "node tests/seo.mjs",
+    "test:content": "node tests/tool-content.mjs",
     "test:legal": "node tests/legal.mjs",
     "test:errors": "node tests/errors.mjs",
     "test:compare": "node tests/compare.mjs",
