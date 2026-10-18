@@ -56,6 +56,7 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
   );
 
   const saved = first?.note?.startsWith("saved:") ? first.note.split(":").map(Number) : null;
+  const pdfaLevel = outputs.find((o) => o.note?.startsWith("pdfaDowngraded:"))?.note?.split(":")[1];
 
   return (
     <div className="rise mx-auto max-w-[760px] text-center">
@@ -72,6 +73,7 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
       {first?.note === "rebuilt" && <p className="mt-2 text-[15px] text-muted">{t("res.rebuilt")}</p>}
       {first?.note === "ocrNone" && <p className="mt-2 text-[15px] text-muted">{t("res.ocrNone")}</p>}
       {first?.note === "ocrDoubtful" && <p className="mt-2 text-[15px] text-muted">{t("res.ocrDoubtful")}</p>}
+      {pdfaLevel && <p className="mt-2 text-[15px] text-muted">{t("res.pdfaDowngraded", { level: pdfaLevel })}</p>}
       <p className="mt-2 flex items-center justify-center gap-1.5 text-[13px] text-muted">
         {tool.runtime === "browser" ? <ShieldCheck size={14} strokeWidth={1.75} /> : <Server size={14} strokeWidth={1.75} />}
         {tool.runtime === "browser" ? t("ws.processedLocally") : t("ws.processedServer")}

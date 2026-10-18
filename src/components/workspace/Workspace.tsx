@@ -101,6 +101,22 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
     return () => clearTimeout(timer);
   }, [tool.id, tool.mode]);
 
+  // PDF/A: resolution and text layer only matter when some page has to become an image.
+  const pdfaLevel = tool.id === "pdfToPdfa" ? String(options.pdfaLevel) : null;
+  useEffect(() => {
+    if (!pdfaLevel) return;
+    let live = true;
+    void import("@/lib/pdf/pdfa").then(async (m) => {
+      const level = m.PDFA_LEVELS.find((l) => l === pdfaLevel) ?? "2b";
+      // One file at a time, stopping at the first that needs rendering; a newer run cancels this one.
+      const raster = await m.pdfaPreflight(files, level, () => live);
+      if (raster !== undefined) setOptions((o) => (o.pdfaRaster === raster ? o : { ...o, pdfaRaster: raster }));
+    });
+    return () => {
+      live = false;
+    };
+  }, [pdfaLevel, files]);
+
   // A file that can't be opened leaves the list, and the reason is shown.
   const drop = useCallback(async (id: string, file: File, e: unknown) => {
     setError(problem(await fileError(e, file)));

@@ -454,15 +454,16 @@ function blobToDataUrl(blob: Blob) {
   });
 }
 
-// ── PDF → PDF/A-2b
+// ── PDF → PDF/A (1b, 2b, 2u, 3b, 3u)
 // Pages stay as they are (real text, vector graphics); pdfa.ts fixes what the
 // standard forbids. Only pages it can't fix are rendered as images, with their
 // text kept as an invisible searchable layer.
-export async function pdfToPdfa(file: File, o: { pdfaDpi: string; keepText: boolean }, progress?: Progress): Promise<Output[]> {
+export async function pdfToPdfa(file: File, o: { pdfaDpi: string; keepText: boolean; pdfaLevel?: string }, progress?: Progress): Promise<Output[]> {
   const bytes = await bytesOf(file);
   const doc = await loadPdf(file, file.name);
-  const { fixForPdfA } = await import("./pdfa");
-  const { raster } = await fixForPdfA(doc);
+  const { fixForPdfA, pdfaVersion, PDFA_LEVELS } = await import("./pdfa");
+  const asked = PDFA_LEVELS.find((l) => l === o.pdfaLevel) ?? "2b";
+  const { raster, level } = await fixForPdfA(doc, asked);
   if (raster.size) {
     const src = await openPdf(bytes);
     const scale = Number(o.pdfaDpi) / 72;
@@ -488,8 +489,10 @@ export async function pdfToPdfa(file: File, o: { pdfaDpi: string; keepText: bool
     }
     await closePdf(src);
   }
-  makePdfA(doc, doc.getTitle() || baseName(file.name));
-  return [{ name: `${baseName(file.name)}-pdfa.pdf`, blob: pdfBlob(await doc.save({ useObjectStreams: false })) }];
+  makePdfA(doc, doc.getTitle() || baseName(file.name), level);
+  const out: Output = { name: `${baseName(file.name)}-pdfa.pdf`, blob: pdfBlob(pdfaVersion(await doc.save({ useObjectStreams: false }), level)) };
+  if (level !== asked) out.note = `pdfaDowngraded:${level}`;
+  return [out];
 }
 
 export function runsToWords(items: Run[], pageHeight: number) {
@@ -505,7 +508,7 @@ function xmlEscape(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function makePdfA(doc: PDFDocument, title: string) {
+function makePdfA(doc: PDFDocument, title: string, level: string) {
   const now = new Date();
   const iso = now.toISOString().replace(/\.\d{3}Z$/, "Z");
   // The Info dictionary and the XMP must say the same things.
@@ -537,8 +540,8 @@ function makePdfA(doc: PDFDocument, title: string) {
    <xmp:MetadataDate>${iso}</xmp:MetadataDate>
    <xmp:CreatorTool>Nopload</xmp:CreatorTool>
    <pdf:Producer>Nopload</pdf:Producer>
-   <pdfaid:part>2</pdfaid:part>
-   <pdfaid:conformance>B</pdfaid:conformance>
+   <pdfaid:part>${level[0]}</pdfaid:part>
+   <pdfaid:conformance>${level[1].toUpperCase()}</pdfaid:conformance>
   </rdf:Description>
  </rdf:RDF>
 </x:xmpmeta>
