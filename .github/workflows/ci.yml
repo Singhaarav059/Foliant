@@ -88,6 +88,9 @@ jobs:
       - name: Office to PDF with LibreOffice, first visit
         if: matrix.browser == 'chromium'
         run: npm run test:e2e-office
+      - name: Office to PDF with High fidelity chosen, returning visit
+        if: matrix.browser == 'chromium' && (success() || failure())
+        run: npm run test:e2e:office-high
 
   # Every tool in tools.ts, with its defaults and with one option changed, in
   # English, Arabic (right to left) and Japanese (tests/e2e/tools).
@@ -160,6 +163,10 @@ jobs:
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:word
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:word-structure
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:docx-features
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:compress
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:ocr
@@ -173,6 +180,8 @@ jobs:
         run: npm run test:office-run
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:libreoffice
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:libreoffice-parts
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:ocr-accuracy
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
