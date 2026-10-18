@@ -5,7 +5,9 @@ import { baseName, type Output } from "@/lib/pdf/common";
 // never see a print dialog. HTML files, and Office files that drawing fails
 // on, become a page the browser prints to PDF: the HTML travels as the
 // output's blob, and PrintResults opens the print dialog.
-export async function printable(file: File, o: { orientation?: string; pageSize?: string }): Promise<Output> {
+export type PrintOptions = { orientation?: string; pageSize?: string; margin?: string; screenWidth?: string };
+
+export async function printable(file: File, o: PrintOptions): Promise<Output> {
   const data = new Uint8Array(await file.arrayBuffer());
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
   if (["docx", "pptx", "xlsx", "csv"].includes(ext)) {
@@ -19,6 +21,7 @@ export async function printable(file: File, o: { orientation?: string; pageSize?
   }
   const office = await import("./html");
   let html: string;
+  let note: string | undefined;
   if (ext === "docx") {
     // docx-preview keeps the layout; mammoth is the fallback for files it can't render.
     try {
@@ -30,24 +33,17 @@ export async function printable(file: File, o: { orientation?: string; pageSize?
   }
   else if (ext === "pptx") html = await office.pptxHtml(data);
   else if (ext === "xlsx" || ext === "csv") html = await office.sheetHtml(data, ext, o.orientation ?? "auto");
-  else if (ext === "html" || ext === "htm") html = intoHead(new TextDecoder().decode(data), pageSize(o));
+  else if (ext === "html" || ext === "htm" || ext === "zip") {
+    // A zip is a page with its files; pasted HTML arrives as a file too.
+    const page = ext === "zip" ? await office.siteFromZip(data) : new TextDecoder().decode(data);
+    const safe = office.blockRemote(page);
+    html = office.htmlPage(safe.html, o);
+    if (safe.blocked) note = `remote:${safe.blocked}`;
+  }
   else throw new Error(`.${ext} files can't be converted in the browser.`);
   // The print dialog suggests the document title as the file name.
-  if (!/<title[\s>]/i.test(html)) html = intoHead(html, `<title>${esc(baseName(file.name))}</title>`);
-  return { name: `${baseName(file.name)}.pdf`, blob: new Blob([html], { type: "text/html" }), print: true };
+  if (!/<title[\s>]/i.test(html)) html = office.intoHead(html, `<title>${esc(baseName(file.name))}</title>`);
+  return { name: `${baseName(file.name)}.pdf`, blob: new Blob([html], { type: "text/html" }), print: true, note };
 }
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-// A default page size for HTML files; their own @page rules still win because
-// they come later.
-const pageSize = (o: { orientation?: string; pageSize?: string }) =>
-  `<style>@page { size: ${o.pageSize === "letter" ? "letter" : "A4"} ${o.orientation === "landscape" ? "landscape" : "portrait"}; margin: 12mm; }</style>`;
-
-// Inside <head> when there is one, so the doctype stays first.
-function intoHead(html: string, snippet: string) {
-  const head = html.match(/<head[^>]*>/i) ?? html.match(/<html[^>]*>/i);
-  if (!head || head.index === undefined) return snippet + html;
-  const at = head.index + head[0].length;
-  return html.slice(0, at) + snippet + html.slice(at);
-}

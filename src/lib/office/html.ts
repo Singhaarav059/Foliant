@@ -413,3 +413,166 @@ export function renderSlides(input: SlideInput): string[] {
     return `<div class="slide" style="${background}">${showMaster ? shapes(tree(master), s.masterRels, true) : ""}${shapes(tree(layout), s.layoutRels, true)}${shapes(tree(slide), s.rels, false)}</div>`;
   });
 }
+
+// ── HTML files, zipped pages and pasted HTML (static build). The browser
+// prints the page from a blob: URL, where relative links resolve to nothing,
+// so a zip's files are inlined as data: URLs; and nothing remote is loaded,
+// so the page can't tell another site the user's address.
+
+const MIME: Record<string, string> = {
+  css: "text/css", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", svg: "image/svg+xml",
+  webp: "image/webp", avif: "image/avif", bmp: "image/bmp", ico: "image/x-icon", woff: "font/woff", woff2: "font/woff2",
+  ttf: "font/ttf", otf: "font/otf", mp4: "video/mp4", webm: "video/webm", mp3: "audio/mpeg",
+};
+
+function base64(bytes: Uint8Array) {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+// Attribute values, quoted or not: name="v", name='v', name=v.
+const attr = (names: string) => new RegExp(`(\\s(?:${names})\\s*=\\s*)(?:"([^"]*)"|'([^']*)'|([^\\s>"']+))`, "gi");
+
+// One page from a zip: index.html (the shallowest), with its stylesheets,
+// images, fonts and media inlined. Links to other pages stay as they are.
+export async function siteFromZip(data: Uint8Array): Promise<string> {
+  const { unzipSync, strFromU8 } = await import("fflate");
+  const files = unzipSync(data);
+  const names = Object.keys(files).filter((n) => !n.endsWith("/") && !n.startsWith("__MACOSX/"));
+  const depth = (n: string) => n.split("/").length;
+  const pages = names.filter((n) => /\.html?$/i.test(n)).sort((a, b) => depth(a) - depth(b));
+  const index = pages.find((n) => /(^|\/)index\.html?$/i.test(n) && depth(n) === depth(pages[0])) ?? pages[0];
+  if (!index) throw new Error("This zip has no HTML page in it.");
+  const lower = new Map(names.map((n) => [n.toLowerCase(), n]));
+
+  const find = (from: string, ref: string) => {
+    ref = ref.trim();
+    if (!ref || /^[a-z][a-z\d+.-]*:|^\/\/|^#/i.test(ref)) return null; // other schemes, remote, fragments
+    let path: string;
+    try {
+      path = decodeURIComponent(new URL(ref, `http://zip/${from}`).pathname.slice(1));
+    } catch {
+      return null;
+    }
+    return files[path] ? path : lower.get(path.toLowerCase()) ?? null;
+  };
+  const inline = (path: string, seen: Set<string>): string => {
+    const ext = path.split(".").pop()!.toLowerCase();
+    const type = MIME[ext] ?? "application/octet-stream";
+    if (ext !== "css") return `data:${type};base64,${base64(files[path])}`;
+    if (seen.has(path)) return "data:text/css,"; // @import cycle
+    const text = css(strFromU8(files[path]), path, new Set([...seen, path]));
+    return `data:text/css;base64,${base64(new TextEncoder().encode(text))}`;
+  };
+  // Unquoted data URLs, which are safe inside any attribute quotes.
+  const css = (text: string, from: string, seen: Set<string>) =>
+    text
+      .replace(/@import\s+(["'])([^"']+)\1/gi, (all, _q, ref: string) => {
+        const p = find(from, ref);
+        return p ? `@import url(${inline(p, seen)})` : all;
+      })
+      .replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/gi, (all, _q, ref: string) => {
+        const p = find(from, ref);
+        return p ? `url(${inline(p, seen)})` : all;
+      });
+  const rewrite = (value: string) => {
+    const p = find(index, value.replace(/&amp;/g, "&"));
+    return p ? inline(p, new Set()) : null;
+  };
+  const sub = (re: RegExp, html: string, fn: (value: string) => string | null) =>
+    html.replace(re, (all, lead: string, dq?: string, sq?: string, bare?: string) => {
+      const out = fn(dq ?? sq ?? bare ?? "");
+      return out === null ? all : `${lead}"${out}"`;
+    });
+
+  let html = strFromU8(files[index]);
+  html = html.replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi, (_, open: string, body: string, close: string) => open + css(body, index, new Set()) + close);
+  html = sub(attr("style"), html, (v) => css(v.replace(/&quot;/g, '"'), index, new Set()).replace(/"/g, "&quot;"));
+  html = sub(attr("src|poster|data|background"), html, rewrite);
+  html = sub(attr("srcset"), html, (v) => v.split(",").map((part) => {
+    const [url, ...rest] = part.trim().split(/\s+/);
+    return [rewrite(url) ?? url, ...rest].join(" ");
+  }).join(", "));
+  // href loads something only on <link> (stylesheets, icons) and in SVG images.
+  html = html.replace(/<(link|image|use)\b[^>]*>/gi, (tag) => sub(attr("href|xlink:href"), tag, rewrite));
+  return html;
+}
+
+const REMOTE = /^\s*(?:[a-z][a-z\d+.-]*:)?\/\//i;
+// A grey box where a remote image was.
+const PLACEHOLDER = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="80"><rect width="120" height="80" fill="#eef0f3" stroke="#c4c9d2" stroke-dasharray="4 3"/></svg>')}`;
+// Belt and braces: the page itself may load only what it carries inline.
+const CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline' data: blob:; font-src data: blob:; media-src data: blob:">`;
+
+// Takes out everything that would load from another host: stylesheets,
+// scripts, images (shown as a placeholder), frames, media, CSS url() and
+// @import, <base> and refreshes. Links stay. Counts what it took out.
+export function blockRemote(input: string): { html: string; blocked: number } {
+  let blocked = 0;
+  const hit = () => (blocked++, true);
+  const value = (m: string) => m.match(/=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']+))/)?.slice(1).find((v) => v !== undefined) ?? "";
+  const css = (text: string) =>
+    text
+      .replace(/@import\s+(?:url\(\s*)?(["']?)([^"')\s;]+)\1\s*\)?[^;]*;?/gi, (all, _q, ref: string) => (REMOTE.test(ref) && hit() ? "" : all))
+      .replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/gi, (all, _q, ref: string) => (REMOTE.test(ref) && hit() ? "url(data:,)" : all));
+
+  let html = input;
+  html = html.replace(/<base\b[^>]*>/gi, (tag) => (REMOTE.test(value(tag.match(/\shref\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i)?.[0] ?? "")) && hit(), ""));
+  html = html.replace(/<meta\b[^>]*http-equiv\s*=\s*["']?refresh[^>]*>/gi, (tag) => (/url\s*=\s*['"]?\s*(?:[a-z][a-z\d+.-]*:)?\/\//i.test(tag) && hit() ? "" : tag));
+  html = html.replace(/<link\b[^>]*>/gi, (tag) => {
+    const href = tag.match(/\shref\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i)?.[0];
+    return href && REMOTE.test(value(href)) && hit() ? "" : tag;
+  });
+  html = html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, (all, attrs: string) => {
+    const src = attrs.match(/\ssrc\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i)?.[0];
+    return src && REMOTE.test(value(src)) && hit() ? "" : all;
+  });
+  html = html.replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi, (_, open: string, body: string, close: string) => open + css(body) + close);
+  html = html.replace(attr("style"), (all, lead: string, dq?: string, sq?: string, bare?: string) => {
+    const v = dq ?? sq ?? bare ?? "";
+    const out = css(v.replace(/&quot;/g, '"'));
+    return out === v.replace(/&quot;/g, '"') ? all : `${lead}"${out.replace(/"/g, "&quot;")}"`;
+  });
+  html = html.replace(/<(\w+)\b[^>]*>/g, (tag, name: string) => {
+    let out = tag.replace(attr("src|poster|data|background|xlink:href"), (all, lead: string, dq?: string, sq?: string, bare?: string) => {
+      if (!REMOTE.test(dq ?? sq ?? bare ?? "") || !hit()) return all;
+      return /^(img|input|image)$/i.test(name) && !/poster/i.test(lead) ? `${lead}"${PLACEHOLDER}"` : /^iframe$/i.test(name) ? `${lead}"about:blank"` : "";
+    });
+    out = out.replace(attr("srcset|imagesrcset"), (all, _lead, dq?: string, sq?: string, bare?: string) =>
+      (dq ?? sq ?? bare ?? "").split(",").some((part) => REMOTE.test(part)) && hit() ? "" : all);
+    if (/^(image|use|feimage)$/i.test(name)) out = out.replace(attr("href"), (all, lead: string, dq?: string, sq?: string, bare?: string) => (REMOTE.test(dq ?? sq ?? bare ?? "") && hit() ? `${lead}"${PLACEHOLDER}"` : all));
+    return out;
+  });
+  return { html: intoHead(html, CSP), blocked };
+}
+
+// Page size, orientation, margins and the screen width the page is laid out
+// at (scaled to fit the paper). The page's own @page rules still win: these
+// come first.
+const PAPER: Record<string, { css: string; w: number; h: number }> = {
+  a4: { css: "A4", w: 210, h: 297 }, letter: { css: "letter", w: 215.9, h: 279.4 },
+  a3: { css: "A3", w: 297, h: 420 }, a5: { css: "A5", w: 148, h: 210 },
+};
+const MARGINS: Record<string, number> = { none: 0, small: 12, large: 25 };
+
+export function htmlPage(html: string, o: { pageSize?: string; orientation?: string; margin?: string; screenWidth?: string }) {
+  const paper = PAPER[o.pageSize ?? ""] ?? PAPER.a4;
+  const landscape = o.orientation === "landscape";
+  const margin = MARGINS[o.margin ?? ""] ?? MARGINS.small;
+  let css = `@page { size: ${paper.css} ${landscape ? "landscape" : "portrait"}; margin: ${margin ? `${margin}mm` : "0"}; }`;
+  const screen = Number(o.screenWidth);
+  if (screen > 0) {
+    const printable = (((landscape ? paper.h : paper.w) - 2 * margin) / 25.4) * 96;
+    css += ` @media print { html { width: ${screen}px; zoom: ${(printable / screen).toFixed(4)}; } }`;
+  }
+  return intoHead(html, `<style>${css}</style>`);
+}
+
+// Inside <head> when there is one, so the doctype stays first.
+export function intoHead(html: string, snippet: string) {
+  const head = html.match(/<head[^>]*>/i) ?? html.match(/<html[^>]*>/i);
+  if (!head || head.index === undefined) return snippet + html;
+  const at = head.index + head[0].length;
+  return html.slice(0, at) + snippet + html.slice(at);
+}

@@ -5,8 +5,9 @@ import { Printer, RefreshCw, ShieldCheck } from "lucide-react";
 import { useI18n } from "../I18n";
 import type { Output } from "@/lib/pdf/common";
 
-// Static build: the converted document is shown here and saved through the
-// browser's print dialog ("Save as PDF"), which needs a click to open.
+// Static build: an HTML page (or an Office file that couldn't be drawn as a
+// PDF) is shown here and saved through the browser's print dialog ("Save as
+// PDF"), which needs a click to open.
 export function PrintResults({ outputs, onReset }: { outputs: Output[]; onReset: () => void }) {
   const { t } = useI18n();
   const [current, setCurrent] = useState(0);
@@ -26,6 +27,13 @@ export function PrintResults({ outputs, onReset }: { outputs: Output[]; onReset:
       <p className="mt-2 flex items-center justify-center gap-1.5 text-[13px] text-muted">
         <ShieldCheck size={14} /> {t("ws.processedLocally")}
       </p>
+
+      {/* HTML that pointed at other sites: those parts were left out (src/lib/office/html.ts). */}
+      {outputs[current].note?.startsWith("remote:") && (
+        <p role="status" className="mx-auto mt-4 flex max-w-[560px] items-start gap-2 rounded-xl border border-line bg-surface p-3 text-left text-[14px] text-ink-2">
+          <ShieldCheck size={16} className="mt-0.5 shrink-0" /> {t("ws.remoteBlocked", { n: Number(outputs[current].note!.slice(7)) })}
+        </p>
+      )}
 
       {outputs.length > 1 && (
         <div className="mt-6 flex flex-wrap justify-center gap-2" role="tablist">

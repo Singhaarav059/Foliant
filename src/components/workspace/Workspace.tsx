@@ -14,6 +14,7 @@ import { CompareView, prepareCompare } from "./CompareView";
 import { ErrorBox, useProblem, type Problem } from "./ErrorBox";
 import { Results } from "./Results";
 import { PrintResults } from "./PrintResults";
+import { PasteHtml } from "./PasteHtml";
 import { clearHandoff, peekHandoff } from "@/lib/handoff";
 import { fileExt, type Output, type Progress } from "@/lib/pdf/common";
 import { fileError } from "@/lib/pdf/errors";
@@ -373,6 +374,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
           </div>
         )}
         <Dropzone tool={tool} onFiles={addFiles} over={over} />
+        {tool.id === "htmlToPdf" && <PasteHtml onFile={(f) => void addFiles([f])} />}
       </div>
     );
   }

@@ -153,7 +153,7 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
     case "htmlToPdf": {
       if (STATIC) {
         const { printable } = await import("@/lib/office/print");
-        return [await printable(files[0], { pageSize: s(o.pageSize), orientation: s(o.orientation) })];
+        return [await printable(files[0], { pageSize: s(o.pageSize), orientation: s(o.orientation), margin: s(o.margin), screenWidth: s(o.screenWidth) })];
       }
       const form = new FormData();
       if (files[0]) form.append("file", files[0]);
