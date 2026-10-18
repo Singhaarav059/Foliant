@@ -183,6 +183,8 @@ jobs:
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:redact
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:stamps
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:office
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:office-route
