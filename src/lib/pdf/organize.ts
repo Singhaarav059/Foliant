@@ -1,8 +1,8 @@
 "use client";
 
 import {
-  PDFDocument, PDFPage, PDFPageLeaf, PDFDict, PDFStream, PDFRef, PDFNull, degrees, PDFName, PDFArray, PDFHexString, PDFNumber, PDFString,
-  type PDFObject,
+  PDFDocument, PDFPage, PDFPageLeaf, PDFDict, PDFStream, PDFRawStream, PDFRef, PDFNull, degrees, PDFName, PDFArray, PDFHexString, PDFNumber, PDFString,
+  decodePDFRawStream, type PDFObject,
 } from "pdf-lib";
 import { baseName, bytesOf, parseRanges, pdfBlob, type Output, type Progress } from "./common";
 import { PdfError } from "./errors";
@@ -172,6 +172,8 @@ export function pageCopier(src: PDFDocument, dest: PDFDocument, keep: Iterable<n
       if (!leaf.get(N(key)) && value) leaf.set(N(key), value);
     }
     leaf.delete(N("Parent"));
+    const resources = ownResources(src, leaf, original.node);
+    if (resources) leaf.set(N("Resources"), resources);
     const annots = leaf.lookupMaybe(N("Annots"), PDFArray);
     if (annots) {
       leaf.set(N("Annots"), src.context.obj(annots.asArray().filter((ref) => {
@@ -193,6 +195,61 @@ export function pageCopier(src: PDFDocument, dest: PDFDocument, keep: Iterable<n
   // Any other object, by the same rules (a link to a page left out is cut),
   // and the copy an object already has.
   return Object.assign(take, { object: copy, copied: (ref: PDFRef) => done.get(ref) });
+}
+
+// The resources a page draws with. Pages often share one /Resources
+// dictionary that names every page's images and fonts; copied as it is, a
+// one-page part would carry them all. A page uses a resource only by naming
+// it in its content, so the names its content mentions (anywhere: an
+// over-count only keeps a little more) are the ones kept. Nothing is cut when
+// the content can't be decoded, or when a form it draws has no resources of
+// its own and borrows the page's.
+const NAMED = ["XObject", "Font", "ExtGState", "Pattern", "Shading", "ColorSpace", "Properties"];
+function ownResources(src: PDFDocument, leaf: PDFPageLeaf, page: PDFPageLeaf): PDFDict | undefined {
+  const ctx = src.context;
+  const resources = ctx.lookup(leaf.get(N("Resources")));
+  if (!(resources instanceof PDFDict)) return undefined;
+  if (!namesOf.has(page)) namesOf.set(page, contentNames(src, page) ?? null);
+  const used = namesOf.get(page);
+  if (!used) return undefined;
+  const xobjects = resources.lookupMaybe(N("XObject"), PDFDict);
+  for (const [key, value] of xobjects?.entries() ?? []) {
+    const x = ctx.lookup(value);
+    if (used.has(key.decodeText()) && x instanceof PDFStream && x.dict.get(N("Subtype")) === N("Form") && !x.dict.has(N("Resources"))) return undefined;
+  }
+  const out = resources.clone(ctx);
+  for (const category of NAMED) {
+    const sub = resources.lookupMaybe(N(category), PDFDict);
+    if (!sub) continue;
+    const kept = ctx.obj({}) as PDFDict;
+    for (const [key, value] of sub.entries()) if (used.has(key.decodeText())) kept.set(key, value);
+    out.set(N(category), kept);
+  }
+  return out;
+}
+
+// Split by size copies each page again for every trial part.
+const namesOf = new WeakMap<PDFPageLeaf, Set<string> | null>();
+
+// Every name (/Im1, /F2 …) in a page's content streams, decoded; undefined
+// when a stream can't be decoded.
+function contentNames(src: PDFDocument, leaf: PDFPageLeaf): Set<string> | undefined {
+  const ctx = src.context;
+  const contents = ctx.lookup(leaf.get(N("Contents")));
+  const streams = contents instanceof PDFArray ? contents.asArray().map((c) => ctx.lookup(c)) : contents ? [contents] : [];
+  const names = new Set<string>();
+  for (const s of streams) {
+    if (!(s instanceof PDFStream)) return undefined;
+    let data: Uint8Array;
+    try {
+      data = s instanceof PDFRawStream ? decodePDFRawStream(s).decode() : s.getContents();
+    } catch {
+      return undefined;
+    }
+    const text = new TextDecoder("latin1").decode(data);
+    for (const m of text.matchAll(/\/([^\s/()<>[\]{}%]*)/g)) names.add(m[1].replace(/#([0-9a-fA-F]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16))));
+  }
+  return names;
 }
 
 export async function merge(files: File[], opts: { bookmarks?: boolean }, progress?: Progress): Promise<Output[]> {

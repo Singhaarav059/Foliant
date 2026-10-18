@@ -187,6 +187,49 @@ await test("split by size counts only the pages in each part", async () => {
   return `${parts.length} parts`;
 });
 
+// Pages that share one /Resources dictionary naming every page's image (as
+// some producers write them): a part must store only the images and fonts
+// its own pages draw.
+async function sharedResources() {
+  const doc = await PDFDocument.create();
+  const ctx = doc.context;
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) >> 16) & 0xff;
+  const xobjects = {};
+  for (let n = 1; n <= 10; n++) {
+    xobjects[`Im${n}`] = ctx.register(ctx.flateStream(Uint8Array.from({ length: 32 * 32 * 3 }, rnd), { Type: "XObject", Subtype: "Image", Width: 32, Height: 32, ColorSpace: "DeviceRGB", BitsPerComponent: 8 }));
+  }
+  const unused = await doc.embedFont(StandardFonts.Courier);
+  const resources = ctx.register(ctx.obj({ XObject: xobjects, Font: { F1: font.ref, F2: unused.ref }, ProcSet: [PDFName.of("PDF"), PDFName.of("ImageC")] }));
+  for (let n = 1; n <= 10; n++) {
+    const page = doc.addPage([300, 300]);
+    page.node.set(PDFName.of("Resources"), resources);
+    page.node.set(PDFName.of("Contents"), ctx.register(ctx.stream(`q 100 0 0 100 50 50 cm /Im${n} Do Q BT /F1 12 Tf 20 260 Td (SHARED${n}) Tj ET`)));
+  }
+  return doc.save();
+}
+await test("parts of pages that share their resources store only what they draw", async () => {
+  const bytes = await sharedResources();
+  const shared = (name = "shared.pdf") => file(bytes, name);
+  const parts = await split(shared(), { splitMode: "every", every: 1, ranges: "", maxMb: 1, mergeRanges: false });
+  eq(parts.length, 10, "parts");
+  const fonts = (doc) => doc.context.enumerateIndirectObjects().filter(([, o]) => o instanceof PDFDict && o.get(PDFName.of("Type")) === PDFName.of("Font") && !o.has(PDFName.of("DescendantFonts")) && !o.has(PDFName.of("FontName"))).length;
+  for (let i = 0; i < parts.length; i++) {
+    const { bytes: b, doc } = await open(parts[i].blob);
+    eq(images(doc), 1, `part ${i + 1} images`);
+    eq(fonts(doc), 1, `part ${i + 1} fonts`);
+    const pdf = await openPdf(b);
+    eq((await (await pdf.getPage(1)).getTextContent()).items.map((t) => t.str).join(""), `SHARED${i + 1}`, `part ${i + 1} text`);
+    await pdf.loadingTask.destroy();
+  }
+  eq(images((await open((await extractSeparate(shared(), [4]))[0].blob)).doc), 1, "extracted page images");
+  eq(images((await open(await buildFromPlan([shared()], [{ file: 0, page: 2, rotate: 0 }, { file: 0, page: 7, rotate: 0 }]))).doc), 2, "organized pages images");
+  // Two pages from one file in one part still share one copy of what both draw.
+  const { doc } = await open(await buildFromPlan([shared()], [{ file: 0, page: 2, rotate: 0 }, { file: 0, page: 2, rotate: 90 }]));
+  eq(images(doc), 1, "a duplicated page's image stored once");
+});
+
 // /T is optional, so a parent field can be a bare { Kids }. Each page also
 // has a reset button naming that parent, so it's reached before its widgets.
 // Some files leave out the fields' /Parent, and the form's field tree still
