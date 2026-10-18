@@ -11,10 +11,11 @@ import {
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { execFileSync } from "node:child_process";
-import { writeFileSync, mkdtempSync } from "node:fs";
+import { writeFileSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { load, openPdf, check, eq, nodeCanvas } from "./lib/load.mjs";
+import { pathToFileURL } from "node:url";
+import { load, openPdf, check, eq, nodeCanvas, root } from "./lib/load.mjs";
 
 nodeCanvas();
 const { pdfToPdfa } = await load("convert");
@@ -382,6 +383,79 @@ await test("PDF/A-2u: a ToUnicode map counts only for the codes it really maps",
   eq((await fixForPdfA(await composite(() => {}), "2u")).level, "2u", "composite font with pdf-lib's map");
   eq((await fixForPdfA(await composite(mapOf(0)), "2u")).level, "2u", "composite font whose map has exactly the codes drawn");
   eq((await fixForPdfA(await composite(mapOf(1)), "2u")).level, "2b", "composite font whose map misses a code drawn");
+});
+
+// Resources, glyph procedures and named destinations use any key names, AF, EF and RF included.
+await test("resources named AF, EF or RF are not files: kept at every level", async () => {
+  const d = await PDFDocument.create();
+  const ctx = d.context;
+  const N = (s) => PDFName.of(s);
+  const pg = d.addPage([300, 300]);
+  const form = ctx.register(ctx.stream("0 0 1 rg 0 0 50 50 re f", { Type: "XObject", Subtype: "Form", BBox: [0, 0, 50, 50] }));
+  const gs = ctx.register(ctx.obj({ Type: "ExtGState", LW: 2 }));
+  const helv = await d.embedFont(StandardFonts.Helvetica);
+  pg.node.Resources().set(N("XObject"), ctx.obj({ AF: form }));
+  pg.node.Resources().set(N("ExtGState"), ctx.obj({ RF: gs }));
+  pg.node.Resources().set(N("Font"), ctx.obj({ EF: helv.ref }));
+  pg.pushOperators(PDFOperator.of("gs", [N("RF")]), PDFOperator.of("Do", [N("AF")]),
+    PDFOperator.of("BT"), PDFOperator.of("Tf", [N("EF"), ctx.obj(12)]), PDFOperator.of("Td", [ctx.obj(100), ctx.obj(100)]), PDFOperator.of("Tj", [PDFString.of("Hi")]), PDFOperator.of("ET"));
+  d.catalog.set(N("Dests"), ctx.obj({ AF: [pg.ref, N("Fit")] }));
+  const bytes = await d.save();
+  for (const lvl of ["1b", "2b", "3b"]) {
+    const o = await PDFDocument.load((await outputOf(bytes, lvl)).bytes);
+    const res = o.getPage(0).node.Resources();
+    eq(res.lookup(N("XObject"), PDFDict).lookup(N("AF")) instanceof PDFRawStream, true, `${lvl}: XObject /AF kept`);
+    eq(res.lookup(N("ExtGState"), PDFDict).lookup(N("RF")) instanceof PDFDict, true, `${lvl}: ExtGState /RF kept`);
+    eq(res.lookup(N("Font"), PDFDict).lookup(N("EF")) instanceof PDFDict, true, `${lvl}: font /EF kept`);
+    eq(o.catalog.lookup(N("Dests"), PDFDict).lookup(N("AF")) instanceof PDFArray, true, `${lvl}: destination /AF kept`);
+    eq(o.catalog.has(N("AF")), false, `${lvl}: no associated files made up`);
+  }
+});
+
+await test("PDF/A-1b: a rendered page draws its annotations even when they weren't printable", async () => {
+  const { renderPage } = await load("common");
+  const d = await PDFDocument.create();
+  const ctx = d.context;
+  const pg = d.addPage([200, 200]);
+  const ap = ctx.register(ctx.stream("1 0 0 rg 0 0 100 100 re f", { Type: "XObject", Subtype: "Form", BBox: [0, 0, 100, 100] }));
+  // A Polygon (newer than PDF 1.4) without the Print flag: 1b renders the page.
+  const a = ctx.register(ctx.obj({ Type: "Annot", Subtype: "Polygon", Rect: [50, 50, 150, 150], Vertices: [50, 50, 150, 50, 100, 150], F: 0, AP: { N: ap } }));
+  pg.node.set(PDFName.of("Annots"), ctx.obj([a]));
+  const bytes = await d.save();
+  for (const lvl of ["2b", "1b"]) {
+    const pdf = await openPdf((await outputOf(bytes, lvl)).bytes);
+    const px = (await renderPage(await pdf.getPage(1), 1)).getContext("2d").getImageData(100, 100, 1, 1).data;
+    eq(px[0] > 200 && px[1] < 60 && px[2] < 60, true, `${lvl}: annotation drawn (centre pixel ${[...px].slice(0, 3)})`);
+  }
+});
+
+await test("PDF/A-1b: a shading pattern whose graphics state fades renders the page", async () => {
+  const d = await PDFDocument.create();
+  const ctx = d.context;
+  const N = (s) => PDFName.of(s);
+  const pg = d.addPage([200, 200]);
+  const pattern = ctx.obj({
+    PatternType: 2, ExtGState: { ca: 0.3, CA: 0.3 },
+    Shading: { ShadingType: 2, ColorSpace: "DeviceRGB", Coords: [0, 0, 200, 0], Function: { FunctionType: 2, Domain: [0, 1], C0: [1, 0, 0], C1: [0, 0, 1], N: 1 } },
+  });
+  pg.node.Resources().set(N("Pattern"), ctx.obj({ P0: pattern }));
+  pg.pushOperators(PDFOperator.of("cs", [N("Pattern")]), PDFOperator.of("scn", [N("P0")]), PDFOperator.of("re", [0, 0, 200, 200].map((n) => ctx.obj(n))), PDFOperator.of("f"));
+  const bytes = await d.save();
+  eq([...(await fixForPdfA(await PDFDocument.load(bytes), "1b")).raster].join(","), "0", "1b renders the page");
+  eq([...(await fixForPdfA(await PDFDocument.load(bytes), "2b")).raster].join(","), "", "2b keeps it as vectors");
+});
+
+await test("render options show in a workflow step, where no preflight runs", async () => {
+  // Node strips tools.ts's types itself; its one import (mode.ts, plain JavaScript) needs an extension.
+  const dir = mkdtempSync(join(tmpdir(), "tools-"));
+  writeFileSync(join(dir, "mode.mjs"), readFileSync(join(root, "src/lib/mode.ts")));
+  writeFileSync(join(dir, "tools.ts"), readFileSync(join(root, "src/lib/tools.ts"), "utf8").replace('from "./mode"', 'from "./mode.mjs"'));
+  const { TOOLS, defaultOptions, optionVisible } = await import(pathToFileURL(join(dir, "tools.ts")).href);
+  const tool = TOOLS.find((t) => t.id === "pdfToPdfa");
+  const shown = (values) => tool.options.filter((o) => optionVisible(o, values)).map((o) => o.key).join(",");
+  eq(shown(defaultOptions(tool)), "pdfaLevel,pdfaDpi,keepText", "workflow step (no preflight)");
+  eq(shown({ ...defaultOptions(tool), pdfaRaster: false }), "pdfaLevel", "preflight: no page becomes an image");
+  eq(shown({ ...defaultOptions(tool), pdfaRaster: true }), "pdfaLevel,pdfaDpi,keepText", "preflight: some page becomes an image");
 });
 
 await test("render-options preflight: one file at a time, stops at the first that needs rendering, skips huge files", async () => {
