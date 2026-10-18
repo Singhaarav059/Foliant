@@ -384,6 +384,33 @@ await test("PDF/A-2u: a ToUnicode map counts only for the codes it really maps",
   eq((await fixForPdfA(await composite(mapOf(1)), "2u")).level, "2b", "composite font whose map misses a code drawn");
 });
 
+// Resources, glyph procedures and named destinations use any key names, AF, EF and RF included.
+await test("resources named AF, EF or RF are not files: kept at every level", async () => {
+  const d = await PDFDocument.create();
+  const ctx = d.context;
+  const N = (s) => PDFName.of(s);
+  const pg = d.addPage([300, 300]);
+  const form = ctx.register(ctx.stream("0 0 1 rg 0 0 50 50 re f", { Type: "XObject", Subtype: "Form", BBox: [0, 0, 50, 50] }));
+  const gs = ctx.register(ctx.obj({ Type: "ExtGState", LW: 2 }));
+  const helv = await d.embedFont(StandardFonts.Helvetica);
+  pg.node.Resources().set(N("XObject"), ctx.obj({ AF: form }));
+  pg.node.Resources().set(N("ExtGState"), ctx.obj({ RF: gs }));
+  pg.node.Resources().set(N("Font"), ctx.obj({ EF: helv.ref }));
+  pg.pushOperators(PDFOperator.of("gs", [N("RF")]), PDFOperator.of("Do", [N("AF")]),
+    PDFOperator.of("BT"), PDFOperator.of("Tf", [N("EF"), ctx.obj(12)]), PDFOperator.of("Td", [ctx.obj(100), ctx.obj(100)]), PDFOperator.of("Tj", [PDFString.of("Hi")]), PDFOperator.of("ET"));
+  d.catalog.set(N("Dests"), ctx.obj({ AF: [pg.ref, N("Fit")] }));
+  const bytes = await d.save();
+  for (const lvl of ["1b", "2b", "3b"]) {
+    const o = await PDFDocument.load((await outputOf(bytes, lvl)).bytes);
+    const res = o.getPage(0).node.Resources();
+    eq(res.lookup(N("XObject"), PDFDict).lookup(N("AF")) instanceof PDFRawStream, true, `${lvl}: XObject /AF kept`);
+    eq(res.lookup(N("ExtGState"), PDFDict).lookup(N("RF")) instanceof PDFDict, true, `${lvl}: ExtGState /RF kept`);
+    eq(res.lookup(N("Font"), PDFDict).lookup(N("EF")) instanceof PDFDict, true, `${lvl}: font /EF kept`);
+    eq(o.catalog.lookup(N("Dests"), PDFDict).lookup(N("AF")) instanceof PDFArray, true, `${lvl}: destination /AF kept`);
+    eq(o.catalog.has(N("AF")), false, `${lvl}: no associated files made up`);
+  }
+});
+
 await test("render-options preflight: one file at a time, stops at the first that needs rendering, skips huge files", async () => {
   const { pdfaPreflight, PDFA_PREFLIGHT_MAX } = await load("pdfa");
   const reads = [];

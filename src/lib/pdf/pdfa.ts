@@ -380,11 +380,30 @@ function eachDict(doc: PDFDocument, fn: (d: PDFDict, ref: PDFRef | undefined) =>
   for (const [ref, o] of doc.context.enumerateIndirectObjects()) walk(o, ref, 0);
 }
 
+// Resources, glyph procedures and named destinations are keyed by any name, AF, EF and RF
+// among them, so those keys mean files only where the value looks like one.
+// A file specification: typed as one, or untyped with an EF holding only file entries.
+const FILE_KEYS = new Set(["/F", "/UF", "/DOS", "/Mac", "/Unix"]);
+function isFileSpec(d: PDFDict, doc: PDFDocument): boolean {
+  const type = d.get(N("Type"));
+  if (type === N("Filespec")) return true;
+  if (type !== undefined) return false;
+  const ef = doc.context.lookup(d.get(N("EF")));
+  return ef instanceof PDFDict && ef.keys().length > 0 && ef.keys().every((k) => FILE_KEYS.has(String(k)));
+}
+// An associated-files list: an array of file specifications. Colour spaces and destinations,
+// the arrays a resource or destination could hold instead, always contain a name.
+function afList(d: PDFDict, doc: PDFDocument): PDFArray | undefined {
+  const af = d.lookup(N("AF"));
+  return af instanceof PDFArray && !af.asArray().some((o) => doc.context.lookup(o) instanceof PDFName) ? af : undefined;
+}
+
 // PDF/A-1 forbids embedded files and PDF/A-2 allows only PDF/A ones, which can't be
 // checked here: every file goes, wherever it is listed, and its bytes leave the file.
 function stripFiles(doc: PDFDocument, removed: Set<string>) {
   eachDict(doc, (d) => {
-    for (const k of ["AF", "EF", "RF"])
+    const keys = [...(afList(d, doc) ? ["AF"] : []), ...(d.has(N("EF")) && isFileSpec(d, doc) ? ["EF", "RF"] : [])];
+    for (const k of keys)
       if (d.has(N(k))) {
         d.delete(N(k));
         removed.add("attachments");
@@ -403,8 +422,8 @@ function associateFiles(doc: PDFDocument, removed: Set<string>) {
   const embeds = (spec: PDFDict, key?: PDFObject) => {
     let ok = valid.get(spec);
     if (ok !== undefined) return ok;
-    const ef = spec.lookupMaybe(N("EF"), PDFDict);
-    const file = ef?.lookup(N("F")) ?? ef?.lookup(N("UF"));
+    const ef = spec.lookup(N("EF"));
+    const file = ef instanceof PDFDict ? ef.lookup(N("F")) ?? ef.lookup(N("UF")) : undefined;
     ok = file instanceof PDFStream;
     if (file instanceof PDFStream) {
       const label = spec.get(N("UF")) ?? spec.get(N("F")) ?? key ?? PDFString.of("attachment");
@@ -422,7 +441,7 @@ function associateFiles(doc: PDFDocument, removed: Set<string>) {
   };
 
   // The attachments list: each file kept is associated with the document.
-  const af = doc.catalog.lookupMaybe(N("AF"), PDFArray)?.asArray().slice() ?? [];
+  const af = afList(doc.catalog, doc)?.asArray().slice() ?? [];
   const names = doc.catalog.lookupMaybe(N("Names"), PDFDict);
   if (names?.has(N("EmbeddedFiles"))) {
     const kept: PDFObject[] = [];
@@ -443,8 +462,8 @@ function associateFiles(doc: PDFDocument, removed: Set<string>) {
   // Every AF list, the document's and its parts', keeps only files really embedded.
   const associated = new Set<PDFDict>();
   eachDict(doc, (d) => {
-    if (!d.has(N("AF"))) return;
-    const list = d.lookupMaybe(N("AF"), PDFArray)?.asArray() ?? [];
+    const list = afList(d, doc)?.asArray();
+    if (!list) return;
     const keep = list.filter((r) => {
       const spec = ctx.lookup(r);
       if (!(spec instanceof PDFDict) || !embeds(spec)) return false;
@@ -459,7 +478,7 @@ function associateFiles(doc: PDFDocument, removed: Set<string>) {
   // Files embedded anywhere else become associated files of the document.
   const extra: PDFRef[] = [];
   eachDict(doc, (d, ref) => {
-    if (!d.has(N("EF")) || associated.has(d)) return;
+    if (!d.has(N("EF")) || associated.has(d) || !isFileSpec(d, doc)) return;
     if (ref && embeds(d)) extra.push(ref);
     else {
       d.delete(N("EF"));
@@ -467,7 +486,7 @@ function associateFiles(doc: PDFDocument, removed: Set<string>) {
       removed.add("attachments");
     }
   });
-  if (extra.length) doc.catalog.set(N("AF"), ctx.obj([...(doc.catalog.lookupMaybe(N("AF"), PDFArray)?.asArray() ?? []), ...extra]));
+  if (extra.length) doc.catalog.set(N("AF"), ctx.obj([...(afList(doc.catalog, doc)?.asArray() ?? []), ...extra]));
 }
 
 function cleanDocument(doc: PDFDocument, removed: Set<string>, part: number) {
