@@ -120,5 +120,22 @@ for (const [name, v] of Object.entries(variants)) {
   });
 }
 
+// What the tool tells the user: a page read mostly with low confidence is
+// flagged, a clear one isn't. The engine is a stand-in that reads two words.
+const reading = (confidence) => async () => ({
+  confidence,
+  blocks: [{ paragraphs: [{ lines: [{ words: [
+    { text: "Scanned", confidence: 90, bbox: { x0: 60, y0: 90, x1: 200, y1: 120 } },
+    { text: "invoice-4471-total", confidence, bbox: { x0: 210, y0: 90, x1: 380, y1: 120 } },
+  ] }] }] }],
+});
+for (const [name, confidence, note] of [["a poor reading is flagged", 5, "ocrDoubtful"], ["a clear reading isn't", 90, undefined]]) {
+  await test(`output note: ${name}`, async () => {
+    engine.create = async () => ({ recognise: reading(confidence), stop: async () => {} });
+    const [out] = await ocr(new File([await scanPdf(upright)], "scan.pdf"), { ocrLang: "eng", dpi: "96" });
+    eq(out.note, note, "note");
+  });
+}
+
 await scheduler.terminate();
 process.exit(results.failed ? 1 : 0);

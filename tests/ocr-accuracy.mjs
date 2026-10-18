@@ -39,7 +39,10 @@ const CHINESE = ["发票编号四四七一，开具日期为二零二六年三�
 // highest character error rate [Tesseract, PaddleOCR] may reach. Measured
 // 2026-10-17 with the text shifted by fractions of a pixel, which moves small
 // print by a whole word (Tesseract drops "accounts@northwind.example" at some
-// shifts: 0.4% to 10.6%), so each ceiling sits above the worst shift.
+// shifts: 0.4% to 10.6%), so each ceiling sits above the worst shift. That
+// puts degraded and Tesseract's small print above the 6% and 3% first aimed
+// for (PaddleOCR measures 6.8% on degraded); a gross regression still fails
+// them, a drop of less than about 2x may not.
 const cases = {
   clean: { lines: LATIN, font: "28px Tinos", lang: "eng", max: [0.01, 0.01] },
   smallPrint: { lines: LATIN, font: "13px Arimo", lang: "eng", max: [0.15, 0.03] },
