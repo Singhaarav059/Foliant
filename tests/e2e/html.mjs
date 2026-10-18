@@ -21,6 +21,15 @@ writeFileSync(site, zipSync({
 }));
 const remote = join(dir, "remote.html");
 writeFileSync(remote, '<!doctype html><html><head><title>Remote</title></head><body><p>Has a remote image</p><img src="https://example.com/tracker.png" alt=""></body></html>');
+// Pages that once got past the filter: a <header> but no <head> (the CSP
+// landed in the body), a ">" inside a quoted value, and "/" instead of a space
+// before an attribute.
+const tricky = {
+  "header.html": '<header><h1>Report</h1></header><p>Has a header</p><img alt="a > b" src="https://example.com/leak-header.png">',
+  "slash.html": '<!doctype html><html><body><header>Top</header><p>Has a slash</p><img/src="https://example.com/leak-slash.png"></body></html>',
+  "scheme.html": '<p>Has odd URLs</p><img src="https:example.com/leak-scheme.png"><img src="\\\\example.com\\leak-backslash.png">',
+};
+for (const [n, body] of Object.entries(tricky)) writeFileSync(join(dir, n), body);
 
 await suite(async ({ browser, test }) => {
   const ctx = await browser.newContext({ locale: "en-US", viewport: { width: 1280, height: 900 } });
@@ -67,6 +76,19 @@ await suite(async ({ browser, test }) => {
     await page.getByText(/left out/).first().waitFor({ timeout: 5000 });
     return "0 off-origin requests, notice shown";
   });
+
+  for (const [n, body] of Object.entries(tricky)) {
+    await test(`no remote request: ${n}`, async () => {
+      offOrigin.length = 0;
+      await open(page, "/en/html-to-pdf");
+      await pick(page, [join(dir, n)]);
+      await page.getByRole("button", { name: "Convert to PDF", exact: true }).click();
+      await preview().getByText(body.match(/<p>([^<]+)/)[1]).waitFor({ timeout: 30000 });
+      await page.waitForTimeout(1000);
+      if (offOrigin.length) throw new Error(`requested ${offOrigin.join(", ")}`);
+      return "0 off-origin requests";
+    });
+  }
 
   await test("pasted HTML", async () => {
     await open(page, "/en/html-to-pdf");

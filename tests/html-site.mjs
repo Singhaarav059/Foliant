@@ -3,20 +3,41 @@
 // can't reach other hosts, and the page size, margins and screen width land
 // in the page's CSS.
 //
+// blockRemote parses the page with the browser's own parser, so those checks
+// run in Chromium (CHROME_PATH for an installed Chrome).
+//
 //   node tests/html-site.mjs
 import { execFileSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { zipSync, strToU8 } from "fflate";
+import pw from "playwright-core";
 import { root, check, eq } from "./lib/load.mjs";
 
 const results = { failed: 0 };
 const test = check(results);
 const out = mkdtempSync(join(tmpdir(), "html-site-"));
 execFileSync(join(root, "node_modules/.bin/tsc"), ["--outDir", out, "--module", "esnext", "--target", "es2022", "--moduleResolution", "bundler", "--skipLibCheck", "--noCheck", "--lib", "es2022,dom", "src/lib/office/html.ts"], { cwd: root, stdio: "inherit" });
-const { siteFromZip, blockRemote, htmlPage } = await import(pathToFileURL(join(out, "html.js")).href);
+const { siteFromZip, htmlPage } = await import(pathToFileURL(join(out, "html.js")).href);
+
+const browser = await pw.chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {});
+const page = await browser.newPage();
+await page.setContent("<!doctype html><title>t</title>");
+await page.addScriptTag({ type: "module", content: `${readFileSync(join(out, "html.js"), "utf8")}\nwindow.blockRemote = blockRemote;` });
+await page.waitForFunction(() => typeof window.blockRemote === "function");
+// The result, and where the CSP ends up when a browser parses it.
+const blockRemote = (html) => page.evaluate((html) => {
+  const out = window.blockRemote(html);
+  const doc = new DOMParser().parseFromString(out.html, "text/html");
+  const csp = doc.querySelector('meta[http-equiv="Content-Security-Policy"]');
+  // Loading attributes still pointing at example.com, as the browser reads them.
+  const left = [...doc.querySelectorAll("*")].flatMap((el) => [...el.attributes]
+    .filter((a) => /^(src|srcset|poster|data|background|href|xlink:href)$/i.test(a.name) && el.localName !== "a" && /example\.com/i.test(a.value))
+    .map((a) => `${el.localName} ${a.name}=${a.value}`));
+  return { ...out, left, cspIn: csp?.parentElement?.localName, cspFirst: csp === doc.head.firstElementChild };
+}, html);
 
 // A 1×1 PNG.
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
@@ -53,8 +74,8 @@ await test("zip without an HTML page is refused", async () => {
   eq(/no HTML page/.test(error?.message ?? ""), true, `error: ${error?.message}`);
 });
 
-await test("remote URLs are replaced and counted; links stay", () => {
-  const { html, blocked } = blockRemote(`<!doctype html><html><head>
+await test("remote URLs are replaced and counted; links stay", async () => {
+  const { html, blocked, cspIn, cspFirst } = await blockRemote(`<!doctype html><html><head>
     <base href="https://example.com/">
     <meta http-equiv="refresh" content="0;url=https://example.com/">
     <link rel="stylesheet" href="https://cdn.example.com/a.css">
@@ -75,7 +96,26 @@ await test("remote URLs are replaced and counted; links stay", () => {
   eq(html.includes("data:image/png;base64,AAAA") && html.includes('src="local.png"'), true, "data and relative URLs kept");
   eq(blocked, 15, "count");
   eq(/<meta http-equiv="Content-Security-Policy" content="default-src 'none'/.test(html), true, "CSP as a backstop");
-  eq(html.indexOf("Content-Security-Policy") < html.indexOf("<style"), true, "CSP before anything that loads");
+  eq(cspIn === "head" && cspFirst, true, `CSP first in <head>, before anything that loads (in ${cspIn})`);
+});
+
+await test("tags a regex misreads: > in a value, / before a name, odd schemes", async () => {
+  const pages = {
+    header: '<header><h1>Report</h1></header><p>Body</p><img alt="a > b" src="https://example.com/a.png">',
+    slash: '<!doctype html><html><body><header>Top</header><img/src="https://example.com/b.png"></body></html>',
+    schemes: '<img src="https:example.com/c.png"><img src="\\\\example.com\\d.png"><img src=" //example.com/e.png"><video src="HTTP://example.com/f.mp4"></video>',
+    comment: '<!-- <img src="https://example.com/in-comment.png"> --><p title="<img src=https://example.com/in-title.png>">t</p><img src="ok.png">',
+  };
+  for (const [name, input] of Object.entries(pages)) {
+    const { html, blocked, cspIn, left } = await blockRemote(input);
+    eq(left.length, 0, `${name}: remote URL left in ${left.join(", ")}`);
+    eq(cspIn, "head", `${name}: CSP in <${cspIn}>`);
+    if (name === "comment") {
+      eq(blocked, 0, "comment: text that only looks like a tag isn't counted");
+      eq(html.includes('src="ok.png"'), true, "comment: relative image kept");
+    } else eq(blocked > 0, true, `${name}: counted (${blocked})`);
+  }
+  eq((await blockRemote(pages.schemes)).blocked, 4, "every odd scheme counted");
 });
 
 await test("page size, orientation, margins and screen width", () => {
@@ -89,4 +129,5 @@ await test("page size, orientation, margins and screen width", () => {
   eq(/size: letter portrait/.test(htmlPage("<p>x</p>", { pageSize: "letter" })), true, "letter");
 });
 
+await browser.close();
 process.exit(results.failed ? 1 : 0);
