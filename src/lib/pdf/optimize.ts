@@ -1,24 +1,25 @@
 "use client";
 
-import { PDFDocument, PDFName, PDFRawStream, PDFNumber, PDFRef, PDFArray, PDFDict, PDFHexString, decodePDFRawStream, type PDFObject } from "pdf-lib";
-import { zlibSync } from "fflate";
+import { PDFDocument, PDFName, PDFRawStream, PDFStream, PDFNumber, PDFRef, PDFArray, PDFDict, PDFHexString, PDFString, decodePDFRawStream, type PDFContext, type PDFObject } from "pdf-lib";
+import { Unzlib, zlibSync } from "fflate";
 import { baseName, bytesOf, canvasToBlob, closePdf, openPdf, pdfBlob, pdfjs, renderPage, type Output, type Progress } from "./common";
 import { loadPdf } from "./organize";
 import { prepareQpdf, runQpdf } from "./qpdf";
 import { PdfError } from "./errors";
-import { decodeJpeg, encodeJpeg, jpegComponents, prepareJpeg } from "./jpeg";
-import { asGray, palette, predictPng, resample, unpredictPng, type Pixels } from "./pixels";
+import { decodeJpeg, decodeJpegCmyk, encodeJpeg, jpegComponents, prepareJpeg } from "./jpeg";
+import { asGray, cmykToRgb, expandPalette, invert, palette, predictPng, resample, unpack, unpredictPng, type Pixels } from "./pixels";
 import { placements } from "./placements";
 
 // ── Compress
 // Images are downsampled to a target resolution on the page (like
 // Ghostscript's /ebook and /screen settings), re-encoded with MozJPEG, or kept
-// lossless when they have few colours. Identical streams are stored once, and
-// qpdf packs everything into compressed object streams.
+// lossless when they have few colours. CMYK becomes sRGB except at "light".
+// Identical streams are stored once, and qpdf packs everything into
+// compressed object streams.
 const LEVELS = {
-  extreme: { dpi: 72, quality: 50, maxSide: 1100 },
-  recommended: { dpi: 150, quality: 70, maxSide: 1700 },
-  light: { dpi: 220, quality: 82, maxSide: 2600 },
+  extreme: { dpi: 72, quality: 50, maxSide: 1100, keepCmyk: false },
+  recommended: { dpi: 150, quality: 70, maxSide: 1700, keepCmyk: false },
+  light: { dpi: 220, quality: 82, maxSide: 2600, keepCmyk: true },
 } as const;
 
 function num(d: PDFDict, key: string) {
@@ -33,28 +34,140 @@ function filterNames(d: PDFDict) {
   return [];
 }
 
-// Decoded samples of the images Compress understands: 8-bit grey or RGB,
-// JPEG or Flate (with or without PNG predictors).
-async function readImage(stream: PDFRawStream, w: number, h: number, ch: 1 | 3): Promise<Pixels | null> {
+// Compress never inflates more than this: an image's decoded samples, and
+// any other stream it re-packs. Larger ones stay as they are, so a small file
+// can't expand into gigabytes of memory.
+const MAX_IMAGE_BYTES = 192 << 20;
+const MAX_STREAM_BYTES = 64 << 20;
+
+// A stream's bytes with its Flate filter undone (predictors left in place),
+// or null past `limit` bytes. Unfiltered streams come back as they are.
+function inflate(stream: PDFRawStream, limit: number): Uint8Array | null {
+  const filters = filterNames(stream.dict);
+  const bytes = stream.contents;
+  if (!filters.length) return bytes.length <= limit ? bytes : null;
+  if (filters.length !== 1 || filters[0] !== "/FlateDecode") return null;
+  const parts: Uint8Array[] = [];
+  let total = 0;
+  try {
+    const z = new Unzlib((chunk) => {
+      total += chunk.length;
+      if (total <= limit) parts.push(chunk);
+    });
+    // Small steps: one step can expand at most about 1000-fold.
+    const step = 1 << 14;
+    for (let i = 0; i < bytes.length && total <= limit; i += step) z.push(bytes.subarray(i, i + step), i + step >= bytes.length);
+  } catch {
+    // Damaged or oddly wrapped data: pdf-lib's decoder is more forgiving, and
+    // safe when even the largest possible Flate expansion (1032:1) fits.
+    if (bytes.length * 1032 > limit) return null;
+    return decodePDFRawStream(stream).decode();
+  }
+  if (total > limit) return null;
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.length;
+  }
+  return out;
+}
+
+// The colour spaces Compress re-encodes: device grey, RGB and CMYK, ICC
+// profiles with 1, 3 or 4 components, and palettes over any of those.
+// `space` is what to write back while the channel count still matches.
+type Colour = { n: 1 | 3 | 4; space: PDFObject; palette?: { hival: number; lookup: Uint8Array } };
+
+function colourOf(ctx: PDFContext, cs: PDFObject | undefined, nested = false): Colour | null {
+  if (cs instanceof PDFRef) cs = ctx.lookup(cs);
+  if (cs instanceof PDFName) {
+    const n = ({ "/DeviceGray": 1, "/DeviceRGB": 3, "/DeviceCMYK": 4 } as const)[cs.asString()];
+    return n ? { n, space: cs } : null;
+  }
+  if (!(cs instanceof PDFArray)) return null;
+  const kind = String(cs.get(0));
+  if (kind === "/ICCBased") {
+    const icc = ctx.lookup(cs.get(1));
+    const n = icc instanceof PDFRawStream ? num(icc.dict, "N") : undefined;
+    return n === 1 || n === 3 || n === 4 ? { n, space: cs } : null;
+  }
+  if (kind === "/Indexed" && !nested) {
+    const base = colourOf(ctx, cs.get(1), true);
+    const hival = cs.lookup(2);
+    let table: PDFObject | undefined = cs.get(3);
+    if (table instanceof PDFRef) table = ctx.lookup(table);
+    const lookup = table instanceof PDFString || table instanceof PDFHexString ? table.asBytes()
+      : table instanceof PDFRawStream ? inflate(table, 4096) : null;
+    if (!base || !(hival instanceof PDFNumber) || !lookup) return null;
+    return { n: base.n, space: base.space, palette: { hival: hival.asNumber(), lookup } };
+  }
+  return null;
+}
+
+// Decoded 8-bit samples of an image, in its base colour space (palettes
+// expanded, 16-bit cut to 8, an inverted /Decode applied), or null for
+// anything Compress leaves alone.
+async function readImage(stream: PDFRawStream, w: number, h: number, colour: Colour): Promise<Pixels | null> {
   const d = stream.dict;
   const filters = filterNames(d);
-  if (num(d, "BitsPerComponent") !== 8 && !(filters.length === 1 && filters[0] === "/DCTDecode")) return null;
-  if (filters.length === 1 && filters[0] === "/DCTDecode") {
-    const comps = jpegComponents(stream.contents);
-    if (comps !== ch) return null; // CMYK and odd JPEGs stay as they are
-    const p = await decodeJpeg(stream.contents);
-    return p.w === w && p.h === h ? { ...p, ch } : null;
+  const bpc = num(d, "BitsPerComponent");
+  const comps = colour.palette ? 1 : colour.n;
+
+  // /Decode: the default range, or every range flipped (stored inverted).
+  const decode = d.lookup(PDFName.of("Decode"));
+  let inverted = false;
+  if (decode instanceof PDFArray) {
+    const v = decode.asArray().map((x) => (x instanceof PDFNumber ? x.asNumber() : NaN));
+    const top = colour.palette ? (1 << (bpc ?? 8)) - 1 : 1;
+    if (v.length !== comps * 2) return null;
+    const pairs = Array.from({ length: comps }, (_, i) => [v[i * 2], v[i * 2 + 1]]);
+    if (pairs.every(([a, b]) => a === top && b === 0) && !colour.palette) inverted = true;
+    else if (!pairs.every(([a, b]) => a === 0 && b === top)) return null;
   }
-  if (!filters.every((f) => f === "/FlateDecode")) return null;
-  const parms = d.lookup(PDFName.of("DecodeParms"));
-  const predictor = parms instanceof PDFDict ? num(parms, "Predictor") ?? 1 : 1;
-  // Decode without the predictor; pdf-lib doesn't undo it.
-  const raw = decodePDFRawStream(stream).decode();
-  let data: Uint8Array | null = raw;
-  if (predictor >= 10) data = unpredictPng(raw, w * ch, ch, h);
-  else if (predictor !== 1) return null;
-  if (!data || data.length < w * h * ch) return null;
-  return { w, h, ch, data: data.subarray(0, w * h * ch) };
+
+  let px: Pixels | null = null;
+  if (filters.length === 1 && filters[0] === "/DCTDecode") {
+    if (colour.palette || w * h * comps > MAX_IMAGE_BYTES) return null;
+    const n = jpegComponents(stream.contents);
+    if (n !== comps) return null;
+    px = n === 4 ? await decodeJpegCmyk(stream.contents) : await decodeJpeg(stream.contents);
+    if (!px || px.w !== w || px.h !== h) return null;
+    if (n === 1 || n === 3) px = { ...px, ch: n };
+  } else {
+    // 8- and 16-bit samples; palettes also at 1, 2 and 4 bits.
+    if (!bpc || !(colour.palette ? [1, 2, 4, 8] : [8, 16]).includes(bpc)) return null;
+    const rowBytes = Math.ceil((w * comps * bpc) / 8);
+    if (rowBytes * h > MAX_IMAGE_BYTES) return null;
+    const parms = d.lookup(PDFName.of("DecodeParms"));
+    const predictor = parms instanceof PDFDict ? num(parms, "Predictor") ?? 1 : 1;
+    // PNG predictors add a filter byte to each row; some writers pad the end.
+    const raw = inflate(stream, (rowBytes + 1) * h + 4096);
+    if (!raw) return null;
+    const data = predictor >= 10 ? unpredictPng(raw, rowBytes, Math.max(1, Math.ceil((comps * bpc) / 8)), h) : predictor === 1 ? raw : null;
+    const samples = data && unpack(data, w, h, comps, bpc, Boolean(colour.palette));
+    if (!samples) return null;
+    px = colour.palette ? expandPalette(samples, w, h, colour.palette.lookup, colour.n) : { w, h, ch: colour.n, data: samples };
+  }
+  return inverted ? invert(px) : px;
+}
+
+// Drops objects nothing reaches from the trailer (left over from edits, or
+// planted as a decompression bomb) before anything is hashed or inflated.
+function dropUnreachable(doc: PDFDocument) {
+  const ctx = doc.context;
+  const seen = new Set<string>();
+  const todo: (PDFObject | undefined)[] = [ctx.trailerInfo.Root, ctx.trailerInfo.Info, ctx.trailerInfo.Encrypt];
+  while (todo.length) {
+    const o = todo.pop();
+    if (o instanceof PDFRef) {
+      if (seen.has(o.toString())) continue;
+      seen.add(o.toString());
+      todo.push(ctx.lookup(o));
+    } else if (o instanceof PDFDict) todo.push(...o.values());
+    else if (o instanceof PDFArray) todo.push(...o.asArray());
+    else if (o instanceof PDFStream) todo.push(...o.dict.values());
+  }
+  for (const [ref] of ctx.enumerateIndirectObjects()) if (!seen.has(ref.toString())) ctx.delete(ref);
 }
 
 // Points identical streams (fonts, images, colour profiles embedded more than once,
@@ -87,9 +200,10 @@ async function dedupe(doc: PDFDocument) {
 export async function compress(file: File, o: { level: string }, progress?: Progress): Promise<Output[]> {
   const original = await bytesOf(file);
   const doc = await loadPdf(file, file.name);
-  const { dpi, quality, maxSide } = LEVELS[o.level as keyof typeof LEVELS] ?? LEVELS.recommended;
+  const { dpi, quality, maxSide, keepCmyk } = LEVELS[o.level as keyof typeof LEVELS] ?? LEVELS.recommended;
   const ctx = doc.context;
 
+  dropUnreachable(doc);
   await dedupe(doc);
   const placed = placements(doc);
 
@@ -107,7 +221,6 @@ export async function compress(file: File, o: { level: string }, progress?: Prog
       obj.dict.get(PDFName.of("Subtype")) === PDFName.of("Image") &&
       !masks.has(ref.toString()) &&
       !obj.dict.get(PDFName.of("ImageMask")) &&
-      !obj.dict.get(PDFName.of("Decode")) &&
       // A colour-key mask matches exact colours, which re-encoding would break.
       !(obj.dict.lookup(PDFName.of("Mask")) instanceof PDFArray),
   ) as [PDFRef, PDFRawStream][];
@@ -119,20 +232,17 @@ export async function compress(file: File, o: { level: string }, progress?: Prog
     const w = num(d, "Width");
     const h = num(d, "Height");
     if (!w || !h || w * h < 64 * 64) continue;
-    const cs = d.lookup(PDFName.of("ColorSpace"));
-    const csName = cs instanceof PDFName ? cs.asString() : cs instanceof PDFArray ? String(cs.get(0)) : "";
-    const icc = cs instanceof PDFArray && csName === "/ICCBased" ? ctx.lookup(cs.get(1)) : undefined;
-    const iccN = icc instanceof PDFRawStream ? num(icc.dict, "N") : undefined;
-    const ch = csName === "/DeviceRGB" || iccN === 3 ? 3 : csName === "/DeviceGray" || iccN === 1 ? 1 : 0;
-    if (!ch) continue; // CMYK, Indexed, Lab, Separation: leave untouched
+    const colour = colourOf(ctx, d.get(PDFName.of("ColorSpace")));
+    if (!colour) continue; // Lab, Separation, DeviceN, CalRGB: leave untouched
 
     let px: Pixels | null;
     try {
-      px = await readImage(stream, w, h, ch);
+      px = await readImage(stream, w, h, colour);
     } catch {
       px = null;
     }
     if (!px) continue;
+    if (px.ch === 4 && !keepCmyk) px = cmykToRgb(px);
 
     // Target size from the resolution it's drawn at; images never drawn on a page fall back to a pixel cap.
     const place = placed.get(ref.toString());
@@ -143,14 +253,16 @@ export async function compress(file: File, o: { level: string }, progress?: Prog
     if (s < 0.8) px = resample(px, Math.max(1, Math.round(w * s)), Math.max(1, Math.round(h * s)));
     const gray = asGray(px);
     if (gray) px = gray;
+    const out: Pixels = px;
 
     const wasJpeg = filterNames(d).includes("/DCTDecode");
-    // Keep the ICC profile when the channel count still matches it.
-    const space = iccN === px.ch ? cs! : PDFName.of(px.ch === 1 ? "DeviceGray" : "DeviceRGB");
+    // Keep the ICC profile (or device space) when the channel count still matches it.
+    const space = colour.n === out.ch ? colour.space : PDFName.of(out.ch === 1 ? "DeviceGray" : out.ch === 3 ? "DeviceRGB" : "DeviceCMYK");
     const candidates: { bytes: Uint8Array; set: (nd: PDFDict) => void }[] = [];
 
-    const jpg = await encodeJpeg(px, quality);
-    candidates.push({ bytes: jpg, set: (nd) => {
+    // MozJPEG writes grey and RGB only; CMYK kept at "light" stays lossless.
+    const jpg = out.ch === 4 ? null : await encodeJpeg({ ...out, ch: out.ch }, quality);
+    if (jpg) candidates.push({ bytes: jpg, set: (nd) => {
       nd.set(PDFName.of("Filter"), PDFName.of("DCTDecode"));
       nd.set(PDFName.of("ColorSpace"), space);
       nd.set(PDFName.of("BitsPerComponent"), PDFNumber.of(8));
@@ -158,29 +270,30 @@ export async function compress(file: File, o: { level: string }, progress?: Prog
 
     if (!wasJpeg) {
       // Lossless options for images that were lossless: a palette, or predicted Flate.
-      const pal = palette(px);
+      const pal = palette(out);
       const lossless = pal
-        ? { bytes: zlibSync(predictPng(pal.data, pal.data.length / px.h, 1, px.h), { level: 9 }), bits: pal.bits, colors: px.ch, rowBytes: pal.data.length / px.h }
-        : { bytes: zlibSync(predictPng(px.data, px.w * px.ch, px.ch, px.h), { level: 9 }), bits: 8, colors: px.ch, rowBytes: px.w * px.ch };
+        ? { bytes: zlibSync(predictPng(pal.data, pal.data.length / out.h, 1, out.h), { level: 9 }), bits: pal.bits }
+        : { bytes: zlibSync(predictPng(out.data, out.w * out.ch, out.ch, out.h), { level: 9 }), bits: 8 };
       const set = (nd: PDFDict) => {
         nd.set(PDFName.of("Filter"), PDFName.of("FlateDecode"));
         nd.set(PDFName.of("BitsPerComponent"), PDFNumber.of(lossless.bits));
-        nd.set(PDFName.of("DecodeParms"), ctx.obj({ Predictor: 15, Colors: pal ? 1 : px!.ch, BitsPerComponent: lossless.bits, Columns: px!.w }));
+        nd.set(PDFName.of("DecodeParms"), ctx.obj({ Predictor: 15, Colors: pal ? 1 : out.ch, BitsPerComponent: lossless.bits, Columns: out.w }));
         nd.set(PDFName.of("ColorSpace"), pal
-          ? ctx.obj([PDFName.of("Indexed"), space, pal.colors.length / px!.ch - 1, PDFHexString.of([...pal.colors].map((b) => b.toString(16).padStart(2, "0")).join(""))])
+          ? ctx.obj([PDFName.of("Indexed"), space, pal.colors.length / out.ch - 1, PDFHexString.of([...pal.colors].map((b) => b.toString(16).padStart(2, "0")).join(""))])
           : space);
       };
       // Photos go to JPEG; graphics and text stay sharp unless JPEG is far smaller.
-      if (pal || jpg.length > lossless.bytes.length * 0.5) candidates.unshift({ bytes: lossless.bytes, set });
+      if (!jpg || pal || jpg.length > lossless.bytes.length * 0.5) candidates.unshift({ bytes: lossless.bytes, set });
     }
 
     const best = candidates[0];
-    if (best.bytes.length >= stream.contents.length) continue;
+    if (!best || best.bytes.length >= stream.contents.length) continue;
     const nd = d.clone(ctx);
     nd.delete(PDFName.of("DecodeParms"));
+    nd.delete(PDFName.of("Decode"));
     nd.delete(PDFName.of("Length"));
-    nd.set(PDFName.of("Width"), PDFNumber.of(px.w));
-    nd.set(PDFName.of("Height"), PDFNumber.of(px.h));
+    nd.set(PDFName.of("Width"), PDFNumber.of(out.w));
+    nd.set(PDFName.of("Height"), PDFNumber.of(out.h));
     best.set(nd);
     ctx.assign(ref, PDFRawStream.of(nd, best.bytes));
   }
@@ -192,10 +305,11 @@ export async function compress(file: File, o: { level: string }, progress?: Prog
     const f = filterNames(obj.dict);
     if (f.length !== 1 || f[0] !== "/FlateDecode" || obj.dict.get(PDFName.of("DecodeParms"))) continue;
     try {
-      const packed = zlibSync(decodePDFRawStream(obj).decode(), { level: 9 });
-      if (packed.length < obj.contents.length) ctx.assign(ref, PDFRawStream.of(obj.dict, packed));
+      const plain = inflate(obj, MAX_STREAM_BYTES);
+      const packed = plain && zlibSync(plain, { level: 9 });
+      if (packed && packed.length < obj.contents.length) ctx.assign(ref, PDFRawStream.of(obj.dict, packed));
     } catch {
-      /* leave streams pdf-lib can't decode */
+      /* leave streams that can't be decoded */
     }
   }
 

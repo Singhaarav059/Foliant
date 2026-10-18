@@ -1,6 +1,4 @@
 {
-  "compress bomb-image.pdf": {"why":"P1-07 compress inflates everything: memory over the limit","fails":["MB of memory (limit"]},
-  "compress bomb-orphan.pdf": {"why":"P1-07 compress inflates everything: memory over the limit","fails":["MB of memory (limit"]},
   "compress cyclic-tree.pdf": {"why":"P1-03 a looped page tree overflows the stack","fails":["error: Maximum call stack size exceeded"]},
   "compress dup-ids.pdf": {"why":"P1-03 duplicate object numbers: tools show content the viewer never showed","fails":["missing words [\"XREFTEXT\"]","shows stale/shadow content \"SHADOWTEXT\""]},
   "compress enc-aes256-owner.pdf": {"why":"P1-03 a file with only an owner password is refused","fails":["error: enc-aes256-owner.pdf is encrypted","error: encrypted: enc-aes256-owner.pdf"]},
