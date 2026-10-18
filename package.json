@@ -30,6 +30,7 @@
     "test:layout": "node tests/layout.mjs",
     "test:rotated-text": "node tests/rotated-text.mjs",
     "test:word": "node tests/word-content.mjs",
+    "test:ppt": "node tests/ppt.mjs",
     "test:compress": "node tests/compress.mjs",
     "test:ocr": "node tests/ocr.mjs",
     "test:redact": "node tests/redact.mjs",

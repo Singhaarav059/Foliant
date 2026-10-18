@@ -1,16 +1,16 @@
 "use client";
 
 import { PDFDict, PDFDocument, PDFName, PDFRawStream, PDFNumber, PDFHexString, PDFString, decodePDFRawStream } from "pdf-lib";
+import type { PDFPageProxy } from "pdfjs-dist";
 import {
   baseName, bytesOf, canvasToBlob, normaliseImage, closePdf, openPdf, pdfBlob, pdfjs, renderPage, loadImage,
   type Output, type Progress,
 } from "./common";
-import { pageText, blocks, bodySizeOf, spans, dropChars, type Line, type Run, type Span } from "./text";
+import { pageText, blocks, bodySizeOf, spans, dropChars, lineChars, type Line, type Run, type Span } from "./text";
 import { allLines, flow, grid, type Layout, type Table } from "./tables";
-import { documentLayout, type PageLayout } from "./layout";
+import { documentLayout, figuresOf, type Figure, type PageLayout } from "./layout";
 import { addInvisibleText } from "./textlayer";
 import { srgbProfile } from "./icc";
-import { withoutText } from "./strip";
 import { loadPdf } from "./organize";
 import { PdfError } from "./errors";
 import { prepareDocx } from "./word";
@@ -405,54 +405,208 @@ export async function pdfToMarkdown(file: File, o: { pageBreaks: boolean }, prog
 export { pdfToWord } from "./word";
 
 // ── PDF → PowerPoint
+// With editable text, each slide is built in layers: the page's vector art
+// (drawn without its text or pictures) as the background, each picture as
+// its own image, and the text as text boxes in its own colours on top.
 export async function pdfToPpt(file: File, o: { pptText: boolean }, progress?: Progress): Promise<Output[]> {
   const PptxGenJS = (await import("pptxgenjs")).default;
-  const bytes = await bytesOf(file);
-  const pdf = await openPdf(bytes);
-  const bg = o.pptText ? await openPdf(await withoutText(bytes)) : pdf;
+  const pdf = await openPdf(await bytesOf(file));
   const first = (await pdf.getPage(1)).getViewport({ scale: 1 });
   const inch = (pt: number) => pt / 72;
   const pptx = new PptxGenJS();
   pptx.defineLayout({ name: "PDF", width: inch(first.width), height: inch(first.height) });
   pptx.layout = "PDF";
+  const SCALE = 2;
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
-    const bgPage = await bg.getPage(i);
     const v = page.getViewport({ scale: 1 });
     const sx = first.width / v.width;
     const sy = first.height / v.height;
-    const canvas = await renderPage(bgPage, 2);
-    const blob = await canvasToBlob(canvas, "image/jpeg", 0.88);
-    const dataUrl = await blobToDataUrl(blob);
     const slide = pptx.addSlide();
-    slide.background = { data: dataUrl.replace(/^data:/, "") };
-    if (o.pptText) {
-      const text = await pageText(page);
-      for (const l of text.lines) {
-        slide.addText(l.text, {
-          x: inch(l.x * sx), y: inch(l.y * sy), w: inch(Math.max(l.w, l.size) * sx * 1.04), h: inch(l.size * 1.3 * sy),
-          fontSize: Math.max(4, l.size * Math.min(sx, sy)), bold: l.bold, margin: 0, valign: "top", fontFace: "Arial",
-          color: "1F2937", fit: "none", wrap: false,
-        });
+    if (!o.pptText) {
+      slide.background = { data: await imageData(await renderPage(page, SCALE), "jpg") };
+    } else {
+      const { figures, ops } = await slidePictures(page);
+      const art = await slideRender(page, SCALE, ops);
+      if (!blank(art)) slide.background = { data: await imageData(art, "jpg") };
+      if (figures.length) {
+        const shown = await slideRender(page, SCALE, new Set());
+        for (const f of figures) {
+          const w = Math.max(1, Math.round((f.x1 - f.x0) * SCALE));
+          const h = Math.max(1, Math.round((f.y1 - f.y0) * SCALE));
+          const crop = document.createElement("canvas");
+          crop.width = w;
+          crop.height = h;
+          crop.getContext("2d")!.drawImage(shown, Math.round(f.x0 * SCALE), Math.round(f.y0 * SCALE), w, h, 0, 0, w, h);
+          // Small pictures (logos, charts) stay sharp as PNG; photos go to JPEG.
+          slide.addImage({
+            data: await imageData(crop, w * h < 600_000 ? "png" : "jpg"),
+            x: inch(f.x0 * sx), y: inch(f.y0 * sy), w: inch((f.x1 - f.x0) * sx), h: inch((f.y1 - f.y0) * sy),
+          });
+        }
+      }
+      const scale = Math.min(sx, sy);
+      for (const l of (await pageText(page)).lines) {
+        for (const seg of lineSegments(l)) {
+          slide.addText(
+            seg.pieces.map((p) => ({
+              text: p.text,
+              options: { color: p.color, bold: p.bold, italic: p.italic, fontFace: p.font, fontSize: Math.max(4, p.size * scale) },
+            })),
+            {
+              x: inch(seg.x * sx), y: inch(l.y * sy), w: inch(Math.max(seg.w, l.size) * sx * 1.04), h: inch(l.size * 1.3 * sy),
+              fontSize: Math.max(4, l.size * scale), margin: 0, valign: "top", fit: "none", wrap: false,
+            },
+          );
+        }
       }
     }
     page.cleanup();
     progress?.(i, pdf.numPages);
   }
-  if (bg !== pdf) await closePdf(bg);
   await closePdf(pdf);
-  const out = (await pptx.write({ outputType: "blob" })) as Blob;
+  const out = await oneParagraphProps((await pptx.write({ outputType: "arraybuffer" })) as ArrayBuffer);
   return [{ name: `${baseName(file.name)}.pptx`, blob: out }];
 }
 
-function blobToDataUrl(blob: Blob) {
-  return new Promise<string>((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result));
-    r.onerror = () => reject(r.error);
-    r.readAsDataURL(blob);
+// pptxgenjs writes paragraph properties before every run of a paragraph, but
+// a paragraph may have them only once, first; PowerPoint can call the file
+// damaged. The ones after a run are dropped (they repeat the first).
+async function oneParagraphProps(pptx: ArrayBuffer): Promise<Blob> {
+  const JSZip = (await import("jszip")).default;
+  const zip = await JSZip.loadAsync(pptx);
+  for (const name of Object.keys(zip.files).filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))) {
+    const xml = await zip.file(name)!.async("string");
+    zip.file(name, xml.replace(/(<\/a:r>)<a:pPr\b[^>]*?(?:\/>|>[\s\S]*?<\/a:pPr>)/g, "$1"));
+  }
+  return zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", compression: "DEFLATE" });
+}
+
+// The page's pictures, as layout.ts finds figures (not tiny, overlaps merged,
+// not covering most of the page), and the operators that paint them. Indices
+// are into the "print" operator list, the one rendering runs.
+async function slidePictures(page: PDFPageProxy): Promise<{ figures: Figure[]; ops: Set<number> }> {
+  const { OPS } = await pdfjs();
+  const view = page.getViewport({ scale: 1 });
+  const { fnArray, argsArray } = await page.getOperatorList({ intent: "print" });
+  type M = [number, number, number, number, number, number];
+  const mul = (m: M, n: M): M => [
+    m[0] * n[0] + m[1] * n[2], m[0] * n[1] + m[1] * n[3],
+    m[2] * n[0] + m[3] * n[2], m[2] * n[1] + m[3] * n[3],
+    m[4] * n[0] + m[5] * n[2] + n[4], m[4] * n[1] + m[5] * n[3] + n[5],
+  ];
+  // pdf.js 6 passes matrices as one typed-array argument; older builds passed six numbers.
+  const asMatrix = (a: unknown): M => {
+    const src = (Array.isArray(a) && a.length === 1 ? a[0] : a) as ArrayLike<number>;
+    return [src[0], src[1], src[2], src[3], src[4], src[5]].map(Number) as M;
+  };
+  const paints = new Set<number>([OPS.paintImageXObject, OPS.paintInlineImageXObject, OPS.paintImageMaskXObject]);
+  const images: { rect: Figure; op: number }[] = [];
+  let ctm: M = [1, 0, 0, 1, 0, 0];
+  const stack: M[] = [];
+  // Annotation appearances (image stamps, signatures) are drawn in their own
+  // space, mapped onto the annotation's rectangle; they stay in the background.
+  let annotation = 0;
+  for (let i = 0; i < fnArray.length; i++) {
+    const fn = fnArray[i];
+    const a = argsArray[i] as unknown[];
+    if (fn === OPS.beginAnnotation) annotation++;
+    else if (fn === OPS.endAnnotation) annotation = Math.max(0, annotation - 1);
+    else if (annotation) continue;
+    else if (fn === OPS.save) stack.push(ctm);
+    else if (fn === OPS.restore) ctm = stack.pop() ?? ctm;
+    else if (fn === OPS.transform) ctm = mul(asMatrix(a), ctm);
+    else if (fn === OPS.paintFormXObjectBegin) {
+      stack.push(ctm);
+      if (a[0] && typeof a[0] === "object") ctm = mul(asMatrix(a[0]), ctm);
+    } else if (fn === OPS.paintFormXObjectEnd) ctm = stack.pop() ?? ctm;
+    else if (paints.has(fn)) {
+      // Images fill the unit square of the current matrix.
+      const pts = [[0, 0], [1, 0], [0, 1], [1, 1]].map(([x, y]) => view.convertToViewportPoint(x * ctm[0] + y * ctm[2] + ctm[4], x * ctm[1] + y * ctm[3] + ctm[5]));
+      const xs = pts.map((p) => p[0]);
+      const ys = pts.map((p) => p[1]);
+      images.push({ rect: { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) }, op: i });
+    }
+  }
+  // Figures are clamped to the page: one lying wholly off it comes out empty
+  // or inside out, and its picture stays out (OOXML sizes must be positive).
+  const figures = figuresOf(images.map((m) => ({ ...m.rect })), view.width, view.height).figures.filter((f) => f.x1 - f.x0 >= 16 && f.y1 - f.y0 >= 16);
+  const inside = (f: Figure, r: Figure) => r.x0 >= f.x0 - 3 && r.x1 <= f.x1 + 3 && r.y0 >= f.y0 - 3 && r.y1 <= f.y1 + 3;
+  const ops = new Set(images.filter((m) => figures.some((f) => inside(f, m.rect))).map((m) => m.op));
+  return { figures, ops };
+}
+
+// The page drawn without its text and without the operators in `drop`.
+async function slideRender(page: PDFPageProxy, scale: number, drop: Set<number>) {
+  const { OPS } = await pdfjs();
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(viewport.width));
+  canvas.height = Math.max(1, Math.round(viewport.height));
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const text = new Set([OPS.showText, OPS.showSpacedText, OPS.nextLineShowText, OPS.nextLineSetSpacingShowText]);
+  const operationsFilter = (i: number, list: { fnArray: number[] }) => !text.has(list.fnArray[i]) && !drop.has(i);
+  // "print", as renderPage: no requestAnimationFrame, so background tabs keep going.
+  await page.render({ canvas, canvasContext: ctx, viewport, intent: "print", operationsFilter }).promise;
+  return canvas;
+}
+
+// Nothing but white: the page has no vector art to keep.
+function blank(canvas: HTMLCanvasElement) {
+  const { data } = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
+  for (let k = 0; k < data.length; k += 4) if (data[k] < 250 || data[k + 1] < 250 || data[k + 2] < 250) return false;
+  return true;
+}
+
+// pptxgenjs takes images as "image/png;base64,…".
+async function imageData(canvas: HTMLCanvasElement, type: "png" | "jpg") {
+  const mime = type === "png" ? "image/png" : "image/jpeg";
+  const bytes = await bytesOf(await canvasToBlob(canvas, mime, 0.88));
+  let bin = "";
+  for (let k = 0; k < bytes.length; k += 0x8000) bin += String.fromCharCode(...bytes.subarray(k, k + 0x8000));
+  return `${mime};base64,${btoa(bin)}`;
+}
+
+// A line's text boxes: runs far apart (table columns, a label and its value)
+// get boxes of their own, so they stay where they were. Each box's text is in
+// pieces with the style and colour of the runs they came from.
+type Piece = { text: string; color: string; bold: boolean; italic: boolean; font: string; size: number };
+function lineSegments(l: Line): { x: number; w: number; pieces: Piece[] }[] {
+  const groups: Run[][] = [];
+  let lastEnd = -Infinity;
+  for (const r of l.runs) {
+    if (!groups.length || r.x - lastEnd > Math.max(l.size, r.size) * 2) groups.push([]);
+    groups[groups.length - 1].push(r);
+    lastEnd = Math.max(lastEnd, r.x + r.w);
+  }
+  return groups.flatMap((runs) => {
+    const { text, from } = lineChars(runs);
+    if (!text) return [];
+    const pieces: Piece[] = [];
+    let owner = runs[0];
+    for (let k = 0; k < text.length; k++) {
+      // A space put between runs goes with the run before it.
+      const r = from[k] ? runs[from[k]![0]] : owner;
+      const last = pieces[pieces.length - 1];
+      if (last && r === owner) last.text += text[k];
+      else if (last && sameLook(last, r)) {
+        last.text += text[k];
+        owner = r;
+      } else {
+        owner = r;
+        pieces.push({ text: text[k], color: hex(r.color), bold: r.bold, italic: r.italic, font: r.font ?? "Arial", size: r.size });
+      }
+    }
+    const last = runs[runs.length - 1];
+    return [{ x: runs[0].x, w: last.x + last.w - runs[0].x, pieces }];
   });
 }
+
+const hex = (c?: string) => (c && /^#[0-9a-f]{6}$/i.test(c) ? c.slice(1).toUpperCase() : "000000");
+const sameLook = (p: Piece, r: Run) =>
+  p.color === hex(r.color) && p.bold === r.bold && p.italic === r.italic && p.font === (r.font ?? "Arial") && Math.abs(p.size - r.size) < 0.6;
 
 // ── PDF → PDF/A (1b, 2b, 2u, 3b, 3u)
 // Pages stay as they are (real text, vector graphics); pdfa.ts fixes what the

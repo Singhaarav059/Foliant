@@ -142,6 +142,8 @@ jobs:
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:word
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:ppt
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:compress
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:ocr
