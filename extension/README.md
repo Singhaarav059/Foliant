@@ -17,4 +17,5 @@ developer mode on, choose "Load unpacked"). For Firefox, load
 
 Tests: `npm run test:extension` checks the manifests and zips.
 `npm run test:e2e:extension` loads the add-on in Chromium against the static
-build. `store-listing.md` has the store texts and the privacy statement.
+build, and `npm run test:e2e:extension:firefox` does the same in a release
+Firefox (FIREFOX_PATH) over WebDriver BiDi. `store-listing.md` has the store texts and the privacy statement.
