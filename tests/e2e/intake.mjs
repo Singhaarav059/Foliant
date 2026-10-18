@@ -38,7 +38,9 @@ function paste(page, name, type) {
     } catch {
       e = new Event("paste", { bubbles: true, cancelable: true });
     }
-    if (!e.clipboardData) Object.defineProperty(e, "clipboardData", { value: dt });
+    // Firefox's ClipboardEvent takes no clipboardData (its init dictionary
+    // has only data and dataType) and gives the event an empty one instead.
+    if (!e.clipboardData?.files.length) Object.defineProperty(e, "clipboardData", { value: dt });
     document.body.dispatchEvent(e);
     return e.defaultPrevented;
   }, [bytes(name), name, type]);
