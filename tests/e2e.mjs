@@ -8,9 +8,10 @@
 // BASE_URL changes the server (default http://localhost:3202). CHROME_PATH
 // runs the chromium tests in an installed Chrome instead of Playwright's.
 //
-// More tests live in tests/e2e/*.mjs, one file per area. Each default-exports
-// a named function that gets this file's helpers (test, open, pick, run, …)
-// and runs once per browser, after the tests below.
+// More tests live in tests/e2e/*.mjs, one file per area. A file that
+// default-exports a named function gets this file's helpers (test, open,
+// pick, run, …) and runs once per browser, after the tests below. The other
+// files there are standalone suites with their own npm run test:e2e:* script.
 import pw from "playwright-core";
 import { PDFDocument } from "pdf-lib";
 import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
@@ -22,7 +23,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const base = (process.env.BASE_URL ?? "http://localhost:3202").replace(/\/+$/, "");
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 const specDir = join(dirname(fileURLToPath(import.meta.url)), "e2e");
-const specs = await Promise.all(readdirSync(specDir).filter((f) => f.endsWith(".mjs")).sort().map((f) => import(pathToFileURL(join(specDir, f)).href)));
+// Only files that default-export a spec. The others there are standalone
+// suites (node tests/e2e/<area>.mjs) or their shared kit, which run on import.
+const specs = await Promise.all(readdirSync(specDir).filter((f) => f.endsWith(".mjs") && /^export default /m.test(readFileSync(join(specDir, f), "utf8"))).sort().map((f) => import(pathToFileURL(join(specDir, f)).href)));
 const downloads = mkdtempSync(join(tmpdir(), "e2e-"));
 const engines = process.argv.slice(2).length ? process.argv.slice(2) : ["chromium", "firefox", "webkit"];
 const results = [];

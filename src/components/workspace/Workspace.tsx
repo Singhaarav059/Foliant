@@ -1,21 +1,22 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowRight, Loader2 } from "lucide-react";
 import { useI18n } from "../I18n";
 import { useUser, postJson } from "../User";
-import { Dropzone } from "./Dropzone";
+import { Dropzone, useFileIntake } from "./Dropzone";
 import { FileBoard, type Item } from "./FileBoard";
 import { Options } from "./Options";
 import { PageBoard, type PageItem } from "./PageBoard";
-import { Editor } from "./Editor";
+import { Editor, prepareEditor } from "./Editor";
 import { Scanner } from "./Scanner";
-import { CompareView } from "./CompareView";
+import { CompareView, prepareCompare } from "./CompareView";
+import { ErrorBox, useProblem, type Problem } from "./ErrorBox";
 import { Results } from "./Results";
 import { PrintResults } from "./PrintResults";
 import { clearHandoff, peekHandoff } from "@/lib/handoff";
 import { fileExt, type Output, type Progress } from "@/lib/pdf/common";
+import { fileError } from "@/lib/pdf/errors";
 import { pageCount } from "@/lib/pdf/thumbs";
 import { defaultOptions, LIMITS, toolById, type ToolId } from "@/lib/tools";
 
@@ -26,7 +27,8 @@ const uid = () => crypto.randomUUID();
 
 export function Workspace({ toolId }: { toolId: ToolId }) {
   const tool = toolById(toolId);
-  const { t, tOr, href } = useI18n();
+  const { t, tOr } = useI18n();
+  const problem = useProblem();
   const { user } = useUser();
   // Files handed over from the previous tool's result start the workspace pre-filled.
   const [items, setItems] = useState<Item[]>(() => (peekHandoff() ?? []).map((file) => ({ id: uid(), file })));
@@ -34,7 +36,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   const [stage, setStage] = useState<Stage>(() => (peekHandoff()?.length ? "work" : "select"));
   const [progress, setProgress] = useState<{ value: number; label?: string }>({ value: 0 });
   const [outputs, setOutputs] = useState<Output[]>([]);
-  const [error, setError] = useState<{ text: string; unlock?: boolean } | null>(null);
+  const [error, setError] = useState<Problem | null>(null);
   const [pages, setPages] = useState<PageItem[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [url, setUrl] = useState("");
@@ -47,7 +49,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
     fetch("/api/capabilities").then((r) => r.json()).then(setCaps).catch(() => setCaps(null));
   }, [tool.runtime]);
 
-  const addFiles = useCallback(async (incoming: File[]) => {
+  const addFiles = useCallback(async (incoming: File[], base?: Item[]) => {
     setError(null);
     const ok: File[] = [];
     for (const f of incoming) {
@@ -64,7 +66,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
       ok.push(f);
     }
     if (!ok.length) return;
-    const next = tool.multiple ? [...items, ...ok.map((file) => ({ id: uid(), file }))] : [{ id: uid(), file: ok[0] }];
+    const next = tool.multiple ? [...(base ?? items), ...ok.map((file) => ({ id: uid(), file }))] : [{ id: uid(), file: ok[0] }];
     const maxFiles = tool.mode === "compare" ? 2 : LIMITS.files;
     if (next.length > maxFiles) {
       setError({ text: t("ws.tooMany", { n: maxFiles }) });
@@ -76,6 +78,24 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
 
   useEffect(() => clearHandoff(), []);
 
+  // Once the page has settled, load what this tool runs on, so it also works
+  // offline. The imports match the ones each stage makes when it runs.
+  useEffect(() => {
+    const code =
+      tool.mode === "pages" ? () => import("@/lib/pdf/organize")
+      : tool.mode === "editor" ? () => prepareEditor(tool.id)
+      : tool.mode === "compare" ? prepareCompare
+      : () => import("@/lib/pdf/run").then((m) => m.prepare(tool.id));
+    const timer = setTimeout(() => void import("@/lib/offline").then((m) => m.warm(tool.id, code)).catch(() => {}), 1500);
+    return () => clearTimeout(timer);
+  }, [tool.id, tool.mode]);
+
+  // A file that can't be opened leaves the list, and the reason is shown.
+  const drop = useCallback(async (id: string, file: File, e: unknown) => {
+    setError(problem(await fileError(e, file)));
+    setItems((list) => list.filter((i) => i.id !== id));
+  }, [problem]);
+
   // Page tools: one card per page of every file. Edits to pages that were
   // already listed survive adding more files.
   useEffect(() => {
@@ -83,15 +103,18 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
     let live = true;
     (async () => {
       const built: PageItem[] = [];
+      let failed = false;
       for (let fi = 0; fi < items.length; fi++) {
         try {
           const n = await pageCount(items[fi].file);
           for (let p = 0; p < n; p++) built.push({ key: `${items[fi].id}:${p}`, file: fi, page: p, rotate: 0 });
-        } catch {
-          if (live) setError({ text: t("ws.encrypted", { name: items[fi].file.name }), unlock: true });
+        } catch (e) {
+          failed = true;
+          if (live) void drop(items[fi].id, items[fi].file, e);
         }
       }
-      if (!live) return;
+      // Dropping a file re-runs this with the files that are left.
+      if (!live || failed) return;
       setPages((prev) => {
         const existing = new Map(prev.map((p) => [p.key, p]));
         const kept = built.map((p) => ({ ...(existing.get(p.key) ?? p), file: p.file }));
@@ -105,7 +128,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
     return () => {
       live = false;
     };
-  }, [items, tool.mode, t]);
+  }, [items, tool.mode, drop]);
 
   const reset = () => {
     run.current++;
@@ -118,14 +141,24 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
     setStage("select");
   };
 
+  // Files dropped or pasted anywhere, at any stage. On the result screen
+  // they start a new run; while one is running they're ignored.
+  const over = useFileIntake((incoming) => {
+    if (stage === "busy") return;
+    if (stage === "done") {
+      reset();
+      void addFiles(incoming, []);
+    } else void addFiles(incoming);
+  });
+  const dropHint = over && (
+    <div className="pointer-events-none fixed inset-0 z-50 grid place-items-center bg-[color-mix(in_oklab,var(--bg)_70%,transparent)]">
+      <p className="rounded-xl border border-dashed border-ink bg-surface px-6 py-4 text-[16px] font-medium shadow-card">{t("ws.dropActive")}</p>
+    </div>
+  );
+
   const fail = (e: unknown) => {
-    // Errors carry a code because class names don't survive minification.
-    const { code, fileName } = (e ?? {}) as { code?: string; fileName?: string };
-    if (code === "encrypted" || /is encrypted|PasswordException/i.test(String(e))) setError({ text: t("ws.encrypted", { name: fileName ?? "" }), unlock: true });
-    else if (code === "wrong_password") setError({ text: t("ws.wrongPassword") });
-    else if (code === "office_isolation") setError({ text: t("ws.officeReload") });
-    else if (code === "office_memory") setError({ text: t("ws.officeMemory") });
-    else setError({ text: e instanceof Error ? e.message : String(e) });
+    // Typed errors (src/lib/pdf/errors.ts) name the file; a lone file is the one to blame otherwise.
+    setError(problem(e, files.length === 1 ? files[0].name : undefined));
     setStage(items.length || url ? "work" : "select");
   };
 
@@ -192,23 +225,15 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   const unavailable = needsChrome ? t("ws.needsChrome") : null;
 
   // ── Render
-  if (stage === "done") {
+  // Back to the first step once the last file has gone.
+  const view = stage === "work" && !items.length && !url ? "select" : stage;
+  if (view === "done") {
     return outputs[0]?.print
       ? <PrintResults outputs={outputs} onReset={reset} />
       : <Results tool={tool} outputs={outputs} onReset={reset} />;
   }
 
-  const errorBox = error && (
-    <div role="alert" className="rise mx-auto mb-5 flex max-w-[760px] items-start gap-3 rounded-xl border border-[color-mix(in_oklab,var(--danger)_30%,var(--line))] bg-[color-mix(in_oklab,var(--danger)_5%,var(--surface))] p-4 text-[15px]">
-      <AlertTriangle size={18} className="mt-0.5 shrink-0 text-danger" />
-      <span className="flex-1">{error.text}</span>
-      {error.unlock && (
-        <Link href={href("/unlock-pdf")} className="flex shrink-0 items-center gap-1 font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink">
-          {t("tool.unlock.name")} <ArrowRight size={15} />
-        </Link>
-      )}
-    </div>
-  );
+  const errorBox = error && <ErrorBox problem={error} toolId={tool.id} />;
 
   const warn = unavailable && (
     <p className="mx-auto mb-5 flex max-w-[760px] items-start gap-2 rounded-xl border border-line bg-surface p-4 text-[14px] text-ink-2">
@@ -216,7 +241,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
     </p>
   );
 
-  if (stage === "busy") {
+  if (view === "busy") {
     return (
       <div className="mx-auto flex max-w-[520px] flex-col items-center py-16 text-center" aria-live="polite">
         <Loader2 size={28} className="animate-spin text-muted" strokeWidth={1.75} />
@@ -232,7 +257,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   }
 
   // URL tool: an address field instead of (or as well as) a dropzone.
-  if (tool.mode === "url" && stage === "select") {
+  if (tool.mode === "url" && view === "select") {
     return (
       <div>
         {warn}
@@ -244,12 +269,12 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
           <button className="btn btn-lg btn-primary">{t("tool.htmlToPdf.action")}</button>
         </form>
         <p className="my-6 text-center text-[14px] text-muted">{t("ws.orHtmlFile")}</p>
-        <Dropzone tool={tool} onFiles={addFiles} />
+        <Dropzone tool={tool} onFiles={addFiles} over={over} />
       </div>
     );
   }
 
-  if (stage === "select") {
+  if (view === "select") {
     return (
       <div>
         {warn}
@@ -259,7 +284,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
             <Scanner onCapture={(f) => addFiles([f])} />
           </div>
         )}
-        <Dropzone tool={tool} onFiles={addFiles} />
+        <Dropzone tool={tool} onFiles={addFiles} over={over} />
       </div>
     );
   }
@@ -268,11 +293,17 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   if (tool.mode === "compare") {
     return (
       <div>
+        {dropHint}
         {errorBox}
         <FileBoard items={items} onChange={(n) => { setItems(n); if (!n.length) setStage("select"); }} sortable>
           {items.length < 2 && <Dropzone tool={tool} onFiles={addFiles} compact />}
         </FileBoard>
-        <div className="mt-8">{items.length === 2 ? <CompareView a={files[0]} b={files[1]} /> : <p className="text-center text-muted">{t("ws.needMore", { n: 2 })}</p>}</div>
+        <div className="mt-8">
+          {items.length === 2 ? (
+            <CompareView key={`${items[0].id}:${items[1].id}`} a={files[0]} b={files[1]}
+              onError={(e, file) => { const item = items.find((i) => i.file === file); if (item) void drop(item.id, file, e); }} />
+          ) : <p className="text-center text-muted">{t("ws.needMore", { n: 2 })}</p>}
+        </div>
       </div>
     );
   }
@@ -280,11 +311,13 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   if (tool.mode === "editor") {
     return (
       <div>
+        {dropHint}
         {errorBox}
         {tool.options.length > 0 && (
           <div className="mb-4 max-w-[420px]"><Options defs={tool.options} values={options} onChange={(k, v) => setOptions((o) => ({ ...o, [k]: v }))} /></div>
         )}
-        <Editor key={items[0].id} toolId={tool.id} file={files[0]} options={options} actionLabel={t(`tool.${tool.id}.action`)} onRun={execute} />
+        <Editor key={items[0].id} toolId={tool.id} file={files[0]} options={options} actionLabel={t(`tool.${tool.id}.action`)} onRun={execute}
+          onError={(e) => void drop(items[0].id, files[0], e)} />
       </div>
     );
   }
@@ -307,6 +340,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
 
   return (
     <div>
+      {dropHint}
       {warn}
       {errorBox}
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">

@@ -6,6 +6,7 @@ import {
 } from "pdf-lib";
 import { baseName, hexToRgb, isWinAnsi, normaliseImage, pageSet, pdfBlob, textToPng, type Output } from "./common";
 import { loadPdf } from "./organize";
+import { PdfError } from "./errors";
 import { fontCovering, layoutText, type LaidOut } from "./fonts";
 
 // ── Visual ↔ user space
@@ -163,7 +164,7 @@ export async function watermark(
   let line: LaidOut | null = null;
   let textImg: { png: Uint8Array; width: number; height: number } | null = null;
   if (o.markType === "image") {
-    if (!o.markImage) throw new Error("Choose an image for the watermark");
+    if (!o.markImage) throw new PdfError("missing_image");
     const img = await normaliseImage(o.markImage);
     image = img.kind === "png" ? await doc.embedPng(img.bytes) : await doc.embedJpg(img.bytes);
   } else {

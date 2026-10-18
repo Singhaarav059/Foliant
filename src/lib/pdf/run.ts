@@ -2,6 +2,7 @@
 
 import { LIGHT_OFFICE, type ToolId } from "../tools";
 import { baseName, type Output, type Progress } from "./common";
+import { forFile, PdfError, ServerError } from "./errors";
 import { STATIC } from "@/lib/mode";
 
 type Opts = Record<string, unknown>;
@@ -10,10 +11,11 @@ const b = (v: unknown) => Boolean(v);
 const n = (v: unknown) => Number(v);
 
 // Runs the per-file loop for tools that take several files and treat each alone.
+// A failure names the file it happened on.
 async function each(files: File[], progress: Progress | undefined, fn: (f: File, p: Progress) => Promise<Output[]>) {
   const out: Output[] = [];
   for (let i = 0; i < files.length; i++) {
-    const res = await fn(files[i], (d, t) => progress?.(i + d / Math.max(1, t), files.length));
+    const res = await forFile(files[i], () => fn(files[i], (d, t) => progress?.(i + d / Math.max(1, t), files.length)));
     out.push(...res);
     progress?.(i + 1, files.length);
   }
@@ -106,6 +108,9 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
       const { protect } = await import("./security");
       return each(files, progress, (f) => protect(f, {
         password: s(o.password), allowPrint: b(o.allowPrint), allowCopy: b(o.allowCopy), allowModify: b(o.allowModify),
+      }).catch((e) => {
+        // qpdf can't open a file that already has an open password.
+        throw (e as { code?: string }).code === "encrypted" ? new PdfError("already_encrypted", f.name, e) : e;
       }));
     }
     case "unlock": {
@@ -152,17 +157,48 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
   }
 }
 
+// Loads the code runTool(id) loads, without running anything, for
+// src/lib/offline.ts. The imports are written here, like runTool's, so they
+// fetch the same chunks a real run does. OCR and Office conversion fetch
+// tens of megabytes on first use and are left to that first use.
+export async function prepare(id: ToolId): Promise<unknown> {
+  switch (id) {
+    case "merge":
+    case "split":
+    case "rotate":
+      return import("./organize");
+    case "compress":
+    case "repair":
+      return (await import("./optimize")).prepare();
+    case "jpgToPdf":
+    case "scan":
+      return import("./convert");
+    case "pdfToJpg":
+    case "pdfToMarkdown":
+    case "pdfToPdfa":
+      return (await import("./convert")).prepare("pdf");
+    case "pdfToWord":
+      return (await import("./convert")).prepare("word");
+    case "pdfToExcel":
+      return (await import("./convert")).prepare("excel");
+    case "pdfToPpt":
+      return (await import("./convert")).prepare("ppt");
+    case "pageNumbers":
+    case "watermark":
+      return import("./edit");
+    case "protect":
+    case "unlock":
+      return (await import("./security")).prepare();
+    default:
+      return null;
+  }
+}
+
 function hostName(url: string) {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
   } catch {
     return "page";
-  }
-}
-
-export class ServerError extends Error {
-  constructor(message: string, public status: number) {
-    super(message);
   }
 }
 
@@ -177,16 +213,16 @@ export function upload(url: string, body: FormData, progress?: Progress): Promis
     xhr.onload = async () => {
       if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response);
       else {
-        let msg = `Server error ${xhr.status}`;
+        let text: unknown;
         try {
-          msg = JSON.parse(await (xhr.response as Blob).text()).error ?? msg;
+          text = JSON.parse(await (xhr.response as Blob).text()).error;
         } catch {
           /* not JSON */
         }
-        reject(new ServerError(msg, xhr.status));
+        reject(new ServerError(xhr.status, typeof text === "string" ? text : undefined));
       }
     };
-    xhr.onerror = () => reject(new ServerError("Network error", 0));
+    xhr.onerror = () => reject(new ServerError(0));
     xhr.send(body);
   });
 }

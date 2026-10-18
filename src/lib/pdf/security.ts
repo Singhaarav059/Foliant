@@ -1,13 +1,13 @@
 "use client";
 
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, type PDFPage } from "pdf-lib";
-import { baseName, bytesOf, canvasToBlob, closePdf, openPdf, pdfBlob, renderPage, type Output, type Progress } from "./common";
-import { runQpdf, QpdfError } from "./qpdf";
+import { baseName, bytesOf, canvasToBlob, closePdf, openPdf, pdfBlob, pdfjs, renderPage, type Output, type Progress } from "./common";
+import { prepareQpdf, runQpdf, QpdfError } from "./qpdf";
 import { pageText, type PageText } from "./text";
 import { addInvisibleText } from "./textlayer";
 import { runsToWords } from "./convert";
 import { visualFrame, type FracRect } from "./edit";
-import { redactInPlace, type Box } from "./pdfium";
+import { preparePdfium, redactInPlace, type Box } from "./pdfium";
 
 export class WrongPasswordError extends Error {
   code = "wrong_password";
@@ -184,3 +184,6 @@ export async function redact(file: File, marks: { page: number; rect: FracRect }
   out.catalog.delete(PDFName.of("Metadata"));
   return [{ name: `${baseName(file.name)}-redacted.pdf`, blob: pdfBlob(await out.save({ useObjectStreams: true })) }];
 }
+
+// Loads the code protect, unlock and redact load as they run (src/lib/offline.ts).
+export const prepare = () => Promise.all([pdfjs(), prepareQpdf(), preparePdfium()]);

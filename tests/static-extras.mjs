@@ -34,6 +34,9 @@ function finish(fill = () => {}) {
   copyFileSync(join(root, "security-headers.json"), join(dir, "security-headers.json"));
   writeFileSync(join(out, "index.html"), "<!doctype html><title>Languages</title>");
   writeFileSync(join(out, "404.html"), "<!doctype html><title>Not found</title>");
+  mkdirSync(join(out, "_next/static/chunks"), { recursive: true });
+  writeFileSync(join(out, "_next/static/chunks/app.js"), "");
+  writeFileSync(join(out, "sw.js"), 'const BUILD = "dev";\n');
   fill(out);
   const run = spawnSync(process.execPath, [join(root, "scripts/static-extras.mjs"), out], { cwd: dir, encoding: "utf8" });
   return { out, status: run.status, log: run.stdout + run.stderr };

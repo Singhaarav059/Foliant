@@ -67,6 +67,18 @@ jobs:
       - name: Run tests
         if: ${{ !cancelled() }}
         run: npm run test:e2e -- ${{ matrix.browser }}
+      - name: Error messages
+        if: success() || failure()
+        run: npm run test:e2e:errors -- ${{ matrix.browser }}
+      - name: File intake
+        if: success() || failure()
+        run: npm run test:e2e:intake -- ${{ matrix.browser }}
+      - name: Offline
+        if: success() || failure()
+        run: npm run test:e2e:offline -- ${{ matrix.browser }}
+      - name: Compare
+        if: success() || failure()
+        run: npm run test:e2e:compare -- ${{ matrix.browser }}
 
   pdf:
     name: PDF engine tests
@@ -96,6 +108,10 @@ jobs:
       # hide the state of the others.
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:tables
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:errors
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:compare
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:layout
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}

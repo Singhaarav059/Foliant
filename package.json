@@ -33,7 +33,13 @@
     "test:robust": "node tests/robustness/run.mjs",
     "test:static": "node tests/static-extras.mjs && node tests/serve-static.mjs",
     "test:seo": "node tests/seo.mjs",
-    "test:legal": "node tests/legal.mjs"
+    "test:legal": "node tests/legal.mjs",
+    "test:errors": "node tests/errors.mjs",
+    "test:compare": "node tests/compare.mjs",
+    "test:e2e:errors": "node tests/e2e/errors.mjs",
+    "test:e2e:intake": "node tests/e2e/intake.mjs",
+    "test:e2e:offline": "node tests/e2e/offline.mjs",
+    "test:e2e:compare": "node tests/e2e/compare.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
