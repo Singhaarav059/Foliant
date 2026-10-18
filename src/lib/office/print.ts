@@ -1,17 +1,29 @@
 import { baseName, type Output } from "@/lib/pdf/common";
 
-// Static build: lays out an Office or HTML file as a page the browser prints
-// to PDF. The HTML travels as the output's blob; PrintResults opens the print
-// dialog, which writes a real PDF with selectable text.
+// Static build, without LibreOffice: Word, PowerPoint and Excel files are laid
+// out in the browser and drawn straight into a PDF file (topdf.ts), so phones
+// never see a print dialog. HTML files, and Office files that drawing fails
+// on, become a page the browser prints to PDF: the HTML travels as the
+// output's blob, and PrintResults opens the print dialog.
 export async function printable(file: File, o: { orientation?: string; pageSize?: string }): Promise<Output> {
   const data = new Uint8Array(await file.arrayBuffer());
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (["docx", "pptx", "xlsx", "csv"].includes(ext)) {
+    try {
+      const { officePdf } = await import("./topdf");
+      const pdf = await officePdf(data, ext, o, baseName(file.name));
+      return { name: `${baseName(file.name)}.pdf`, blob: new Blob([pdf as Uint8Array<ArrayBuffer>], { type: "application/pdf" }) };
+    } catch (e) {
+      console.warn("Drawing the PDF failed; printing instead.", e);
+    }
+  }
   const office = await import("./html");
   let html: string;
   if (ext === "docx") {
     // docx-preview keeps the layout; mammoth is the fallback for files it can't render.
     try {
-      html = await (await import("./docx")).docxPreviewHtml(data);
+      const { fontBase, fontFaces } = await import("./faces");
+      html = await (await import("./docx")).docxPreviewHtml(data, fontFaces(fontBase()));
     } catch {
       html = await office.docxHtml(data);
     }
