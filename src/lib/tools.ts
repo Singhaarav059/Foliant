@@ -2,6 +2,7 @@
 // processing all read from here.
 
 import { STATIC } from "./mode";
+import { MAX_OCR_LANGS } from "./ocr-langs";
 
 export type CategoryId =
   | "organize"
@@ -31,6 +32,8 @@ export type ToolMode = "files" | "pages" | "editor" | "scan" | "compare" | "url"
 
 export type OptionDef =
   | { key: string; type: "select"; choices: string[]; default: string; when?: Cond }
+  // Up to `max` of the choices, joined with "+" ("eng+hin"), in the order picked.
+  | { key: string; type: "multi"; choices: string[]; max: number; default: string; when?: Cond }
   | { key: string; type: "toggle"; default: boolean; when?: Cond }
   | { key: string; type: "number"; min: number; max: number; step?: number; default: number; when?: Cond }
   | { key: string; type: "range"; min: number; max: number; step?: number; default: number; unit?: string; when?: Cond }
@@ -76,10 +79,27 @@ const IMAGES = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif", "tif
 // Not Greek (no accented letters or final sigma), French (« » œ ï î) or Portuguese (ã).
 export const PADDLE_LANGS = ["eng", "deu", "ita", "spa", "nld", "swe", "cat", "ind", "msa", "swa", "chi_sim", "chi_tra", "jpn"];
 
+// Tesseract's languages (tessdata_best, Apache-2.0), one vendored model each
+// (scripts/vendor.mjs), downloaded only when picked. Every @tesseract.js-data
+// package with an LSTM model; names come from src/lib/ocr-langs.ts.
 export const OCR_LANGS = [
-  "eng", "spa", "fra", "deu", "ita", "por", "jpn", "rus", "kor", "chi_sim",
-  "chi_tra", "ara", "bul", "cat", "nld", "ell", "hin", "ind", "msa", "pol",
-  "swe", "tha", "tur", "ukr", "vie", "swa",
+  "afr", "amh", "ara", "asm", "aze", "aze_cyrl", "bel", "ben", "bod", "bos", "bre", "bul",
+  "cat", "ceb", "ces", "chi_sim", "chi_sim_vert", "chi_tra", "chi_tra_vert", "chr", "cos", "cym", "dan", "deu",
+  "div", "dzo", "ell", "eng", "enm", "epo", "est", "eus", "fao", "fas", "fil", "fin",
+  "fra", "frk", "frm", "fry", "gla", "gle", "glg", "grc", "guj", "hat", "heb", "hin",
+  "hrv", "hun", "hye", "iku", "ind", "isl", "ita", "ita_old", "jav", "jpn", "jpn_vert", "kan",
+  "kat", "kat_old", "kaz", "khm", "kir", "kmr", "kor", "kor_vert", "lao", "lat", "lav", "lit",
+  "ltz", "mal", "mar", "mkd", "mlt", "mon", "mri", "msa", "mya", "nep", "nld", "nor",
+  "oci", "ori", "pan", "pol", "por", "pus", "que", "ron", "rus", "san", "sin", "slk",
+  "slv", "snd", "spa", "spa_old", "sqi", "srp", "srp_latn", "sun", "swa", "swe", "syr", "tam",
+  "tat", "tel", "tgk", "tha", "tir", "ton", "tur", "uig", "ukr", "urd", "uzb", "uzb_cyrl",
+  "vie", "yid", "yor",
+];
+
+// PDF to Word, Excel, PowerPoint and Markdown read scanned pages with OCR first (ocr.ts autoOcr).
+const AUTO_OCR: OptionDef[] = [
+  { key: "ocr", type: "select", choices: ["auto", "off"], default: "auto" },
+  { key: "ocrLang", type: "multi", choices: OCR_LANGS, max: MAX_OCR_LANGS, default: "eng", when: { key: "ocr", is: ["auto"] } },
 ];
 
 const ALL: Tool[] = [
@@ -135,7 +155,7 @@ const ALL: Tool[] = [
     id: "ocr", slug: "ocr-pdf", category: "optimize", icon: "ScanText", mode: "files",
     runtime: "browser", accept: PDF, multiple: false, chainable: true,
     options: [
-      { key: "ocrLang", type: "select", choices: OCR_LANGS, default: "eng" },
+      { key: "ocrLang", type: "multi", choices: OCR_LANGS, max: MAX_OCR_LANGS, default: "eng" },
       // PaddleOCR (src/lib/pdf/paddle.ts); downloads about 36 MB the first time.
       { key: "ocrEngine", type: "select", choices: ["standard", "accurate"], default: "standard", when: { key: "ocrLang", is: PADDLE_LANGS } },
       { key: "dpi", type: "select", choices: ["150", "200", "300"], default: "200" },
@@ -191,17 +211,17 @@ const ALL: Tool[] = [
   {
     id: "pdfToWord", slug: "pdf-to-word", category: "convertFrom", icon: "FileText", mode: "files",
     runtime: "browser", accept: PDF, multiple: true,
-    options: [{ key: "wordMode", type: "select", choices: ["editable", "exact"], default: "editable" }],
+    options: [{ key: "wordMode", type: "select", choices: ["editable", "exact"], default: "editable" }, ...AUTO_OCR],
   },
   {
     id: "pdfToPpt", slug: "pdf-to-powerpoint", category: "convertFrom", icon: "MonitorPlay", mode: "files",
     runtime: "browser", accept: PDF, multiple: true,
-    options: [{ key: "pptText", type: "toggle", default: true }],
+    options: [{ key: "pptText", type: "toggle", default: true }, ...AUTO_OCR],
   },
   {
     id: "pdfToExcel", slug: "pdf-to-excel", category: "convertFrom", icon: "Table", mode: "files",
     runtime: "browser", accept: PDF, multiple: true,
-    options: [{ key: "sheetPer", type: "select", choices: ["page", "document"], default: "page" }],
+    options: [{ key: "sheetPer", type: "select", choices: ["page", "document"], default: "page" }, ...AUTO_OCR],
   },
   {
     id: "pdfToPdfa", slug: "pdf-to-pdfa", category: "convertFrom", icon: "Archive", mode: "files",
@@ -214,7 +234,7 @@ const ALL: Tool[] = [
   {
     id: "pdfToMarkdown", slug: "pdf-to-markdown", category: "convertFrom", icon: "Hash", mode: "files",
     runtime: "browser", accept: PDF, multiple: true, isNew: true,
-    options: [{ key: "pageBreaks", type: "toggle", default: false }],
+    options: [{ key: "pageBreaks", type: "toggle", default: false }, ...AUTO_OCR],
   },
   // ── Edit
   {

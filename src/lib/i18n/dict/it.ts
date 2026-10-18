@@ -477,7 +477,6 @@ const d: { [K in DictKey]?: string } = {
   "feat.f2t": "Oscuramento vero",
   "feat.f2b": "Le pagine oscurate vengono ricostruite, così il testo nascosto sparisce davvero e non resta solo coperto da un riquadro nero.",
   "feat.f3t": "Scansioni ricercabili in ogni lingua",
-  "feat.f3b": "L’OCR aggiunge un livello di testo invisibile in 26 lingue, tra cui cinese, arabo e hindi.",
   "feat.f4t": "Flussi di lavoro",
   "feat.f4b": "Salva una catena di strumenti ed eseguila su nuovi file in un solo passaggio.",
   "feat.f5t": "Riprendi da dove avevi lasciato",

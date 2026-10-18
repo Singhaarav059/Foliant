@@ -82,11 +82,16 @@ for (const f of ["tesseract-core-lstm.wasm.js", "tesseract-core-simd-lstm.wasm.j
   files.push([join(pkgDir("tesseract.js-core"), f), `tesseract/${f}`]);
 }
 // OCR languages: the gzipped "best_int" LSTM models, the same files the
-// tesseract.js CDN serves by default. Every @tesseract.js-data/* dependency
-// is picked up, so adding a language is one npm install plus OCR_LANGS.
+// tesseract.js CDN serves by default, one file each (0.3-6 MB), fetched only
+// for the languages a user picks. Every @tesseract.js-data/* dependency is
+// picked up, so adding a language is one npm install plus OCR_LANGS. Some of
+// those packages hold only a legacy-engine model, which the LSTM-only core
+// can't run: they must not be installed.
 const scope = join(dirname(pkgDir("@tesseract.js-data/eng")));
 for (const lang of readdirSync(scope)) {
-  files.push([join(scope, lang, "4.0.0_best_int", `${lang}.traineddata.gz`), `tessdata/${lang}.traineddata.gz`]);
+  const model = join(scope, lang, "4.0.0_best_int", `${lang}.traineddata.gz`);
+  if (!existsSync(model)) throw new Error(`vendor: @tesseract.js-data/${lang} has no LSTM model; uninstall it`);
+  files.push([model, `tessdata/${lang}.traineddata.gz`]);
 }
 for (const [from, to] of files) {
   mkdirSync(dirname(join(out, to)), { recursive: true });

@@ -477,7 +477,6 @@ const d: { [K in DictKey]?: string } = {
   "feat.f2t": "Che thông tin thực sự",
   "feat.f2b": "Các trang bị che được dựng lại để chữ bị ẩn biến mất hẳn, chứ không chỉ bị phủ một ô đen.",
   "feat.f3t": "Bản scan tìm kiếm được ở mọi ngôn ngữ",
-  "feat.f3b": "OCR thêm lớp chữ vô hình bằng 26 ngôn ngữ, gồm cả tiếng Trung, tiếng Ả Rập và tiếng Hindi.",
   "feat.f4t": "Quy trình",
   "feat.f4b": "Lưu một chuỗi công cụ và chạy trên tệp mới chỉ trong một bước.",
   "feat.f5t": "Tiếp tục từ chỗ đang dở",

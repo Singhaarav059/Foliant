@@ -5,17 +5,11 @@ import { Eye, EyeOff, ImagePlus, Sparkles, X } from "lucide-react";
 import { passwordStrength, suggestPassword } from "@/lib/pdf/password";
 import { useI18n } from "../I18n";
 import { optionVisible, type OptionDef } from "@/lib/tools";
-
-const OCR_NAMES: Record<string, string> = {
-  eng: "English", spa: "Español", fra: "Français", deu: "Deutsch", ita: "Italiano", por: "Português", jpn: "日本語",
-  rus: "Русский", kor: "한국어", chi_sim: "中文 (简体)", chi_tra: "中文 (繁體)", ara: "العربية", bul: "Български",
-  cat: "Català", nld: "Nederlands", ell: "Ελληνικά", hin: "हिन्दी", ind: "Bahasa Indonesia", msa: "Bahasa Melayu",
-  pol: "Polski", swe: "Svenska", tha: "ภาษาไทย", tur: "Türkçe", ukr: "Українська", vie: "Tiếng Việt", swa: "Kiswahili",
-};
+import { LangPicker } from "./LangPicker";
 
 export function Options({
-  defs, values, onChange,
-}: { defs: OptionDef[]; values: Record<string, unknown>; onChange: (key: string, value: unknown) => void }) {
+  defs, values, onChange, restore = false,
+}: { defs: OptionDef[]; values: Record<string, unknown>; onChange: (key: string, value: unknown) => void; restore?: boolean }) {
   const { t, tOr } = useI18n();
   const uid = useId();
   const visible = defs.filter((d) => optionVisible(d, values));
@@ -41,12 +35,12 @@ export function Options({
         }
         return (
           <div key={d.key}>
-            <label htmlFor={id} className="mb-1.5 flex items-baseline justify-between text-[13px] font-medium text-ink-2">
+            <label id={`${id}-label`} htmlFor={id} className="mb-1.5 flex items-baseline justify-between text-[13px] font-medium text-ink-2">
               {label}
               {d.type === "range" && <span className="tabular font-normal text-muted">{String(value)}{d.unit}</span>}
             </label>
             {d.type === "select" && (
-              d.choices.length <= 3 && d.choices.every((c) => (t(`choice.${d.key}.${c}`)).length < 60) && !["ocrLang", "dpi", "pdfaDpi", "redactDpi", "rotation", "screenWidth"].includes(d.key) ? (
+              d.choices.length <= 3 && d.choices.every((c) => (t(`choice.${d.key}.${c}`)).length < 60) && !["dpi", "pdfaDpi", "redactDpi", "rotation", "screenWidth"].includes(d.key) ? (
                 <div role="radiogroup" className="grid gap-1.5">
                   {d.choices.map((c) => {
                     const on = value === c;
@@ -69,11 +63,14 @@ export function Options({
                 <select id={id} className="field" value={String(value)} onChange={(e) => onChange(d.key, e.target.value)}>
                   {d.choices.map((c) => (
                     <option key={c} value={c}>
-                      {d.key === "ocrLang" ? OCR_NAMES[c] ?? c : d.key === "rotation" || d.key === "angle" ? `${c}°` : tOr(`choice.${d.key}.${c}`, c)}
+                      {d.key === "rotation" || d.key === "angle" ? `${c}°` : tOr(`choice.${d.key}.${c}`, c)}
                     </option>
                   ))}
                 </select>
               )
+            )}
+            {d.type === "multi" && (
+              <LangPicker id={id} choices={d.choices} max={d.max} value={String(value ?? d.default)} fallback={d.default} restore={restore} onChange={(v) => onChange(d.key, v)} />
             )}
             {d.type === "password" && d.strength && (
               <PasswordOption id={id} value={String(value ?? "")} onChange={(v, suggested) => {

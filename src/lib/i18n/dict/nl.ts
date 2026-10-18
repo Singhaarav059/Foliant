@@ -477,7 +477,6 @@ const d: { [K in DictKey]?: string } = {
   "feat.f2t": "Echt zwartlakken",
   "feat.f2b": "Zwartgelakte pagina’s worden opnieuw opgebouwd, zodat de verborgen tekst echt weg is en niet alleen onder een zwart vak zit.",
   "feat.f3t": "Doorzoekbare scans in elke taal",
-  "feat.f3b": "OCR voegt een onzichtbare tekstlaag toe in 26 talen, waaronder Chinees, Arabisch en Hindi.",
   "feat.f4t": "Workflows",
   "feat.f4b": "Bewaar een reeks tools en voer die in één stap uit op nieuwe bestanden.",
   "feat.f5t": "Verder waar je gebleven was",
