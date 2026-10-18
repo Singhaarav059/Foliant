@@ -68,18 +68,46 @@ export async function redactInPlace(bytes: Uint8Array, boxes: Map<number, Box[]>
         m.FPDF_ClosePage(page);
       }
     }
-    const writer = m.PDFiumExt_OpenFileWriter();
-    try {
-      if (!m.PDFiumExt_SaveAsCopy(doc, writer)) throw new Error("PDFium could not save the file");
-      const size = m.PDFiumExt_GetFileWriterSize(writer);
-      const data = malloc(size);
-      m.PDFiumExt_GetFileWriterData(writer, data, size);
-      const out = heap().slice(data, data + size);
-      free(data);
-      return { bytes: out, failed };
-    } finally {
-      m.PDFiumExt_CloseFileWriter(writer);
-    }
+    return { bytes: saveCopy(m, doc), failed };
+  } finally {
+    m.FPDF_CloseDocument(doc);
+    free(file);
+  }
+}
+
+// A whole new file of the document. `removeSecurity` writes it unencrypted.
+function saveCopy(m: Pdfium, doc: number, removeSecurity = false) {
+  const { malloc, free } = m.pdfium.wasmExports as unknown as { malloc: (n: number) => number; free: (p: number) => void };
+  const writer = m.PDFiumExt_OpenFileWriter();
+  try {
+    // FPDF_REMOVE_SECURITY is 3.
+    const ok = removeSecurity ? m.FPDF_SaveAsCopy(doc, writer, 3) : m.PDFiumExt_SaveAsCopy(doc, writer);
+    if (!ok) throw new Error("PDFium could not save the file");
+    const size = m.PDFiumExt_GetFileWriterSize(writer);
+    const data = malloc(size);
+    m.PDFiumExt_GetFileWriterData(writer, data, size);
+    const out = (m.pdfium as unknown as { HEAPU8: Uint8Array }).HEAPU8.slice(data, data + size);
+    free(data);
+    return out;
+  } finally {
+    m.PDFiumExt_CloseFileWriter(writer);
+  }
+}
+
+// The file opened with its password and written out unencrypted. PDFium
+// reads damaged files qpdf gives up on, encrypted object streams included.
+export async function decryptedCopy(bytes: Uint8Array, password: string): Promise<Uint8Array> {
+  const m = await pdfium();
+  const { malloc, free } = m.pdfium.wasmExports as unknown as { malloc: (n: number) => number; free: (p: number) => void };
+  const file = malloc(bytes.length);
+  (m.pdfium as unknown as { HEAPU8: Uint8Array }).HEAPU8.set(bytes, file);
+  const doc = m.FPDF_LoadMemDocument(file, bytes.length, password);
+  if (!doc) {
+    free(file);
+    throw new Error(`PDFium could not open the file (error ${m.FPDF_GetLastError()})`);
+  }
+  try {
+    return saveCopy(m, doc, true);
   } finally {
     m.FPDF_CloseDocument(doc);
     free(file);

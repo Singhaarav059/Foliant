@@ -98,6 +98,31 @@ for (const [name, pages] of [["garbage-prefix.pdf", 3], ["deep-tree.pdf", 1], ["
   });
 }
 
+// The same with object streams, as pdf-lib and most writers save by
+// default: pdf-lib can't rebuild an encrypted one, so Unlock decrypts it
+// before any repair.
+await test("Unlock takes a damaged protected file that keeps its objects in object streams", async () => {
+  const { PDFDocument, StandardFonts } = await import("pdf-lib");
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  for (let i = 0; i < 3; i++) doc.addPage([300, 300]).drawText(`PAGE${i}`, { x: 20, y: 150, size: 20, font });
+  const [out] = await protect(file(await doc.save({ useObjectStreams: true }), "streams.pdf"), { password: "pw", ...options });
+  const bytes = new Uint8Array(await out.blob.arrayBuffer());
+  eq(Buffer.from(bytes).includes("/ObjStm"), true, "object streams in the protected file");
+  for (const [damage, broken] of [
+    ["junk before the header", new Uint8Array([...new TextEncoder().encode("JUNK ".repeat(300)), ...bytes])],
+    ["a wrong startxref", (() => {
+      const text = Buffer.from(bytes).toString("latin1");
+      return Buffer.from(`${text.slice(0, text.lastIndexOf("startxref"))}startxref\n99999999\n%%EOF\n`, "latin1");
+    })()],
+    ["a damaged cross-reference stream", Buffer.from(Buffer.from(bytes).toString("latin1").replace("/Type /XRef", "/Type /XRxx"), "latin1")],
+  ]) {
+    eq(await opens(broken, "pw"), 3, `${damage}: pdf.js opens it with the password`);
+    const [open] = await unlock(file(broken, "locked.pdf"), { password: "pw" });
+    eq(await opens(await open.blob.arrayBuffer()), 3, `${damage}: unlocked pages without a password`);
+  }
+});
+
 // ── Permissions (P1-12): seven restrictions, an owner password of one's own,
 // restrictions without an open password, AES-256 by default.
 const { qpdfReport } = await load("qpdf");
@@ -166,6 +191,12 @@ await test("the form's checks: an open password, or at least one restriction", a
   // The permissions password opens with full rights, so the same one for both would lift every restriction.
   eq(check({ password: "same", confirmPassword: "same", ownerPassword: "same", allowPrint: false })?.code, "ownerSameAsOpen", "permissions password same as the open one");
   eq(check({ openPassword: false, password: "same", ownerPassword: "same", allowPrint: false }), null, "the same text when no open password is set");
+});
+
+await test("a saved workflow keeps Protect's switches but none of its passwords", async () => {
+  const saved = pw.withoutSecrets({ openPassword: false, password: "x", confirmPassword: "x", ownerPassword: "y", allowPrint: false, encryption: "aes256" });
+  eq(JSON.stringify(saved), JSON.stringify({ openPassword: false, allowPrint: false, encryption: "aes256" }), "saved options");
+  eq(JSON.stringify(pw.withoutSecrets({ password: 123, userPassword: "z" })), "{}", "anything else under a password key");
 });
 
 await test("suggested passwords are random and rated strong; short ones weak", async () => {

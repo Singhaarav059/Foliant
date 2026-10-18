@@ -72,3 +72,36 @@ export function passwordStrength(password: string): 0 | 1 | 2 | 3 | 4 {
   if (COMMON.test(password)) bits /= 2;
   return bits < 28 ? 1 : bits < 45 ? 2 : bits < 70 ? 3 : 4;
 }
+
+// A workflow's options as saved: passwords never leave the browser. A
+// switch named for one (Protect's "openPassword") holds no secret and stays,
+// so the workflow comes back as it was set.
+export function withoutSecrets(options: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(options).filter(([k, v]) => !/password/i.test(k) || typeof v === "boolean"));
+}
+
+// Whether a PDF's bytes have an encryption dictionary. Called on a file that
+// opened without a password, it had only an owner password: restrictions
+// (no printing, no copying …) readers apply but nothing enforces.
+export function hasEncrypt(bytes: Uint8Array) {
+  const latin1 = (a: number, b: number) => new TextDecoder("latin1").decode(bytes.subarray(a, b));
+  const span = 65536;
+  return /\/Encrypt[\s/<\d]/.test(latin1(Math.max(0, bytes.length - span), bytes.length) + latin1(0, Math.min(span, bytes.length)));
+}
+
+// Marks the first result when an input PDF had such restrictions: every tool
+// but Protect and Unlock writes its result without them, and says so.
+export async function markUnrestricted<T extends { unrestricted?: boolean }>(files: Blob[], outputs: T[]): Promise<T[]> {
+  if (!outputs.length) return outputs;
+  for (const f of files) {
+    const span = 65536;
+    const head = new Uint8Array(await f.slice(0, span).arrayBuffer());
+    if (!new TextDecoder("latin1").decode(head.subarray(0, 1024)).includes("%PDF-")) continue;
+    const tail = f.size > span ? new Uint8Array(await f.slice(f.size - span).arrayBuffer()) : new Uint8Array();
+    const both = new Uint8Array(head.length + tail.length);
+    both.set(head);
+    both.set(tail, head.length);
+    if (hasEncrypt(both)) return [{ ...outputs[0], unrestricted: true }, ...outputs.slice(1)];
+  }
+  return outputs;
+}

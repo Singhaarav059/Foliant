@@ -327,9 +327,21 @@ for (const fixture of ["enc-aes256-owner.pdf", "enc-rc4-40-owner.pdf"]) {
   }
 }
 await test("the result says when the owner password's restrictions were left behind", async () => {
-  eq((await rotateAll(fxFile("enc-aes256-owner.pdf"), 90))[0].note, "unrestricted", "note for an owner-password file");
-  eq((await merge([fxFile("base.pdf"), fxFile("enc-rc4-40-owner.pdf")], { bookmarks: false }))[0].note, "unrestricted", "note for a merge");
-  eq((await rotateAll(fxFile("base.pdf"), 90))[0].note, undefined, "no note for a plain file");
+  eq((await rotateAll(fxFile("enc-aes256-owner.pdf"), 90))[0].unrestricted, true, "an owner-password file");
+  eq((await merge([fxFile("base.pdf"), fxFile("enc-rc4-40-owner.pdf")], { bookmarks: false }))[0].unrestricted, true, "a merge");
+  eq((await rotateAll(fxFile("base.pdf"), 90))[0].unrestricted, undefined, "a plain file");
+});
+// Every tool's result (compress, watermark, organize, redact …) is marked
+// the same way once it's made, alongside a note of its own.
+await test("any tool's result is marked when an input had restrictions", async () => {
+  const { markUnrestricted } = await load("password");
+  const made = () => [{ name: "a.pdf", blob: new Blob(["x"]), note: "notSmaller" }, { name: "b.pdf", blob: new Blob(["y"]) }];
+  const [first, second] = await markUnrestricted([fxFile("base.pdf"), fxFile("enc-aes256-owner.pdf")], made());
+  eq(first.unrestricted, true, "marked");
+  eq(first.note, "notSmaller", "its own note kept");
+  eq(second.unrestricted, undefined, "only the first result carries it");
+  eq((await markUnrestricted([fxFile("base.pdf")], made()))[0].unrestricted, undefined, "not for a plain file");
+  eq((await markUnrestricted([new File(["/Encrypt 5 0 R"], "notes.txt")], made()))[0].unrestricted, undefined, "not for a file that isn't a PDF");
 });
 await test("a file that needs an open password is still refused, as encrypted", async () => {
   let error;
@@ -423,6 +435,7 @@ async function extras(blob) {
   const outline = await pdf.getOutline();
   const walk = async (items) => Promise.all((items ?? []).map(async (it) => ({
     title: it.title,
+    url: it.url ?? null,
     page: it.dest ? await pdf.getPageIndex((typeof it.dest === "string" ? await pdf.getDestination(it.dest) : it.dest)[0]).catch(() => null) : null,
     items: await walk(it.items),
   })));
@@ -481,6 +494,50 @@ await test("organize with several files keeps fields, attachments and bookmarks 
   eq(attachments.length, 2, "attachments");
 });
 
+// Chapters 1-3, each on its page with a web link under it, a web link of
+// its own at the top level, and an attached file.
+async function linked() {
+  const doc = await PDFDocument.create();
+  const ctx = doc.context;
+  const pages = [0, 1, 2].map(() => doc.addPage([300, 300]));
+  await doc.attach(new TextEncoder().encode("a,b\n1,2\n"), "notes.csv", { mimeType: "text/csv" });
+  const root = ctx.nextRef();
+  const uri = (title, parent, url) => ctx.obj({ Title: PDFHexString.fromText(title), Parent: parent, A: { S: "URI", URI: PDFString.of(url) } });
+  const tops = [0, 1, 2, 3].map(() => ctx.nextRef());
+  tops.forEach((ref, i) => {
+    const near = { Parent: root, ...(i ? { Prev: tops[i - 1] } : {}), ...(i < 3 ? { Next: tops[i + 1] } : {}) };
+    if (i === 3) {
+      ctx.assign(ref, ctx.obj({ ...near, Title: PDFHexString.fromText("Site"), A: { S: "URI", URI: PDFString.of("https://example.com/site") } }));
+      return;
+    }
+    const kid = ctx.register(uri(`Link ${i + 1}`, ref, `https://example.com/${i + 1}`));
+    ctx.assign(ref, ctx.obj({ ...near, Title: PDFHexString.fromText(`Chapter ${i + 1}`), Dest: [pages[i].ref, PDFName.of("Fit")], First: kid, Last: kid, Count: PDFNumber.of(1) }));
+  });
+  ctx.assign(root, ctx.obj({ Type: "Outlines", First: tops[0], Last: tops[3], Count: PDFNumber.of(7) }));
+  doc.catalog.set(PDFName.of("Outlines"), root);
+  return doc.save();
+}
+const shape = (tree) => tree.map((t) => `${t.title}${t.items.length ? `[${shape(t.items)}]` : ""}`).join();
+await test("organize leaves out what a file whose pages were all removed carries", async () => {
+  const blob = await buildFromPlan([fxFile("base.pdf"), fxFile("attachments.pdf", "secret.pdf"), file(await linked(), "links.pdf")], [{ file: 0, page: 0, rotate: 0 }]);
+  const { tree, attachments, pages } = await extras(blob);
+  eq(pages, 1, "pages");
+  eq(attachments.length, 0, `attachments ${JSON.stringify(attachments)}`);
+  eq(shape(tree), "Chapter 1", "bookmarks");
+});
+await test("remove keeps the file's attachments and links, but not the links under a removed chapter", async () => {
+  const blob = await buildFromPlan([file(await linked(), "links.pdf")], [{ file: 0, page: 0, rotate: 0 }, { file: 0, page: 2, rotate: 0 }]);
+  const { tree, attachments } = await extras(blob);
+  eq(attachments.join(), "notes.csv", "attachments");
+  eq(shape(tree), "Chapter 1[Link 1],Chapter 3[Link 3],Site", "bookmarks");
+});
+await test("extract, like split, carries no attachments and only the links under a kept chapter", async () => {
+  const blob = await buildFromPlan([file(await linked(), "links.pdf")], [{ file: 0, page: 1, rotate: 0 }], { extract: true });
+  const { tree, attachments } = await extras(blob);
+  eq(attachments.length, 0, `attachments ${JSON.stringify(attachments)}`);
+  eq(shape(tree), "Chapter 2[Link 2]", "bookmarks");
+});
+
 // A Type 3 font with no /Resources of its own draws its glyphs with the
 // page's resources (ISO 32000-1, 9.6.5), so what its glyphs name stays.
 await test("a part keeps what a Type 3 font's glyphs draw from the page's resources", async () => {
@@ -502,6 +559,32 @@ await test("a part keeps what a Type 3 font's glyphs draw from the page's resour
   const parts = await split(file(bytes, "t3.pdf"), { splitMode: "every", every: 1, ranges: "", maxMb: 1, mergeRanges: false });
   for (let i = 0; i < parts.length; i++) eq(images((await open(parts[i].blob)).doc), 1, `part ${i + 1} images`);
   eq(images((await open(await buildFromPlan([file(bytes, "t3.pdf")], [{ file: 0, page: 1, rotate: 0 }]))).doc), 1, "organized page images");
+});
+
+// A soft mask's group and an annotation's appearance with no /Resources of
+// their own draw with the page's (ISO 32000-1, 7.8.3), so what they name stays.
+await test("a part keeps what a soft mask and an annotation's appearance draw from the page's resources", async () => {
+  const doc = await PDFDocument.create();
+  const ctx = doc.context;
+  const image = (gray) => ctx.register(ctx.stream(new Uint8Array(4).fill(gray), { Type: "XObject", Subtype: "Image", Width: 2, Height: 2, ColorSpace: "DeviceGray", BitsPerComponent: 8 }));
+  const group = ctx.register(ctx.stream("q 300 0 0 300 0 0 cm /MaskImg Do Q", { Type: "XObject", Subtype: "Form", BBox: [0, 0, 300, 300], Group: { S: "Transparency", CS: "DeviceGray" } }));
+  const res = ctx.register(ctx.obj({
+    XObject: { Im: image(200), MaskImg: image(255), AnnImg: image(100), Unused: image(50) },
+    ExtGState: { GS1: { Type: "ExtGState", SMask: { Type: "Mask", S: "Luminosity", G: group } } },
+  }));
+  for (let i = 0; i < 2; i++) {
+    const p = doc.addPage([300, 300]);
+    p.node.set(PDFName.of("Resources"), res);
+    p.node.set(PDFName.of("Contents"), ctx.register(ctx.stream("q /GS1 gs 300 0 0 300 0 0 cm /Im Do Q")));
+    const look = ctx.register(ctx.stream("q 20 0 0 20 0 0 cm /AnnImg Do Q", { Type: "XObject", Subtype: "Form", BBox: [0, 0, 20, 20] }));
+    p.node.set(PDFName.of("Annots"), ctx.obj([ctx.register(ctx.obj({ Type: "Annot", Subtype: "Stamp", Rect: [10, 10, 30, 30], AP: { N: look } }))]));
+  }
+  const parts = await split(file(await doc.save(), "mask.pdf"), { splitMode: "every", every: 1, ranges: "", maxMb: 1, mergeRanges: false });
+  for (let i = 0; i < parts.length; i++) {
+    const { doc: out } = await open(parts[i].blob);
+    const names = out.getPage(0).node.Resources().lookup(PDFName.of("XObject"), PDFDict).keys().map(String).sort().join();
+    eq(names, "/AnnImg,/Im,/MaskImg", `part ${i + 1} images`);
+  }
 });
 
 // Bookmarks nested thousands deep (a chain, each the only child of the last).
