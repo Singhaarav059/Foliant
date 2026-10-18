@@ -85,6 +85,9 @@ jobs:
       - name: Protect
         if: success() || failure()
         run: npm run test:e2e:protect -- ${{ matrix.browser }}
+      - name: OCR languages
+        if: success() || failure()
+        run: npm run test:e2e:ocr-langs -- ${{ matrix.browser }}
       - name: Office to PDF with LibreOffice, first visit
         if: matrix.browser == 'chromium'
         run: npm run test:e2e-office
@@ -135,6 +138,8 @@ jobs:
         run: npm run test:compress
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:ocr
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:ocr-langs
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:redact
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}

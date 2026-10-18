@@ -10,6 +10,8 @@ import { baseName, bytesOf, closePdf, openPdf, pdfBlob, renderPage, type Output,
 import { VENDOR, VENDOR_VERSION } from "../vendor";
 import { addInvisibleText, type Word } from "./textlayer";
 import { PADDLE_LANGS, paddlePage } from "./paddle";
+import { OCR_LANGS } from "../tools";
+import { ocrLangs } from "../ocr-langs";
 import { deskew, estimateSkew, flattenBackground, grayOf, grayPng, looksSideways, median3, noiseLevel, rotate90, unmapper, type Gray, type Unmap } from "./ocrprep";
 
 // Noise level (grey levels, Immerkær) above which a page gets a median filter.
@@ -132,14 +134,16 @@ export async function ocr(file: File, o: { ocrLang: string; dpi: string; ocrEngi
 
   // One worker per two cores, up to four: each holds its own copy of the language model.
   const cores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
-  // High accuracy (PaddleOCR) reads one page at a time; it only covers some languages.
-  const accurate = o.ocrEngine === "accurate" && PADDLE_LANGS.includes(o.ocrLang);
+  // One or more languages, "eng+hin", as Tesseract takes them.
+  const lang = ocrLangs(o.ocrLang, OCR_LANGS).join("+");
+  // High accuracy (PaddleOCR) reads one page at a time; it only covers some languages, one at a time.
+  const accurate = o.ocrEngine === "accurate" && PADDLE_LANGS.includes(lang);
   const count = accurate ? 1 : Math.max(1, Math.min(4, Math.floor(cores / 2), todo.length));
   let recognised = 0;
   let doubtfulPages = 0;
   let done = src.numPages - todo.length;
   progress?.(done, src.numPages);
-  const ocrEngine = !todo.length ? null : accurate ? { recognise: paddlePage as Recognise, stop: async () => {} } : await engine.create(o.ocrLang, count);
+  const ocrEngine = !todo.length ? null : accurate ? { recognise: paddlePage as Recognise, stop: async () => {} } : await engine.create(lang, count);
   try {
     // Render the next page while the workers read the last ones, holding at most count + 1 pages.
     let next = 0;
