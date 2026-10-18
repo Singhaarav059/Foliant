@@ -87,6 +87,12 @@ jobs:
       - name: Protect
         if: success() || failure()
         run: npm run test:e2e:protect -- ${{ matrix.browser }}
+      - name: Office to PDF on a phone, no print dialog
+        if: success() || failure()
+        run: npm run test:e2e:office-phone -- ${{ matrix.browser }}
+      - name: HTML to PDF (zip, paste, no remote requests)
+        if: success() || failure()
+        run: npm run test:e2e:html -- ${{ matrix.browser }}
       - name: Office to PDF with LibreOffice, first visit
         if: matrix.browser == 'chromium'
         run: npm run test:e2e-office
@@ -119,6 +125,8 @@ jobs:
       # hide the state of the others.
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:tables
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:html-site
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:errors
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}

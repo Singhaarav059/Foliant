@@ -413,3 +413,204 @@ export function renderSlides(input: SlideInput): string[] {
     return `<div class="slide" style="${background}">${showMaster ? shapes(tree(master), s.masterRels, true) : ""}${shapes(tree(layout), s.layoutRels, true)}${shapes(tree(slide), s.rels, false)}</div>`;
   });
 }
+
+// ── HTML files, zipped pages and pasted HTML (static build). The browser
+// prints the page from a blob: URL, where relative links resolve to nothing,
+// so a zip's files are inlined as data: URLs; and nothing remote is loaded,
+// so the page can't tell another site the user's address.
+
+const MIME: Record<string, string> = {
+  css: "text/css", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", svg: "image/svg+xml",
+  webp: "image/webp", avif: "image/avif", bmp: "image/bmp", ico: "image/x-icon", woff: "font/woff", woff2: "font/woff2",
+  ttf: "font/ttf", otf: "font/otf", mp4: "video/mp4", webm: "video/webm", mp3: "audio/mpeg",
+};
+
+function base64(bytes: Uint8Array) {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+// Attribute values, quoted or not: name="v", name='v', name=v.
+const attr = (names: string) => new RegExp(`(\\s(?:${names})\\s*=\\s*)(?:"([^"]*)"|'([^']*)'|([^\\s>"']+))`, "gi");
+
+// One page from a zip: index.html (the shallowest), with its stylesheets,
+// images, fonts and media inlined. Links to other pages stay as they are.
+export async function siteFromZip(data: Uint8Array): Promise<string> {
+  const { unzipSync, strFromU8 } = await import("fflate");
+  const files = unzipSync(data);
+  const names = Object.keys(files).filter((n) => !n.endsWith("/") && !n.startsWith("__MACOSX/"));
+  const depth = (n: string) => n.split("/").length;
+  const pages = names.filter((n) => /\.html?$/i.test(n)).sort((a, b) => depth(a) - depth(b));
+  const index = pages.find((n) => /(^|\/)index\.html?$/i.test(n) && depth(n) === depth(pages[0])) ?? pages[0];
+  if (!index) throw new Error("This zip has no HTML page in it.");
+  const lower = new Map(names.map((n) => [n.toLowerCase(), n]));
+
+  const find = (from: string, ref: string) => {
+    ref = ref.trim();
+    if (!ref || /^[a-z][a-z\d+.-]*:|^\/\/|^#/i.test(ref)) return null; // other schemes, remote, fragments
+    let path: string;
+    try {
+      path = decodeURIComponent(new URL(ref, `http://zip/${from}`).pathname.slice(1));
+    } catch {
+      return null;
+    }
+    return files[path] ? path : lower.get(path.toLowerCase()) ?? null;
+  };
+  const inline = (path: string, seen: Set<string>): string => {
+    const ext = path.split(".").pop()!.toLowerCase();
+    const type = MIME[ext] ?? "application/octet-stream";
+    if (ext !== "css") return `data:${type};base64,${base64(files[path])}`;
+    if (seen.has(path)) return "data:text/css,"; // @import cycle
+    const text = css(strFromU8(files[path]), path, new Set([...seen, path]));
+    return `data:text/css;base64,${base64(new TextEncoder().encode(text))}`;
+  };
+  // Unquoted data URLs, which are safe inside any attribute quotes.
+  const css = (text: string, from: string, seen: Set<string>) =>
+    text
+      .replace(/@import\s+(["'])([^"']+)\1/gi, (all, _q, ref: string) => {
+        const p = find(from, ref);
+        return p ? `@import url(${inline(p, seen)})` : all;
+      })
+      .replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/gi, (all, _q, ref: string) => {
+        const p = find(from, ref);
+        return p ? `url(${inline(p, seen)})` : all;
+      });
+  const rewrite = (value: string) => {
+    const p = find(index, value.replace(/&amp;/g, "&"));
+    return p ? inline(p, new Set()) : null;
+  };
+  const sub = (re: RegExp, html: string, fn: (value: string) => string | null) =>
+    html.replace(re, (all, lead: string, dq?: string, sq?: string, bare?: string) => {
+      const out = fn(dq ?? sq ?? bare ?? "");
+      return out === null ? all : `${lead}"${out}"`;
+    });
+
+  let html = strFromU8(files[index]);
+  html = html.replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi, (_, open: string, body: string, close: string) => open + css(body, index, new Set()) + close);
+  html = sub(attr("style"), html, (v) => css(v.replace(/&quot;/g, '"'), index, new Set()).replace(/"/g, "&quot;"));
+  html = sub(attr("src|poster|data|background"), html, rewrite);
+  html = sub(attr("srcset"), html, (v) => v.split(",").map((part) => {
+    const [url, ...rest] = part.trim().split(/\s+/);
+    return [rewrite(url) ?? url, ...rest].join(" ");
+  }).join(", "));
+  // href loads something only on <link> (stylesheets, icons) and in SVG images.
+  html = html.replace(/<(link|image|use)\b[^>]*>/gi, (tag) => sub(attr("href|xlink:href"), tag, rewrite));
+  return html;
+}
+
+// Anything that resolves to another host, the way a browser reads it
+// ("https:host", "\\host" and " //host" included). Relative URLs stay on
+// this site; data:, blob: and about: load nothing.
+const HERE = "http://page.invalid/";
+function isRemote(ref: string) {
+  let url: URL;
+  try {
+    url = new URL(ref.trim(), HERE);
+  } catch {
+    return false;
+  }
+  return !/^(data|blob|about|javascript|mailto|tel):$/.test(url.protocol) && url.origin !== new URL(HERE).origin;
+}
+// A grey box where a remote image was.
+const PLACEHOLDER = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="80"><rect width="120" height="80" fill="#eef0f3" stroke="#c4c9d2" stroke-dasharray="4 3"/></svg>')}`;
+// Belt and braces: the page itself may load only what it carries inline.
+const CSP = "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline' data: blob:; font-src data: blob:; media-src data: blob:";
+// Attributes that load what they point at.
+const LOADS = new Set(["src", "poster", "data", "background", "lowsrc", "dynsrc", "xlink:href"]);
+
+// Takes out everything that would load from another host: stylesheets,
+// scripts, images (shown as a placeholder), frames, media, CSS url() and
+// @import, <base> and refreshes. Links stay. Counts what it took out.
+// The page is read with the browser's own parser, so what is checked is
+// exactly what the browser would load; the CSP goes first in <head>.
+export function blockRemote(input: string): { html: string; blocked: number } {
+  let blocked = 0;
+  const hit = () => (blocked++, true);
+  const css = (text: string) =>
+    text
+      .replace(/@import\s+(?:url\(\s*)?(["']?)([^"')\s;]+)\1\s*\)?[^;]*;?/gi, (all, _q, ref: string) => (isRemote(ref) && hit() ? "" : all))
+      .replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/gi, (all, _q, ref: string) => (isRemote(ref) && hit() ? "url(data:,)" : all));
+
+  const doc = new DOMParser().parseFromString(input, "text/html");
+  for (const el of [...doc.querySelectorAll("*")]) {
+    if (!el.isConnected) continue;
+    const name = el.localName.toLowerCase();
+    const href = el.getAttribute("href") ?? "";
+    if (name === "base") {
+      if (isRemote(href)) hit();
+      el.remove();
+      continue;
+    }
+    if (name === "meta" && /^\s*refresh\s*$/i.test(el.getAttribute("http-equiv") ?? "")) {
+      const to = (el.getAttribute("content") ?? "").match(/url\s*=\s*['"]?([^'"]*)/i)?.[1];
+      if (to && isRemote(to) && hit()) el.remove();
+      continue;
+    }
+    if ((name === "link" && isRemote(href)) || (name === "script" && isRemote(el.getAttribute("src") ?? ""))) {
+      hit();
+      el.remove();
+      continue;
+    }
+    if (name === "style" && el.textContent) {
+      const out = css(el.textContent);
+      if (out !== el.textContent) el.textContent = out;
+    }
+    if (name === "iframe" && el.hasAttribute("srcdoc")) {
+      const inner = blockRemote(el.getAttribute("srcdoc")!);
+      blocked += inner.blocked;
+      el.setAttribute("srcdoc", inner.html);
+    }
+    for (const at of [...el.attributes]) {
+      const key = at.name.toLowerCase();
+      const v = at.value;
+      if (key === "style") {
+        const out = css(v);
+        if (out !== v) el.setAttribute(at.name, out);
+      } else if (LOADS.has(key) || (key === "href" && /^(image|use|feimage)$/.test(name))) {
+        if (!isRemote(v) || !hit()) continue;
+        if (/^(img|input|image|use|feimage)$/.test(name) && key !== "poster") el.setAttribute(at.name, PLACEHOLDER);
+        else if (/^i?frame$/.test(name)) el.setAttribute(at.name, "about:blank");
+        else el.removeAttribute(at.name);
+      } else if (key === "srcset" || key === "imagesrcset") {
+        if (v.split(",").some((part) => isRemote(part.trim().split(/\s+/)[0] ?? "")) && hit()) el.removeAttribute(at.name);
+      }
+    }
+  }
+  const meta = doc.createElement("meta");
+  meta.setAttribute("http-equiv", "Content-Security-Policy");
+  meta.setAttribute("content", CSP);
+  doc.head.prepend(meta);
+  const doctype = doc.doctype ? new XMLSerializer().serializeToString(doc.doctype) : "";
+  return { html: doctype + doc.documentElement.outerHTML, blocked };
+}
+
+// Page size, orientation, margins and the screen width the page is laid out
+// at (scaled to fit the paper). The page's own @page rules still win: these
+// come first.
+const PAPER: Record<string, { css: string; w: number; h: number }> = {
+  a4: { css: "A4", w: 210, h: 297 }, letter: { css: "letter", w: 215.9, h: 279.4 },
+  a3: { css: "A3", w: 297, h: 420 }, a5: { css: "A5", w: 148, h: 210 },
+};
+const MARGINS: Record<string, number> = { none: 0, small: 12, large: 25 };
+
+export function htmlPage(html: string, o: { pageSize?: string; orientation?: string; margin?: string; screenWidth?: string }) {
+  const paper = PAPER[o.pageSize ?? ""] ?? PAPER.a4;
+  const landscape = o.orientation === "landscape";
+  const margin = MARGINS[o.margin ?? ""] ?? MARGINS.small;
+  let css = `@page { size: ${paper.css} ${landscape ? "landscape" : "portrait"}; margin: ${margin ? `${margin}mm` : "0"}; }`;
+  const screen = Number(o.screenWidth);
+  if (screen > 0) {
+    const printable = (((landscape ? paper.h : paper.w) - 2 * margin) / 25.4) * 96;
+    css += ` @media print { html { width: ${screen}px; zoom: ${(printable / screen).toFixed(4)}; } }`;
+  }
+  return intoHead(html, `<style>${css}</style>`);
+}
+
+// Inside <head> when there is one, so the doctype stays first.
+export function intoHead(html: string, snippet: string) {
+  const head = html.match(/<head(?:\s[^>]*)?>/i) ?? html.match(/<html(?:\s[^>]*)?>/i);
+  if (!head || head.index === undefined) return snippet + html;
+  const at = head.index + head[0].length;
+  return html.slice(0, at) + snippet + html.slice(at);
+}

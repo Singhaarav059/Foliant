@@ -299,9 +299,9 @@ const ALL: Tool[] = [
 
 // Without a server, Office files go through LibreOffice in the browser
 // (src/lib/office/libreoffice.ts), which writes a real PDF and reads every
-// format; Standard lays them out in the browser and saves them through its
-// print dialog. Automatic uses LibreOffice where the device can take it
-// (src/lib/office/route.ts). HTML files always print.
+// format; Standard lays them out in the browser and draws the PDF there
+// (src/lib/office/topdf.ts). Automatic uses LibreOffice where the device can
+// take it (src/lib/office/route.ts). HTML files always print.
 const FIDELITY: OptionDef = { key: "fidelity", type: "select", choices: ["auto", "standard", "high"], default: "auto" };
 export const LIGHT_OFFICE = ["docx", "pptx", "xlsx", "csv"];
 const IN_BROWSER: Partial<Record<ToolId, Partial<Tool>>> = {
@@ -312,11 +312,15 @@ const IN_BROWSER: Partial<Record<ToolId, Partial<Tool>>> = {
     // LibreOffice follows each sheet's own page setup, so orientation is for standard only.
     options: [FIDELITY, { key: "orientation", type: "select", choices: ["auto", "portrait", "landscape"], default: "auto", when: { key: "fidelity", is: ["standard"] } }],
   },
+  // An HTML file, a zipped page or pasted HTML; a URL would need a server.
   htmlToPdf: {
     mode: "files",
+    accept: ["html", "htm", "zip"],
     options: [
-      { key: "pageSize", type: "select", choices: ["a4", "letter"], default: "a4" },
+      { key: "pageSize", type: "select", choices: ["a4", "letter", "a3", "a5"], default: "a4" },
       { key: "orientation", type: "select", choices: ["portrait", "landscape"], default: "portrait" },
+      { key: "margin", type: "select", choices: ["none", "small", "large"], default: "small" },
+      { key: "screenWidth", type: "select", choices: ["page", "1440", "1024", "390"], default: "page" },
     ],
   },
 };

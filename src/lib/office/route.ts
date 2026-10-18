@@ -4,11 +4,12 @@
 //   reload       The same, after one reload: the service worker adds the
 //                isolation headers LibreOffice's threads need on hosts that
 //                can't send them, but only to pages it loads.
-//   print        The light renderer, saved through the print dialog.
+//   print        The light renderer, which draws the PDF in the page
+//                (topdf.ts); the print dialog only if that fails.
 //   unavailable  Only LibreOffice reads these files, and it can't run here.
 //
 // "auto" (the default) picks LibreOffice on computers with room for it and
-// printing on phones and small devices, which LibreOffice's memory use and
+// the light renderer on phones and small devices, which LibreOffice's memory use and
 // download would overwhelm, and in Safari, where LibreOffice doesn't start
 // (its worker aborts while loading).
 
