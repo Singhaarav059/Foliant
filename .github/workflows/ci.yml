@@ -68,7 +68,7 @@ jobs:
         run: node scripts/live-check.mjs http://localhost:3202
       - name: Run tests
         if: ${{ !cancelled() }}
-        run: npm run test:e2e -- ${{ matrix.browser }}
+        run: node scripts/ci-report.mjs "End-to-end (${{ matrix.browser }})" npm run test:e2e -- ${{ matrix.browser }}
       - name: Error messages
         if: success() || failure()
         run: npm run test:e2e:errors -- ${{ matrix.browser }}
