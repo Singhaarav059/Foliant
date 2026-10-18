@@ -241,8 +241,9 @@ function withLinks(runs: Run[], links: { rect: Rect; url: string }[]): Run[] {
 }
 
 // Images worth keeping: not tiny, overlaps merged. Those covering 60% of the
-// page or more are backgrounds rather than figures.
-function figuresOf(images: Rect[], width: number, height: number): { figures: Figure[]; backgrounds: Figure[] } {
+// page or more are backgrounds rather than figures. PDF → PowerPoint uses the
+// same boxes for its separate pictures.
+export function figuresOf(images: Rect[], width: number, height: number): { figures: Figure[]; backgrounds: Figure[] } {
   const merge = (rects: Rect[]) => {
     const out: Figure[] = [];
     for (const r of rects.sort((a, b) => a.y0 - b.y0)) {
