@@ -10,20 +10,24 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Everything is pinned (runner image, actions by commit, Node by .node-version,
+# veraPDF by digest) so the same commit builds the same way years from now.
+# Dependabot (.github/dependabot.yml) proposes action updates.
 jobs:
   checks:
     name: Typecheck, lint, translations, builds
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: npm
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run i18n:check
+      - run: npm run test:static
       - name: Server build
         run: npm run build
       - name: Static build
@@ -31,17 +35,17 @@ jobs:
 
   e2e:
     name: End-to-end (${{ matrix.browser }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
         browser: [chromium, firefox, webkit]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: npm
       - run: npm ci
       - run: npm run build:static
@@ -52,39 +56,74 @@ jobs:
           nohup npm run serve:static > server.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://localhost:3202/en > /dev/null && exit 0; sleep 1; done
           echo "Server did not start" && exit 1
+      # The same header, 404 and page checks the live workflow runs on the real site.
+      - name: Host checks
+        if: matrix.browser == 'chromium'
+        run: node scripts/live-check.mjs http://localhost:3202
       - name: Run tests
+        if: ${{ !cancelled() }}
         run: npm run test:e2e -- ${{ matrix.browser }}
 
   pdf:
     name: PDF engine tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: npm
-      - run: npm ci
-      # veraPDF, the reference PDF/A validator, from its official image.
+      - id: install
+        run: npm ci
+      # Playwright's Chromium for the suites that render or print in Chrome.
+      - name: Chromium
+        run: npx playwright-core install --with-deps chromium
+      # veraPDF, the reference PDF/A validator, from its official image. The
+      # image runs as its own user, which can't read the tests' private temp
+      # directories, so it runs as root here.
       - name: veraPDF
         run: |
-          docker pull verapdf/cli:v1.30.2
+          docker pull verapdf/cli:v1.30.2@sha256:d5ee329657cf9bc4b2400392dd54c7d0a0ce9980ff6fa2da5590eebeec007cdb
           # The tests write files under /tmp; the container sees them at the same path.
-          printf '#!/bin/sh\nexec docker run --rm -v /tmp:/tmp verapdf/cli:v1.30.2 "$@"\n' > "$RUNNER_TEMP/verapdf"
+          printf '#!/bin/sh\nexec docker run --rm --user root -v /tmp:/tmp verapdf/cli:v1.30.2@sha256:d5ee329657cf9bc4b2400392dd54c7d0a0ce9980ff6fa2da5590eebeec007cdb "$@"\n' > "$RUNNER_TEMP/verapdf"
           chmod +x "$RUNNER_TEMP/verapdf"
-      - run: npm run test:tables
-      - run: npm run test:layout
-      - run: npm run test:compress
-      - run: npm run test:ocr
-      - run: npm run test:redact
-      - run: npm run test:office
-        env:
-          CHROME_PATH: /usr/bin/google-chrome
-      - run: npm run test:libreoffice
-      - run: npm run test:ocr-accuracy
-        env:
-          CHROME_PATH: /usr/bin/google-chrome
-      - run: npm run test:pdfa
+      # Each suite runs even if an earlier one failed, so one red suite can't
+      # hide the state of the others.
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:tables
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:layout
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:compress
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:ocr
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:redact
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:office
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:libreoffice
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:ocr-accuracy
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:pdfa
         env:
           VERAPDF: ${{ runner.temp }}/verapdf
+
+  robust:
+    name: Hostile inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      # Fails on a failure tests/robustness/known-failures.json doesn't list,
+      # on a listed case that fails another way than listed (a hang, a crash,
+      # a new problem), and on a listed one that now passes (prune it with
+      # --known --prune).
+      - run: npm run test:robust -- --known

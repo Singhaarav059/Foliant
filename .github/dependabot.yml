@@ -1,0 +1,12 @@
+# Monthly pull requests that move the pinned GitHub Actions (ci.yml and
+# live.yml reference them by commit) to their latest releases, grouped into
+# one PR. npm dependencies are locked by package-lock.json and updated by hand.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

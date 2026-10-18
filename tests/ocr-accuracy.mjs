@@ -2,21 +2,18 @@
 // reads them with Tesseract (standard) and PaddleOCR (high accuracy) through
 // the same page cleanup, and compares character error rates. High accuracy
 // must be at least as good overall and better on the hard pages.
-// Needs Chrome (CHROME_PATH, or the usual install location).
+// Needs Chrome (see tests/lib/chrome.mjs).
 //
 //   node tests/ocr-accuracy.mjs
 import pw from "playwright-core";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createWorker, createScheduler } from "tesseract.js";
 import { vendorDir, load, check, eq } from "./lib/load.mjs";
+import { requireChrome } from "./lib/chrome.mjs";
 
-const chrome = process.env.CHROME_PATH ?? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/chromium"].find(existsSync);
-if (!chrome) {
-  console.log("skip  no Chrome found (set CHROME_PATH)");
-  process.exit(0);
-}
+const chrome = requireChrome();
 const results = { failed: 0 };
 const test = check(results);
 const { readPage } = await load("ocr");

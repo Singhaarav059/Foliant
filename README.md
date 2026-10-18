@@ -37,7 +37,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000. `npm install` also copies everything the browser loads at runtime into `public/vendor` (see `scripts/vendor.mjs`): the PDF.js worker and its font and image-decoder data, qpdf, MozJPEG (for Compress), PDFium (for Redact), LibreOffice (high-fidelity Office to PDF, in 20 MiB parts), the Tesseract OCR engine, PaddleOCR models with ONNX Runtime (high-accuracy OCR, about 36 MB, fetched only when chosen) with all 26 language files, Noto fonts for text the tools add to PDFs, and metric-compatible stand-ins (Arimo, Tinos, Cousine, Carlito, Caladea) that PDF/A conversion embeds for fonts a file names but doesn't include. The site never loads anything from another domain, and the static build is about 100 MB of that, mostly OCR data.
+Open http://localhost:3000. `npm install` also copies everything the browser loads at runtime into `public/vendor` (see `scripts/vendor.mjs`): the PDF.js worker and its font and image-decoder data, qpdf, MozJPEG (for Compress), PDFium (for Redact), LibreOffice (high-fidelity Office to PDF, in 20 MiB parts), the Tesseract OCR engine, PaddleOCR models with ONNX Runtime (high-accuracy OCR, about 36 MB, fetched only when chosen) with all 26 language files, Noto fonts for text the tools add to PDFs, and metric-compatible stand-ins (Arimo, Tinos, Cousine, Carlito, Caladea) that PDF/A conversion embeds for fonts a file names but doesn't include. The site never loads anything from another domain. The static build is about 450 MB in about 7,800 files, most of it this vendored data (LibreOffice alone is 77 MB); each visitor downloads only what the tools they use need.
 
 ## Deploying the static build
 
@@ -45,13 +45,24 @@ Open http://localhost:3000. `npm install` also copies everything the browser loa
 npm run build:static
 ```
 
-This writes the site to `out/`, including a `_headers` file for security and caching headers.
+This writes the site to `out/`, including a `_headers` file for security and caching headers and a `.nojekyll` file for GitHub Pages. The build fails if `out/` has more than 18,000 files or any file over 24 MiB, so it always fits Cloudflare Pages' free plan.
 
-**Cloudflare Pages:** build command `npm run build:static`, output directory `out`. Missing pages get the right language's 404 page.
+**Cloudflare Pages (recommended):** build command `npm run build:static`, output directory `out`. It reads `_headers`, so pages are cross-origin isolated from the first visit (high-fidelity Office conversion works straight away), hashed assets are cached for a year, and missing pages get the right language's 404 page. The free plan has unlimited bandwidth.
 
-**GitHub Pages and other static hosts:** upload `out/`. The site must be served from the root of a domain (for example `username.github.io` or a custom domain), not from a sub-path.
+Other hosts work with limits:
+
+- **GitHub Pages** ignores `_headers`: there's no long-term caching, and high-fidelity Office conversion needs a second page load (the service worker adds the isolation headers). Deploy with a GitHub Actions workflow (`actions/upload-pages-artifact`); `.nojekyll` keeps `_next/` if you push `out/` to a branch instead. Sites are limited to 1 GB and a soft 100 GB of traffic a month.
+- **Netlify** reads `_headers`, but its free plan is credit-based (300 credits a month at 20 per GB, about 15 GB of traffic) and pauses the site when they run out.
+
+The site must be served from the root of a domain (for example `foliant.example` or `username.github.io`), not from a sub-path.
 
 Set `NEXT_PUBLIC_REPO_URL` (for example `https://github.com/you/foliant`) when building to add "Source code" and "Contact" (GitHub issues) links to the footer.
+
+### Keeping an eye on the live site
+
+`.github/workflows/live.yml` checks the deployed site every Monday: the headers above, real 404s, 20 random pages, and the end-to-end tests run against it. Set the repository variable `SITE_URL` (Settings → Secrets and variables → Actions → Variables) to your site's address. The header checks expect a host that applies `_headers` (Cloudflare Pages or Netlify); on GitHub Pages also set the variable `HOST_HEADERS` to `none`, which keeps the page and file checks and skips the header and first-visit isolation ones. A failed run emails the repository owner. The workflow re-enables itself on each run, because GitHub switches off scheduled workflows in public repositories after 60 days without commits. To check any address by hand, run `node scripts/live-check.mjs https://your.site`, or start the workflow from the Actions tab.
+
+Dependabot (`.github/dependabot.yml`) opens one pull request a month to update the pinned GitHub Actions.
 
 ## Running the server build
 
@@ -120,9 +131,15 @@ npx playwright-core install chromium firefox webkit
 npm run test:e2e
 ```
 
-Pass browser names to run only some (`npm run test:e2e -- webkit`), and set `CHROME_PATH` to use an installed Chrome. The OCR test downloads the English language data from jsDelivr.
+Pass browser names to run only some (`npm run test:e2e -- webkit`), and set `CHROME_PATH` to use an installed Chrome. `serve:static` sends the headers from `out/_headers`, as Cloudflare Pages does. New end-to-end tests go in `tests/e2e/`, one file per area.
 
-GitHub Actions (`.github/workflows/ci.yml`) runs all of this on every push to `main` and every pull request, with one end-to-end job per browser.
+The engine suites (`npm run test:tables`, `test:layout`, `test:compress`, `test:ocr`, `test:redact`, `test:office`, `test:libreoffice`, `test:ocr-accuracy`, `test:pdfa`) run in Node; `test:office` and `test:ocr-accuracy` also drive Chrome.
+
+`npm run test:robust` generates about 50 hostile PDFs (damaged files, every kind of encryption, looped page trees, odd page boxes, unusual image codecs, decompression bombs and more; see `tests/robustness/gen.mjs`) and runs every engine on each in its own process, with a time and memory limit. Cases that fail today are listed in `tests/robustness/known-failures.json` with the backlog item that fixes them and how they fail; CI runs `npm run test:robust -- --known`, which fails on anything new, on a listed case that starts failing another way (a new problem, an error, a hang or a crash), and on a listed case that starts passing, so the list only shrinks (`-- --known --prune` updates it). `npm run test:static` checks the build's file-count and file-size guards and the local static server.
+
+GitHub Actions (`.github/workflows/ci.yml`) runs all of this on every push to `main` and every pull request, with one end-to-end job per browser. The runner image, actions, Node version (`.node-version`) and veraPDF image are pinned.
+
+Building in a git worktree whose `node_modules` is a link into another checkout needs `TURBOPACK_ROOT` set to a folder that contains both.
 
 ## Licence
 
