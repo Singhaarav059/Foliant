@@ -25,10 +25,17 @@ async function each(files: File[], progress: Progress | undefined, fn: (f: File,
 // Auto-OCR for the conversions from PDF: scanned pages get a text layer
 // first (ocr.ts), so the conversion has their words; the result notes it.
 // Missing "ocr" (a job saved before it existed) counts as automatic.
+// If OCR fails (offline, its engine not cached yet), the file is converted
+// as it is, and the result says scanned pages weren't read.
 async function withOcr(f: File, o: Opts, p: Progress, convert: (f: File, p: Progress) => Promise<Output[]>) {
   if (o.ocr === "off") return convert(f, p);
-  const { autoOcr } = await import("./ocr");
-  const scan = await autoOcr(f, { ocrLang: s(o.ocrLang) }, (d, t) => p(d / Math.max(1, t) / 2, 1));
+  let scan: Awaited<ReturnType<typeof import("./ocr").autoOcr>>;
+  try {
+    const { autoOcr } = await import("./ocr");
+    scan = await autoOcr(f, { ocrLang: s(o.ocrLang) }, (d, t) => p(d / Math.max(1, t) / 2, 1));
+  } catch {
+    return (await convert(f, p)).map((x) => ({ ...x, note: x.note ?? "ocrSkipped" }));
+  }
   if (!scan.pages) return convert(f, p);
   const out = await convert(scan.file, (d, t) => p(0.5 + d / Math.max(1, t) / 2, 1));
   return out.map((x) => ({ ...x, note: x.note ?? scan.note }));

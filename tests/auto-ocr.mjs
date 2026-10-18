@@ -10,6 +10,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import JSZip from "jszip";
 import { createWorker, createScheduler } from "tesseract.js";
+import { createCanvas } from "@napi-rs/canvas";
+import { PDFDocument, StandardFonts } from "pdf-lib";
 import { root, vendorDir, load, openPdf, check, eq, nodeCanvas } from "./lib/load.mjs";
 
 nodeCanvas();
@@ -33,8 +35,14 @@ const { grayPng } = await load("ocrprep");
 // Tesseract from disk; `asked` records each language set it was started with.
 const cache = mkdtempSync(join(tmpdir(), "tess-"));
 const asked = [];
+// `broken` makes starting OCR fail, as when the engine or model can't be fetched offline.
+let broken = false;
+// Called when OCR starts, after scanned pages were picked.
+let onStart = () => {};
 engine.create = async (lang) => {
   asked.push(lang);
+  onStart();
+  if (broken) throw new Error("tesseract worker failed to load");
   const scheduler = createScheduler();
   scheduler.addWorker(await createWorker(lang, undefined, { langPath: join(vendorDir, "tessdata"), cachePath: cache }));
   return {
@@ -147,6 +155,78 @@ await test("the picked languages are the ones OCR reads in", async () => {
   asked.length = 0;
   await run("pdfToMarkdown", fixture("scanned.pdf"), { ocrLang: "eng+deu" });
   eq(asked.join(), "eng+deu", "languages");
+});
+
+// A page of real text with a picture on it: a small logo, or a picture behind the whole page.
+async function textOnImage(full) {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const c = createCanvas(200, 200);
+  const x = c.getContext("2d");
+  x.fillStyle = full ? "#f4f0e6" : "#c00";
+  x.fillRect(0, 0, 200, 200);
+  const img = await doc.embedPng(c.toBuffer("image/png"));
+  const page = doc.addPage([595, 842]);
+  page.drawImage(img, full ? { x: 0, y: 0, width: 595, height: 842 } : { x: 50, y: 720, width: 80, height: 80 });
+  page.drawText("Annual Report 2026", { x: 120, y: 500, size: 36, font });
+  return new File([await doc.save()], "cover.pdf");
+}
+
+await test("a cover page with a logo and a short title isn't read again", async () => {
+  asked.length = 0;
+  const out = await run("pdfToMarkdown", await textOnImage(false));
+  eq((await out.blob.text()).trim(), "Annual Report 2026", "text");
+  eq(asked.length, 0, "OCR runs");
+  eq(out.note, undefined, "note");
+});
+
+await test("a short title over a full-page picture doesn't come out twice", async () => {
+  const out = await run("pdfToMarkdown", await textOnImage(true));
+  const text = (await out.blob.text()).replace(/\s+/g, " ").trim();
+  for (const w of ["Annual", "Report", "2026"]) eq(text.split(w).length - 1, 1, `"${w}" in "${text}"`);
+});
+
+await test("a scan locked only against editing (no password to open) is still read", async () => {
+  const { runQpdf } = await load("qpdf");
+  const scan = new Uint8Array(readFileSync(join(root, "tests/fixtures/scanned.pdf")));
+  const { output } = await runQpdf(scan, (i, o) => ["--encrypt", "--user-password=", "--owner-password=secret", "--bits=256", "--", i, o]);
+  for (const id of ["pdfToWord", "pdfToExcel"]) {
+    const out = await run(id, new File([output], "locked.pdf"));
+    const text = await textOf[id](out.blob);
+    if (!/4471/.test(text)) throw new Error(`${id}: text was "${text.slice(0, 80)}"`);
+    eq(out.note, "ocrUsed", `${id} note`);
+  }
+});
+
+await test("if OCR can't start (offline), the conversion still comes out, without it", async () => {
+  broken = true;
+  try {
+    const out = await run("pdfToWord", fixture("scanned.pdf"));
+    const zip = await unzip(out.blob);
+    if (!zip.file("word/document.xml")) throw new Error("no document.xml");
+    eq(out.note, "ocrSkipped", "note");
+  } finally {
+    broken = false;
+  }
+});
+
+await test("pages checked for scans are let go before OCR starts", async () => {
+  // Every page pdf.js decoded an operator list for must be cleaned up again,
+  // or a long scan keeps all its decoded images in memory.
+  const proto = Object.getPrototypeOf(await (await openPdf(new Uint8Array(readFileSync(join(root, "tests/fixtures/scanned.pdf"))))).getPage(1));
+  const held = new Set();
+  const { getOperatorList, cleanup } = proto;
+  proto.getOperatorList = function (...a) { held.add(this); return getOperatorList.apply(this, a); };
+  proto.cleanup = function (...a) { held.delete(this); return cleanup.apply(this, a); };
+  let atStart = -1;
+  onStart = () => { atStart = held.size; };
+  try {
+    await run("pdfToMarkdown", fixture("mixed-script.pdf"));
+  } finally {
+    Object.assign(proto, { getOperatorList, cleanup });
+    onStart = () => {};
+  }
+  eq(atStart, 0, "pages still holding their operator lists");
 });
 
 process.exit(results.failed ? 1 : 0);

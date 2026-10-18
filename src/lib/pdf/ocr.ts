@@ -126,7 +126,8 @@ export async function ocr(file: File, o: OcrOptions, progress?: Progress): Promi
 // For PDF to Word, Excel, PowerPoint and Markdown: scanned pages get the OCR
 // tool's invisible text layer first, so the conversion finds their words.
 // Only pages that are pictures of text are read: little or no text (as in
-// ocr()) and an image on them. A PDF without such pages comes back as it was,
+// ocr()) and a picture covering at least half the page, so a cover page with
+// a logo and a title isn't. A PDF without such pages comes back as it was,
 // and Tesseract isn't loaded. `note` says how the reading went.
 export async function autoOcr(file: File, o: { ocrLang: string }, progress?: Progress): Promise<{ file: File; pages: number; note?: string }> {
   const r = await textLayer(await bytesOf(file), { ocrLang: o.ocrLang, dpi: "200" }, true, progress);
@@ -135,25 +136,123 @@ export async function autoOcr(file: File, o: { ocrLang: string }, progress?: Pro
 }
 
 const IMAGE_OPS = ["paintImageXObject", "paintInlineImageXObject", "paintImageXObjectRepeat", "paintInlineImageXObjectGroup", "paintImageMaskXObject"] as const;
+// Share of the page a picture must cover for the page to count as a scan.
+const SCAN_COVER = 0.5;
+
+type Matrix = [number, number, number, number, number, number];
+const mul = (m: Matrix, n: Matrix): Matrix => [
+  m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1],
+  m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3],
+  m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5],
+];
+const isMatrix = (v: unknown): v is Matrix => Array.isArray(v) && v.length === 6 && v.every((x) => typeof x === "number");
+
+// The largest share of the page one picture covers: pictures are drawn into
+// the unit square under the current transform, which save, restore,
+// transform and form XObjects change.
+function imageCover(ops: { fnArray: number[]; argsArray: unknown[][] }, OPS: Record<string, number>, view: number[], images: Set<number>) {
+  const [vx0, vy0, vx1, vy1] = view;
+  const area = Math.abs((vx1 - vx0) * (vy1 - vy0)) || 1;
+  let ctm: Matrix = [1, 0, 0, 1, 0, 0];
+  const stack: Matrix[] = [];
+  let best = 0;
+  ops.fnArray.forEach((fn, i) => {
+    const args = ops.argsArray[i];
+    if (fn === OPS.save) stack.push(ctm);
+    else if (fn === OPS.restore) ctm = stack.pop() ?? ctm;
+    else if (fn === OPS.transform && isMatrix(args)) ctm = mul(ctm, args);
+    else if (fn === OPS.paintFormXObjectBegin) {
+      stack.push(ctm);
+      if (isMatrix(args?.[0])) ctm = mul(ctm, args[0]);
+    } else if (fn === OPS.paintFormXObjectEnd) ctm = stack.pop() ?? ctm;
+    else if (images.has(fn)) {
+      const xs = [ctm[4], ctm[0] + ctm[4], ctm[2] + ctm[4], ctm[0] + ctm[2] + ctm[4]];
+      const ys = [ctm[5], ctm[1] + ctm[5], ctm[3] + ctm[5], ctm[1] + ctm[3] + ctm[5]];
+      const w = Math.min(Math.max(...xs), Math.max(vx0, vx1)) - Math.max(Math.min(...xs), Math.min(vx0, vx1));
+      const h = Math.min(Math.max(...ys), Math.max(vy0, vy1)) - Math.max(Math.min(...ys), Math.min(vy0, vy1));
+      if (w > 0 && h > 0) best = Math.max(best, (w * h) / area);
+    }
+  });
+  return best;
+}
+
+type Rect = { x0: number; y0: number; x1: number; y1: number };
+const rectOf = (pts: [number, number][]): Rect => ({
+  x0: Math.min(...pts.map((p) => p[0])), y0: Math.min(...pts.map((p) => p[1])),
+  x1: Math.max(...pts.map((p) => p[0])), y1: Math.max(...pts.map((p) => p[1])),
+});
+
+// Where a page's existing text sits, in PDF points.
+function textRect(t: number[], width: number, height: number): Rect {
+  const run = Math.hypot(t[0], t[1]) || 1;
+  const rise = Math.hypot(t[2], t[3]) || 1;
+  const h = height || rise;
+  const [ux, uy, vx, vy] = [t[0] / run, t[1] / run, t[2] / rise, t[3] / rise];
+  return rectOf([[t[4], t[5]], [t[4] + ux * width, t[5] + uy * width], [t[4] + vx * h, t[5] + vy * h], [t[4] + ux * width + vx * h, t[5] + uy * width + vy * h]]);
+}
+function wordRect(w: Word): Rect {
+  const [c, s] = [Math.cos(w.angle), Math.sin(w.angle)];
+  return rectOf([[w.x, w.y], [w.x + c * w.width, w.y + s * w.width], [w.x - s * w.height, w.y + c * w.height], [w.x + c * w.width - s * w.height, w.y + s * w.width + c * w.height]]);
+}
+// A word OCR read off text the page already has (half or more of it lies on that text).
+function alreadyThere(w: Word, text: Rect[]) {
+  const r = wordRect(w);
+  const area = (r.x1 - r.x0) * (r.y1 - r.y0);
+  if (area <= 0) return false;
+  return text.some((t) => {
+    const ix = Math.min(r.x1, t.x1) - Math.max(r.x0, t.x0);
+    const iy = Math.min(r.y1, t.y1) - Math.max(r.y0, t.y0);
+    return ix > 0 && iy > 0 && ix * iy >= area / 2;
+  });
+}
+
+// pdf-lib can't write into an encrypted PDF. One that opens without a
+// password (locked only against changes) is decrypted for a conversion,
+// whose result is a new file anyway; the OCR tool, whose result is the PDF
+// itself, still says it's locked rather than drop the protection.
+async function writable(bytes: Uint8Array, decrypt: boolean) {
+  try {
+    return await PDFDocument.load(bytes, { updateMetadata: false });
+  } catch (e) {
+    // pdf-lib's errors are ES5 classes, so `instanceof EncryptedPDFError` doesn't hold.
+    if (!decrypt || !/is encrypted/.test(String((e as Error)?.message))) throw e;
+  }
+  const { runQpdf } = await import("./qpdf");
+  const { output } = await runQpdf(bytes, (i, o) => ["--decrypt", i, o]);
+  return PDFDocument.load(output, { updateMetadata: false });
+}
 
 async function textLayer(bytes: Uint8Array, o: OcrOptions, scansOnly: boolean, progress?: Progress) {
   const src = await openPdf(bytes);
   const { OPS } = await pdfjs();
   const images = new Set<number>(IMAGE_OPS.map((k) => OPS[k]));
 
-  // Pages that already carry real text don't need OCR.
+  // Pages that already carry real text don't need OCR. The little text a
+  // page to read may have is kept, and OCR doesn't write it a second time.
   const todo: number[] = [];
+  const existingText = new Map<number, Rect[]>();
   for (let i = 1; i <= src.numPages; i++) {
     const page = await src.getPage(i);
     const existing = await page.getTextContent();
     const chars = existing.items.reduce((s, it) => s + ("str" in it ? it.str.trim().length : 0), 0);
-    if (chars <= 40 && (!scansOnly || (await page.getOperatorList()).fnArray.some((fn) => images.has(fn)))) todo.push(i);
+    // The operator list decodes the page's pictures; cleanup lets them go again.
+    const scan = chars <= 40 && (!scansOnly || imageCover(await page.getOperatorList(), OPS as Record<string, number>, page.view, images) >= SCAN_COVER);
+    page.cleanup();
+    if (!scan) continue;
+    todo.push(i);
+    existingText.set(i, existing.items.flatMap((it) => ("str" in it && it.str.trim() ? [textRect(it.transform, it.width, it.height)] : [])));
   }
   if (scansOnly && !todo.length) {
     await closePdf(src);
     return { bytes, pages: 0 };
   }
-  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+  let doc: PDFDocument;
+  try {
+    doc = await writable(bytes, scansOnly);
+  } catch (e) {
+    await closePdf(src);
+    throw e;
+  }
   const pages = doc.getPages();
   const scale = Number(o.dpi) / 72;
 
@@ -184,7 +283,8 @@ async function textLayer(bytes: Uint8Array, o: OcrOptions, scansOnly: boolean, p
         const { words, turns, confidence, doubtful } = await readPage(ocrEngine!.recognise, image);
         if (words.length) recognised++;
         if (doubtful) doubtfulPages++;
-        addInvisibleText(doc, pages[i - 1], words.map((w) => toWord(w.text, w.corners, viewport)));
+        const text = existingText.get(i) ?? [];
+        addInvisibleText(doc, pages[i - 1], words.map((w) => toWord(w.text, w.corners, viewport)).filter((w) => !alreadyThere(w, text)));
         // Scanned sideways or upside down: turn the page so it displays (and reads) upright.
         if (turns && confidence >= 60) pages[i - 1].setRotation(degrees((pages[i - 1].getRotation().angle + turns * 90) % 360));
         progress?.(++done, src.numPages);

@@ -407,6 +407,7 @@ const en = {
   "res.rebuilt": "The file was badly damaged, so its pages were rebuilt as images. Run OCR to make the text searchable again.",
   "res.ocrNone": "No text was recognised. Check the document language and try a higher resolution.",
   "res.ocrUsed": "Scanned pages were read with OCR. Check names and numbers against the original.",
+  "res.ocrSkipped": "OCR couldn't start, so scanned pages were converted without their text. If you are offline, try again once you are online.",
   "res.ocrDoubtful": "Some pages were hard to read, so only the words read with confidence were added. A cleaner scan or a higher resolution may help.",
   "res.continue": "Continue with",
   "res.startOver": "Start over",
