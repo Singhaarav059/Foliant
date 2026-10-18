@@ -5,7 +5,7 @@
 //   node tests/ppt.mjs
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { PDFDocument, StandardFonts, rgb, grayscale, cmyk } from "pdf-lib";
+import { PDFDocument, PDFName, StandardFonts, rgb, grayscale, cmyk } from "pdf-lib";
 import JSZip from "jszip";
 import { load, openPdf, check, eq, nodeCanvas, root } from "./lib/load.mjs";
 
@@ -157,6 +157,49 @@ await test("pptText off: one picture of the whole page per slide, no text boxes"
   const x = await z.file("ppt/slides/slide1.xml").async("string");
   eq(boxes(x).length, 0, "text boxes");
   eq(/<p:bg>[\s\S]*?<a:blip /.test(x), true, "background image");
+});
+
+await test("an image stamp annotation stays on the slide, where it was", async () => {
+  // A /Stamp whose appearance draws a red picture: its box is in the
+  // appearance's own space, so it is left in the background, not cropped
+  // from the wrong place.
+  const doc = await PDFDocument.create();
+  const img = await doc.embedPng(png(200, 30, 30));
+  const page = doc.addPage([W, H]);
+  const ctx = doc.context;
+  const form = ctx.register(ctx.stream("q 200 0 0 150 0 0 cm /Im1 Do Q", { Type: "XObject", Subtype: "Form", BBox: [0, 0, 200, 150], Resources: { XObject: { Im1: img.ref } } }));
+  const annot = ctx.register(ctx.obj({ Type: "Annot", Subtype: "Stamp", Rect: [100, 100, 300, 250], F: 4, AP: { N: form } }));
+  page.node.set(PDFName.of("Annots"), ctx.obj([annot]));
+  const b = new Uint8Array(await doc.save());
+  const [o] = await pdfToPpt(new File([b], "stamp.pdf"), { pptText: true });
+  const z = await JSZip.loadAsync(await o.blob.arrayBuffer());
+  const x = await z.file("ppt/slides/slide1.xml").async("string");
+  const id = x.match(/<p:bg>[\s\S]*?r:embed="([^"]+)"/)?.[1];
+  eq(Boolean(id), true, "background image");
+  const rels = await z.file("ppt/slides/_rels/slide1.xml.rels").async("string");
+  const target = rels.match(new RegExp(`Id="${id}"[^>]*Target="([^"]+)"`))[1];
+  const { createCanvas, loadImage } = createRequire(join(root, "package.json"))("@napi-rs/canvas");
+  const im = await loadImage(await z.file(join("ppt/slides", target).replace(/\\/g, "/")).async("nodebuffer"));
+  const c = createCanvas(im.width, im.height);
+  c.getContext("2d").drawImage(im, 0, 0);
+  const k = im.width / W;
+  const [r, g, bl] = c.getContext("2d").getImageData(Math.round(110 * k), Math.round((H - 240) * k), 1, 1).data;
+  eq(r > 150 && g < 80 && bl < 80, true, `red stamp in the background (got ${[r, g, bl]})`);
+});
+
+await test("a picture wholly off the page gives no picture; no negative sizes", async () => {
+  const doc = await PDFDocument.create();
+  const img = await doc.embedPng(png(200, 30, 30));
+  const page = doc.addPage([W, H]);
+  page.drawImage(img, { x: -300, y: 100, width: 200, height: 150 });
+  page.drawImage(img, { x: W + 50, y: 100, width: 200, height: 150 });
+  page.drawImage(img, { x: 300, y: 100, width: 100, height: 75 });
+  const b = new Uint8Array(await doc.save());
+  const [o] = await pdfToPpt(new File([b], "off.pdf"), { pptText: true });
+  const z = await JSZip.loadAsync(await o.blob.arrayBuffer());
+  const x = await z.file("ppt/slides/slide1.xml").async("string");
+  eq(/<a:ext c[xy]="-/.test(x), false, "negative extent in the XML");
+  eq((x.match(/<p:pic>/g) ?? []).length, 1, "pictures");
 });
 
 process.exit(results.failed ? 1 : 0);

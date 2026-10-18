@@ -504,10 +504,16 @@ async function slidePictures(page: PDFPageProxy): Promise<{ figures: Figure[]; o
   const images: { rect: Figure; op: number }[] = [];
   let ctm: M = [1, 0, 0, 1, 0, 0];
   const stack: M[] = [];
+  // Annotation appearances (image stamps, signatures) are drawn in their own
+  // space, mapped onto the annotation's rectangle; they stay in the background.
+  let annotation = 0;
   for (let i = 0; i < fnArray.length; i++) {
     const fn = fnArray[i];
     const a = argsArray[i] as unknown[];
-    if (fn === OPS.save) stack.push(ctm);
+    if (fn === OPS.beginAnnotation) annotation++;
+    else if (fn === OPS.endAnnotation) annotation = Math.max(0, annotation - 1);
+    else if (annotation) continue;
+    else if (fn === OPS.save) stack.push(ctm);
     else if (fn === OPS.restore) ctm = stack.pop() ?? ctm;
     else if (fn === OPS.transform) ctm = mul(asMatrix(a), ctm);
     else if (fn === OPS.paintFormXObjectBegin) {
@@ -522,7 +528,9 @@ async function slidePictures(page: PDFPageProxy): Promise<{ figures: Figure[]; o
       images.push({ rect: { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) }, op: i });
     }
   }
-  const { figures } = figuresOf(images.map((m) => ({ ...m.rect })), view.width, view.height);
+  // Figures are clamped to the page: one lying wholly off it comes out empty
+  // or inside out, and its picture stays out (OOXML sizes must be positive).
+  const figures = figuresOf(images.map((m) => ({ ...m.rect })), view.width, view.height).figures.filter((f) => f.x1 - f.x0 >= 16 && f.y1 - f.y0 >= 16);
   const inside = (f: Figure, r: Figure) => r.x0 >= f.x0 - 3 && r.x1 <= f.x1 + 3 && r.y0 >= f.y0 - 3 && r.y1 <= f.y1 + 3;
   const ops = new Set(images.filter((m) => figures.some((f) => inside(f, m.rect))).map((m) => m.op));
   return { figures, ops };
