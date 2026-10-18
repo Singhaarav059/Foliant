@@ -477,7 +477,6 @@ const d: { [K in DictKey]?: string } = {
   "feat.f2t": "Sensor sungguhan",
   "feat.f2b": "Halaman yang disensor dibangun ulang sehingga teks tersembunyi benar-benar hilang, bukan hanya ditutup kotak hitam.",
   "feat.f3t": "Hasil pindai yang bisa dicari dalam bahasa apa pun",
-  "feat.f3b": "OCR menambahkan lapisan teks tak terlihat dalam 26 bahasa, termasuk Mandarin, Arab, dan Hindi.",
   "feat.f4t": "Alur kerja",
   "feat.f4b": "Simpan rangkaian alat dan jalankan pada file baru dalam satu langkah.",
   "feat.f5t": "Lanjutkan dari tempat terakhir",

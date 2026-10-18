@@ -477,7 +477,6 @@ const d: { [K in DictKey]?: string } = {
   "feat.f2t": "Un vrai caviardage",
   "feat.f2b": "Les pages caviardées sont reconstruites : le texte masqué disparaît réellement, il n’est pas seulement recouvert d’un rectangle noir.",
   "feat.f3t": "Des numérisations recherchables dans toutes les langues",
-  "feat.f3b": "L’OCR ajoute une couche de texte invisible dans 26 langues, dont le chinois, l’arabe et l’hindi.",
   "feat.f4t": "Flux de travail",
   "feat.f4b": "Enregistrez une suite d’outils et appliquez-la à de nouveaux fichiers en une seule étape.",
   "feat.f5t": "Reprenez là où vous en étiez",

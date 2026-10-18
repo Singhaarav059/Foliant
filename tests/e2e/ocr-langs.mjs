@@ -78,6 +78,19 @@ await suite(async ({ browser, test }) => {
     return `"${text.replace(/\s+/g, " ").trim()}"`;
   });
 
+  await test("a saved workflow's OCR step set to English stays English", async () => {
+    // The last choice (English and Hindi) is for fresh documents, not for a step someone saved.
+    await open(page, "/en/workflows");
+    await page.evaluate(() => localStorage.setItem("workflows", JSON.stringify([{ id: 1, name: "English scans", steps: [{ tool: "ocr", options: { ocrLang: "eng" } }] }])));
+    await open(page, "/en/workflows");
+    await page.getByRole("button", { name: /English scans/ }).click();
+    await list().waitFor();
+    await page.waitForTimeout(500);
+    const picked = await list().getByRole("checkbox", { checked: true }).evaluateAll((els) => els.map((e) => e.closest("label").textContent.trim()));
+    if (picked.length !== 1 || !picked[0].startsWith("English")) throw new Error(`picked: ${picked.join(", ")}`);
+    return picked.join();
+  });
+
   await test("fits a phone screen", async () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await open(page, "/en/ocr-pdf");

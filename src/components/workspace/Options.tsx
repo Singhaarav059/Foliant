@@ -7,8 +7,8 @@ import { optionVisible, type OptionDef } from "@/lib/tools";
 import { LangPicker } from "./LangPicker";
 
 export function Options({
-  defs, values, onChange,
-}: { defs: OptionDef[]; values: Record<string, unknown>; onChange: (key: string, value: unknown) => void }) {
+  defs, values, onChange, restore = false,
+}: { defs: OptionDef[]; values: Record<string, unknown>; onChange: (key: string, value: unknown) => void; restore?: boolean }) {
   const { t, tOr } = useI18n();
   const uid = useId();
   const visible = defs.filter((d) => optionVisible(d, values));
@@ -69,7 +69,7 @@ export function Options({
               )
             )}
             {d.type === "multi" && (
-              <LangPicker id={id} choices={d.choices} max={d.max} value={String(value ?? d.default)} fallback={d.default} onChange={(v) => onChange(d.key, v)} />
+              <LangPicker id={id} choices={d.choices} max={d.max} value={String(value ?? d.default)} fallback={d.default} restore={restore} onChange={(v) => onChange(d.key, v)} />
             )}
             {(d.type === "text" || d.type === "password") && (
               <input

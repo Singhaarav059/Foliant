@@ -402,7 +402,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
         {dropHint}
         {errorBox}
         {tool.options.length > 0 && (
-          <div className="mb-4 max-w-[420px]"><Options defs={tool.options} values={options} onChange={(k, v) => setOptions((o) => ({ ...o, [k]: v }))} /></div>
+          <div className="mb-4 max-w-[420px]"><Options restore defs={tool.options} values={options} onChange={(k, v) => setOptions((o) => ({ ...o, [k]: v }))} /></div>
         )}
         <Editor key={items[0].id} toolId={tool.id} file={files[0]} options={options} actionLabel={t(`tool.${tool.id}.action`)} onRun={execute}
           onError={(e) => void drop(items[0].id, files[0], e)} />
@@ -436,7 +436,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
         <div className="min-w-0">{board}</div>
         <aside className="card h-max p-5 lg:sticky lg:top-[88px]">
           <p className="mb-5 text-[14px] font-medium">{t("ws.options")}</p>
-          <Options defs={tool.options} values={options} onChange={(k, v) => setOptions((o) => ({ ...o, [k]: v }))} />
+          <Options restore defs={tool.options} values={options} onChange={(k, v) => setOptions((o) => ({ ...o, [k]: v }))} />
           <button className="btn btn-primary btn-lg mt-6 hidden w-full lg:inline-flex" onClick={start}>
             {t(`tool.${tool.id}.action`)} <ArrowRight size={18} className="rtl:rotate-180" />
           </button>

@@ -477,7 +477,6 @@ const d: { [K in DictKey]?: string } = {
   "feat.f2t": "Kuficha taarifa kwa kweli",
   "feat.f2b": "Kurasa zilizofichwa hujengwa upya ili maandishi yaliyofichwa yapotee kweli, si kufunikwa tu kwa kisanduku cheusi.",
   "feat.f3t": "Nakala zilizochanganuliwa zinazotafutika kwa lugha yoyote",
-  "feat.f3b": "OCR huongeza tabaka la maandishi lisiloonekana katika lugha 26, zikiwemo Kichina, Kiarabu na Kihindi.",
   "feat.f4t": "Mitiririko ya kazi",
   "feat.f4b": "Hifadhi mfuatano wa zana na uuendeshe kwenye faili mpya kwa hatua moja.",
   "feat.f5t": "Endelea ulipoachia",

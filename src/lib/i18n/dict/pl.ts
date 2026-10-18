@@ -477,7 +477,6 @@ const d: { [K in DictKey]?: string } = {
   "feat.f2t": "Prawdziwe utajnianie",
   "feat.f2b": "Utajnione strony są odtwarzane od nowa, więc ukryty tekst naprawdę znika, a nie jest tylko zasłonięty czarnym prostokątem.",
   "feat.f3t": "Przeszukiwalne skany w każdym języku",
-  "feat.f3b": "OCR dodaje niewidoczną warstwę tekstu w 26 językach, w tym chińskim, arabskim i hindi.",
   "feat.f4t": "Przepływy pracy",
   "feat.f4b": "Zapisz sekwencję narzędzi i uruchom ją na nowych plikach jednym krokiem.",
   "feat.f5t": "Kontynuuj tam, gdzie skończyłeś",

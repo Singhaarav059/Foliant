@@ -2,7 +2,9 @@
 
 // The OCR language picker: a searchable list of every language, of which
 // up to `max` can be ticked. The value is the ticked codes joined with "+".
-// The choice is remembered on this device for the next document.
+// The choice is remembered on this device for the next document: with
+// `restore` (the workspace), a fresh picker starts from it. A workflow step
+// keeps the language it was saved with.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
@@ -10,8 +12,8 @@ import { useI18n } from "../I18n";
 import { ocrLangName, ocrLangs, rememberedOcrLang, rememberOcrLang } from "@/lib/ocr-langs";
 
 export function LangPicker({
-  id, choices, max, value, fallback, onChange,
-}: { id: string; choices: string[]; max: number; value: string; fallback: string; onChange: (v: string) => void }) {
+  id, choices, max, value, fallback, restore = false, onChange,
+}: { id: string; choices: string[]; max: number; value: string; fallback: string; restore?: boolean; onChange: (v: string) => void }) {
   const { t, locale } = useI18n();
   const [query, setQuery] = useState("");
   const picked = ocrLangs(value, choices);
@@ -32,14 +34,14 @@ export function LangPicker({
   // A fresh document starts from the last choice.
   const restored = useRef(false);
   useEffect(() => {
-    if (restored.current) return;
+    if (!restore || restored.current) return;
     restored.current = true;
     const saved = rememberedOcrLang();
     if (saved && value === fallback) {
       const v = ocrLangs(saved, choices).join("+");
       if (v !== value) onChange(v);
     }
-  }, [choices, fallback, onChange, value]);
+  }, [choices, fallback, onChange, restore, value]);
 
   const set = (codes: string[]) => {
     const v = codes.join("+");
