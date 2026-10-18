@@ -22,6 +22,9 @@ export type PageLayout = Layout & {
   // Pictures covering most of the page (a scan, a letterhead): they go behind
   // the text, and the text drawn on them stays text.
   backgrounds: Figure[];
+  // Most of the text is invisible: the page is a scan and the text its OCR
+  // layer, so the words are already in the picture.
+  ocrLayer: boolean;
   sections: Section[];
   // Lines repeated on most pages; Word puts them in the page header and footer.
   header: Line[];
@@ -265,7 +268,7 @@ function bodySize(runs: Run[]) {
   return best;
 }
 
-function finish(base: Layout, { figures, backgrounds }: ReturnType<typeof figuresOf>, furniture: Set<string>, body: number): PageLayout {
+function finish(base: Base, { figures, backgrounds }: ReturnType<typeof figuresOf>, furniture: Set<string>, body: number): PageLayout {
   const header: Line[] = [];
   const footer: Line[] = [];
   const skip: Rect[] = [];
@@ -293,16 +296,19 @@ function finish(base: Layout, { figures, backgrounds }: ReturnType<typeof figure
   };
 }
 
-type Base = Layout & { images: Rect[] };
+type Base = Layout & { images: Rect[]; ocrLayer: boolean };
 
 async function basePage(page: PDFPageProxy): Promise<Base> {
   const text = await pageText(page);
   try {
     const [edges, links] = await Promise.all([pageEdges(page), pageLinks(page).catch(() => [])]);
     const base = findTables({ ...text, items: withLinks(text.items, links) }, edges);
-    return { ...base, images: edges.images ?? [] };
+    // A line or two of invisible text is enough: a stamp or a note added
+    // after OCR is visible, and may outweigh a short scanned page.
+    const glyphs = edges.glyphs;
+    return { ...base, images: edges.images ?? [], ocrLayer: !!glyphs && glyphs.hidden > 0 && glyphs.hidden >= Math.min(20, glyphs.all / 2) };
   } catch {
-    return { width: text.width, height: text.height, tables: [], lines: text.lines, rest: text.items, images: [] };
+    return { width: text.width, height: text.height, tables: [], lines: text.lines, rest: text.items, images: [], ocrLayer: false };
   }
 }
 

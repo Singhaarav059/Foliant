@@ -61,6 +61,33 @@ async function scans(pages, stamp) {
   return doc.save();
 }
 
+// The scanned fixture made searchable the way the OCR tool does it: its two
+// lines laid over the scan as invisible text. `stamp(p)`, if given, is drawn
+// on top as real text, as a Bates stamp added after OCR would be.
+async function searchable(pages, stamp) {
+  const { addInvisibleText } = await load("textlayer");
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const [page] = await doc.embedPdf(scan);
+  for (let p = 1; p <= pages; p++) {
+    const pg = doc.addPage([600, H]);
+    pg.drawPage(page, { x: 0, y: 0, width: 600, height: H });
+    // Where the scan shows each line: left edge, right edge, baseline from the top.
+    const words = [["Scanned invoice 4471", 46, 311, 84], ["Total due: 1,250.00 EUR", 46, 351, 146]].flatMap(([line, x0, x1, base]) => {
+      const scale = (x1 - x0) / line.length;
+      let at = 0;
+      return line.split(" ").map((text) => {
+        const word = { text, x: x0 + at * scale, y: H - base, width: text.length * scale, height: 20, angle: 0 };
+        at += text.length + 1;
+        return word;
+      });
+    });
+    addInvisibleText(doc, pg, words);
+    if (stamp) pg.drawText(stamp(p), { x: 60, y: 22, size: 9, font });
+  }
+  return doc.save();
+}
+
 // Plain pages: `lines(p)` lists [text, top] pairs for page p.
 async function textPages(pages, lines) {
   const doc = await PDFDocument.create();
@@ -91,6 +118,22 @@ await test("1 scan with a stamp keeps the picture and the stamp", async () => {
   eq(d.bodyText.includes("CONFIDENTIAL - SUBJECT TO PROTECTIVE ORDER"), true, "stamp text");
   // The scan sits behind the text, not in its way.
   eq(/<wp:anchor [^>]*behindDoc="1"/.test(d.body), true, "picture behind the text");
+});
+
+// The scan already shows the words its OCR text layer holds: behind the text
+// as well, every word would show twice.
+await test("a searchable scan becomes its words, once", async () => {
+  const d = await unpack(await searchable(1), "searchable");
+  eq(/Scanned invoice 4471.*Total due: 1,250\.00 EUR/.test(d.bodyText), true, `words (got "${d.bodyText}")`);
+  eq(/behindDoc="1"/.test(d.body), false, "no scan behind the words");
+  eq(d.media, 0, "pictures");
+});
+
+await test("a searchable scan stamped after OCR keeps the stamp, words once", async () => {
+  const d = await unpack(await searchable(3, (p) => `Case 2024-cv-0042 Exhibit B Page ${p} of 3 ABC0001${p}`), "searchable-stamped");
+  eq((d.bodyText.match(/Scanned invoice 4471/g) ?? []).length, 3, `words (got "${d.bodyText.slice(0, 80)}")`);
+  eq([1, 2, 3].every((p) => `${d.bodyText} ${d.footerText}`.includes(`ABC0001${p}`)), true, `stamps (footer "${d.footerText}")`);
+  eq(/behindDoc="1"/.test(d.body), false, "no scan behind the words");
 });
 
 await test("3 pages with only a running header keep the header", async () => {

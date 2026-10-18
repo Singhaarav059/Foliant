@@ -314,7 +314,9 @@ async function editable(docx: Docx, pdf: PDFDocumentProxy, progress?: Progress) 
     }
 
     // A page with a few words and no figures may be a diagram or a form: keep its art too.
-    const backdrop = p.backgrounds.length ? p.backgrounds : textChars < 20 && !p.figures.length ? whole : [];
+    // A scan made searchable is the exception: its words are in the picture
+    // already, and the text is what the user is after.
+    const backdrop = p.ocrLayer ? [] : p.backgrounds.length ? p.backgrounds : textChars < 20 && !p.figures.length ? whole : [];
     const onBackdrop = (f: Figure) => backdrop.some((b) => f.x0 >= b.x0 - 1 && f.y0 >= b.y0 - 1 && f.x1 <= b.x1 + 1 && f.y1 <= b.y1 + 1);
     const pics = await pictures(i + 1, p.figures.filter((f) => !onBackdrop(f)));
     const held = new Set(p.figures.filter(onBackdrop));
