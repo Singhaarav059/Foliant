@@ -318,8 +318,13 @@ async function draw(page: PDFPage, item: Item, X: (x: number) => number, Y: (y: 
   const covered = [...text].every((c) => face.kit.hasGlyphForCodePoint(c.codePointAt(0)!));
   if (covered) page.drawText(text, { x, y: baseline, size, font: face.font, color, opacity: s.color.a });
   else {
-    const laid = await layoutText(doc, text, size, s.bold);
-    if (!laid) return;
+    // Without the Noto slices (offline before they were cached), or with a
+    // character none of them has, the word would silently drop out of the
+    // PDF; printing still has the browser's own fonts.
+    const laid = await layoutText(doc, text, size, s.bold).catch((e) => {
+      throw new FontUnavailable(`Fonts for "${text}" unavailable: ${e instanceof Error ? e.message : e}`);
+    });
+    if (!laid) throw new FontUnavailable(`No bundled font has every character of "${text}"`);
     for (const run of laid.runs) page.drawText(run.text, { x: x + run.x, y: baseline, size, font: run.font, color, opacity: s.color.a });
   }
   const width = b.w * k; // the measured box never includes the trailing space
