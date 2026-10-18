@@ -193,6 +193,12 @@ await test("the form's checks: an open password, or at least one restriction", a
   eq(check({ openPassword: false, password: "same", ownerPassword: "same", allowPrint: false }), null, "the same text when no open password is set");
 });
 
+await test("a saved workflow keeps Protect's switches but none of its passwords", async () => {
+  const saved = pw.withoutSecrets({ openPassword: false, password: "x", confirmPassword: "x", ownerPassword: "y", allowPrint: false, encryption: "aes256" });
+  eq(JSON.stringify(saved), JSON.stringify({ openPassword: false, allowPrint: false, encryption: "aes256" }), "saved options");
+  eq(JSON.stringify(pw.withoutSecrets({ password: 123, userPassword: "z" })), "{}", "anything else under a password key");
+});
+
 await test("suggested passwords are random and rated strong; short ones weak", async () => {
   const a = pw.suggestPassword(), b = pw.suggestPassword();
   eq(a !== b && a.length >= 20, true, `${a} / ${b}`);

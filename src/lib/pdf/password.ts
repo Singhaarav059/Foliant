@@ -72,3 +72,10 @@ export function passwordStrength(password: string): 0 | 1 | 2 | 3 | 4 {
   if (COMMON.test(password)) bits /= 2;
   return bits < 28 ? 1 : bits < 45 ? 2 : bits < 70 ? 3 : 4;
 }
+
+// A workflow's options as saved: passwords never leave the browser. A
+// switch named for one (Protect's "openPassword") holds no secret and stays,
+// so the workflow comes back as it was set.
+export function withoutSecrets(options: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(options).filter(([k, v]) => !/password/i.test(k) || typeof v === "boolean"));
+}
