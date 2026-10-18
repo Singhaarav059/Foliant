@@ -1,12 +1,13 @@
 // Certificate signing (PAdES B-B) and the signature checker. Test
 // certificates are made here with openssl and thrown away afterwards; their
 // password is random and never printed. Every signature is also checked by
-// an independent verifier, `openssl cms -verify`, over the byte range.
+// an independent verifier, `openssl cms -verify`, over the byte range, and
+// the whole file by poppler's pdfsig when it's installed (PDFSIG sets its path).
 //
 //   node tests/pades.mjs
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PDFDocument, PDFName, PDFString, StandardFonts } from "pdf-lib";
@@ -306,6 +307,59 @@ await test("a password-protected file is refused", async () => {
     eq(doc.catalog.lookup(PDFName.of("AcroForm")).lookup(PDFName.of("SigFlags"))?.toString(), "3", "SigFlags");
     const annots = doc.getPage(0).node.Annots();
     eq(annots?.size(), 1, "annotations on page 1");
+  });
+}
+
+// ── poppler's pdfsig reads the whole file, as a PDF reader would.
+const pdfsigPath = process.env.PDFSIG ?? ["/opt/homebrew/bin/pdfsig", "/usr/local/bin/pdfsig", "/usr/bin/pdfsig"].find(existsSync);
+if (!pdfsigPath) console.log("skip  pdfsig: not installed (brew install poppler, or set PDFSIG)");
+else {
+  // One block per signature: "Signature #n:" then its "- Key: value" lines.
+  const pdfsig = (bytes) => {
+    const f = at(`pdfsig${++seq}.pdf`);
+    writeFileSync(f, bytes);
+    const res = spawnSync(pdfsigPath, [f], { encoding: "utf8" });
+    if (res.error) throw new Error(`can't run ${pdfsigPath}: ${res.error.code}`);
+    return res.stdout.split(/^Signature #\d+:$/m).slice(1);
+  };
+  const valid = (b) => b.includes("Signature Validation: Signature is Valid.");
+  const whole = (b) => b.includes("Total document signed");
+
+  await test("pdfsig: valid, covers the whole file, certificate untrusted (self-signed)", async () => {
+    const [b, ...rest] = pdfsig(signed);
+    eq(rest.length, 0, "extra signatures");
+    eq(valid(b), true, "signature valid");
+    eq(whole(b), true, "total document signed");
+    eq(/Certificate Validation: Certificate is Trusted/.test(b), false, "certificate trusted");
+    eq(/Signature Type: ETSI\.CAdES\.detached/.test(b), true, "PAdES type");
+    eq(/Signing Hash Algorithm: SHA-256/.test(b), true, "SHA-256");
+    eq(/Common Name: Nopload Test Signer/.test(b), true, "signer");
+  });
+
+  await test("pdfsig: EC and CA-issued signatures are valid too", async () => {
+    for (const f of ["ec.p12", "chain.p12"]) {
+      const [b] = pdfsig(await signPdf(report, await openCertificate(p12(f), pw), { date: when }));
+      eq(valid(b) && whole(b), true, `${f} valid`);
+    }
+  });
+
+  await test("pdfsig: one changed byte is a digest mismatch", async () => {
+    const [b] = pdfsig(flip(signed, 7));
+    eq(b.includes("Signature Validation: Digest Mismatch."), true, "digest mismatch");
+  });
+
+  await test("pdfsig: a change saved after signing is not part of the signed document", async () => {
+    const [b] = pdfsig(appendUpdate(signed, "Changed later"));
+    eq(valid(b), true, "signed revision still valid");
+    eq(whole(b), false, "total document signed");
+  });
+
+  await test("pdfsig: both signatures of a twice-signed file are valid, the first covers only its revision", async () => {
+    const twice = await signPdf(signed, await openCertificate(p12("chain.p12"), pw), { date: when });
+    const [a, b] = pdfsig(twice);
+    eq(valid(a) && valid(b), true, "both valid");
+    eq(whole(a), false, "first: total document signed");
+    eq(whole(b), true, "second: total document signed");
   });
 }
 
