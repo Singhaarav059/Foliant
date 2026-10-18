@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useI18n } from "../I18n";
 import { SignaturePad, type SignatureImage } from "./SignaturePad";
+import { CertificateSign, prepareCertificate, type CertChoice } from "./CertificateSign";
 import { thumbUrl, pageSizes, docFor } from "@/lib/pdf/thumbs";
 import type { EditorItem, FieldInfo, FracRect } from "@/lib/pdf/edit";
 import { parseRanges, type Output, type Progress } from "@/lib/pdf/common";
@@ -78,7 +79,7 @@ function useHistory<T>(initial: T) {
 
 // Loads what saving loads, ahead of use (src/lib/offline.ts).
 export const prepareEditor = (toolId: ToolId) =>
-  Promise.all([import("@/lib/pdf/edit"), toolId === "redact" ? import("@/lib/pdf/security").then((s) => s.prepare()) : null]);
+  Promise.all([import("@/lib/pdf/edit"), toolId === "redact" ? import("@/lib/pdf/security").then((s) => s.prepare()) : null, toolId === "sign" ? prepareCertificate() : null]);
 
 export function Editor({
   toolId, file, options, actionLabel, onRun, onError,
@@ -116,6 +117,7 @@ export function Editor({
   const focusItem = useRef<string | null>(null);
   const [stamp, setStamp] = useState<{ image?: SignatureImage; text?: string } | null>(null);
   const [pendingImage, setPendingImage] = useState<SignatureImage | null>(null);
+  const [cert, setCert] = useState<CertChoice | null>(null);
   const [fields, setFields] = useState<FieldInfo[]>([]);
   const [values, setValues] = useState<Record<string, string | boolean | string[]>>({});
   const [query, setQuery] = useState("");
@@ -448,6 +450,12 @@ export function Editor({
         return edit.crop(file, new Map([...crops].filter(([k]) => k >= 0)));
       }
       if (toolId === "forms") return edit.fillForm(file, values, items.value, Boolean(options.flatten));
+      if (toolId === "sign" && cert) {
+        // Drawn items first, then the certificate signature over the result.
+        const [, sign] = await prepareCertificate();
+        const drawn = items.value.length ? (await edit.editPdf(file, items.value, "signed"))[0].blob : file;
+        return [await sign.signFile(drawn, file.name, cert.signer, cert)];
+      }
       return edit.editPdf(file, items.value, toolId === "sign" ? "signed" : "edited");
     });
   };
@@ -455,7 +463,7 @@ export function Editor({
   const canRun =
     toolId === "redact" ? marks.value.length > 0 :
     toolId === "crop" ? [...crops.values()].some((r) => r.w > 0.02 && r.h > 0.02) :
-    toolId === "forms" ? true : items.value.length > 0;
+    toolId === "forms" || (toolId === "sign" && cert) ? true : items.value.length > 0;
 
   const tools: { id: EdTool; icon: React.ReactNode; label: string }[] = useMemo(() => {
     const base = [{ id: "select" as EdTool, icon: <MousePointer2 size={18} />, label: t("ed.select") }];
@@ -681,6 +689,8 @@ export function Editor({
             </div>
           </div>
         )}
+
+        {toolId === "sign" && <CertificateSign value={cert} onChange={setCert} />}
 
         {pending && (
           <div className="space-y-2">

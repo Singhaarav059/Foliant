@@ -27,8 +27,9 @@ export const CATEGORIES: { id: CategoryId }[] = [
 //  editor  – a page canvas you draw on (edit, sign, redact, crop, forms)
 //  scan    – camera capture
 //  compare – two files side by side
+//  check   – a report on the file's signatures, nothing to download
 //  url     – a web address instead of a file
-export type ToolMode = "files" | "pages" | "editor" | "scan" | "compare" | "url";
+export type ToolMode = "files" | "pages" | "editor" | "scan" | "compare" | "check" | "url";
 
 export type OptionDef =
   | { key: string; type: "select"; choices: string[]; default: string; when?: Cond }
@@ -51,7 +52,7 @@ export type ToolId =
   | "jpgToPdf" | "wordToPdf" | "pptToPdf" | "excelToPdf" | "htmlToPdf"
   | "pdfToJpg" | "pdfToWord" | "pdfToPpt" | "pdfToExcel" | "pdfToPdfa" | "pdfToMarkdown" | "summarize"
   | "rotate" | "pageNumbers" | "watermark" | "crop" | "edit" | "forms"
-  | "unlock" | "protect" | "sign" | "redact" | "compare";
+  | "unlock" | "protect" | "sign" | "verify" | "redact" | "compare";
 
 export type Tool = {
   id: ToolId;
@@ -301,6 +302,10 @@ const ALL: Tool[] = [
   {
     id: "sign", slug: "sign-pdf", category: "security", icon: "Signature", mode: "editor",
     runtime: "browser", accept: PDF, multiple: false, options: [],
+  },
+  {
+    id: "verify", slug: "verify-pdf-signature", category: "security", icon: "ShieldCheck", mode: "check",
+    runtime: "browser", accept: PDF, multiple: false, options: [], isNew: true,
   },
   {
     id: "redact", slug: "redact-pdf", category: "security", icon: "SquareSlash", mode: "editor",

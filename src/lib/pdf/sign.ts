@@ -21,7 +21,7 @@ import * as pkijs from "pkijs";
 import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFRef, PDFString, type PDFContext, type PDFObject } from "pdf-lib";
 import { PdfError } from "./errors";
 import { loadPdf } from "./organize";
-import { pdfBlob } from "./common";
+import { baseName, bytesOf, pdfBlob, type Output } from "./common";
 
 // A private key that never leaves WebCrypto (imported as non-extractable)
 // and its certificates as DER, the signer's own first.
@@ -265,6 +265,12 @@ export async function signPdf(input: Uint8Array, signer: Signer, info: SignInfo 
   if (der.length > room) throw new Error("Signature larger than the space reserved for it");
   out.set(latin1(hex(der)), gapStart + 1);
   return out;
+}
+
+// Signs a file (the editor's output, or the file as it came) as name-signed.pdf.
+export async function signFile(file: Blob, name: string, signer: Signer, info: SignInfo = {}): Promise<Output> {
+  const bytes = await signPdf(await bytesOf(file), signer, info, name);
+  return { name: `${baseName(name)}-signed.pdf`, blob: pdfBlob(bytes) };
 }
 
 // CMS SignedData, detached, with the PAdES B-B signed attributes.

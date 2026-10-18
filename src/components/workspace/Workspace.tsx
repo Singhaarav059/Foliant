@@ -11,6 +11,7 @@ import { PageBoard, type PageItem } from "./PageBoard";
 import { Editor, prepareEditor } from "./Editor";
 import { Scanner } from "./Scanner";
 import { CompareView, prepareCompare } from "./CompareView";
+import { SignatureCheck, prepareCheck } from "./SignatureCheck";
 import { ErrorBox, useProblem, type Problem } from "./ErrorBox";
 import { Results } from "./Results";
 import { PrintResults } from "./PrintResults";
@@ -98,6 +99,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
       tool.mode === "pages" ? () => import("@/lib/pdf/organize")
       : tool.mode === "editor" ? () => prepareEditor(tool.id)
       : tool.mode === "compare" ? prepareCompare
+      : tool.mode === "check" ? prepareCheck
       : () => import("@/lib/pdf/run").then((m) => m.prepare(tool.id));
     const timer = setTimeout(() => void import("@/lib/offline").then((m) => m.warm(tool.id, code)).catch(() => {}), 1500);
     return () => clearTimeout(timer);
@@ -418,6 +420,20 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
             <CompareView key={`${items[0].id}:${items[1].id}`} a={files[0]} b={files[1]}
               onError={(e, file) => { const item = items.find((i) => i.file === file); if (item) void drop(item.id, file, e); }} />
           ) : <p className="text-center text-muted">{t("ws.needMore", { n: 2 })}</p>}
+        </div>
+      </div>
+    );
+  }
+
+  // Checking signatures is a report on the one file, shown as soon as it's in.
+  if (tool.mode === "check") {
+    return (
+      <div>
+        {dropHint}
+        {errorBox}
+        <FileBoard items={items} onChange={(n) => { setItems(n); if (!n.length) setStage("select"); }} sortable={false} />
+        <div className="mt-8">
+          {items[0] && <SignatureCheck key={items[0].id} file={files[0]} onError={(e) => void drop(items[0].id, files[0], e)} />}
         </div>
       </div>
     );
