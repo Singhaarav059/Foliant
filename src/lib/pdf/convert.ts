@@ -532,7 +532,12 @@ async function slidePictures(page: PDFPageProxy): Promise<{ figures: Figure[]; o
   // or inside out, and its picture stays out (OOXML sizes must be positive).
   const figures = figuresOf(images.map((m) => ({ ...m.rect })), view.width, view.height).figures.filter((f) => f.x1 - f.x0 >= 16 && f.y1 - f.y0 >= 16);
   const inside = (f: Figure, r: Figure) => r.x0 >= f.x0 - 3 && r.x1 <= f.x1 + 3 && r.y0 >= f.y0 - 3 && r.y1 <= f.y1 + 3;
-  const ops = new Set(images.filter((m) => figures.some((f) => inside(f, m.rect))).map((m) => m.op));
+  // Compared clamped as the figures are, so a picture partly off the page
+  // is still left out of the background.
+  const onPage = (r: Figure): Figure => ({
+    x0: Math.max(0, r.x0), y0: Math.max(0, r.y0), x1: Math.min(view.width, r.x1), y1: Math.min(view.height, r.y1),
+  });
+  const ops = new Set(images.filter((m) => figures.some((f) => inside(f, onPage(m.rect)))).map((m) => m.op));
   return { figures, ops };
 }
 

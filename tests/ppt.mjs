@@ -246,4 +246,28 @@ await test("font names with & and quotes still give well-formed slides", async (
   }
 });
 
+await test("a picture half off the page is left out of the background", async () => {
+  const doc = await PDFDocument.create();
+  const img = await doc.embedPng(png(200, 30, 30));
+  const page = doc.addPage([W, H]);
+  page.drawRectangle({ x: 600, y: 20, width: 60, height: 40, color: rgb(0, 0, 0) }); // so there is a background
+  page.drawImage(img, { x: -100, y: 100, width: 200, height: 150 });
+  const b = new Uint8Array(await doc.save());
+  const [o] = await pdfToPpt(new File([b], "half.pdf"), { pptText: true });
+  const z = await JSZip.loadAsync(await o.blob.arrayBuffer());
+  const x = await z.file("ppt/slides/slide1.xml").async("string");
+  eq(pics(x).length, 1, "pictures");
+  const id = x.match(/<p:bg>[\s\S]*?r:embed="([^"]+)"/)?.[1];
+  eq(Boolean(id), true, "background image");
+  const rels = await z.file("ppt/slides/_rels/slide1.xml.rels").async("string");
+  const target = rels.match(new RegExp(`Id="${id}"[^>]*Target="([^"]+)"`))[1];
+  const { createCanvas, loadImage } = createRequire(join(root, "package.json"))("@napi-rs/canvas");
+  const im = await loadImage(await z.file(join("ppt/slides", target).replace(/\\/g, "/")).async("nodebuffer"));
+  const c = createCanvas(im.width, im.height);
+  c.getContext("2d").drawImage(im, 0, 0);
+  const k = im.width / W;
+  const px = [...c.getContext("2d").getImageData(Math.round(50 * k), Math.round((H - 200) * k), 1, 1).data.slice(0, 3)];
+  eq(px.every((v) => v > 235), true, `background under the picture is white (got ${px})`);
+});
+
 process.exit(results.failed ? 1 : 0);
