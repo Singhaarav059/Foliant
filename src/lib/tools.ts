@@ -35,7 +35,8 @@ export type OptionDef =
   | { key: string; type: "number"; min: number; max: number; step?: number; default: number; when?: Cond }
   | { key: string; type: "range"; min: number; max: number; step?: number; default: number; unit?: string; when?: Cond }
   | { key: string; type: "text"; default: string; placeholder?: string; when?: Cond }
-  | { key: string; type: "password"; default: string; when?: Cond }
+  // `strength`: a strength meter and a suggested password, which also fills `confirm`.
+  | { key: string; type: "password"; default: string; when?: Cond; strength?: boolean; confirm?: string }
   | { key: string; type: "color"; default: string; when?: Cond }
   | { key: string; type: "position"; default: string; grid: 6 | 9; when?: Cond }
   | { key: string; type: "image"; when?: Cond };
@@ -275,11 +276,19 @@ const ALL: Tool[] = [
     id: "protect", slug: "protect-pdf", category: "security", icon: "Lock", mode: "files",
     runtime: "browser", accept: PDF, multiple: true, chainable: true,
     options: [
-      { key: "password", type: "password", default: "" },
-      { key: "confirmPassword", type: "password", default: "" },
+      // Off: anyone can open the file, and the permissions below still apply.
+      { key: "openPassword", type: "toggle", default: true },
+      { key: "password", type: "password", default: "", strength: true, confirm: "confirmPassword", when: { key: "openPassword", is: [true] } },
+      { key: "confirmPassword", type: "password", default: "", when: { key: "openPassword", is: [true] } },
       { key: "allowPrint", type: "toggle", default: true },
+      { key: "allowPrintHigh", type: "toggle", default: true, when: { key: "allowPrint", is: [true] } },
       { key: "allowCopy", type: "toggle", default: true },
       { key: "allowModify", type: "toggle", default: false },
+      { key: "allowAnnotate", type: "toggle", default: false },
+      { key: "allowForms", type: "toggle", default: false },
+      { key: "allowAssemble", type: "toggle", default: false },
+      { key: "ownerPassword", type: "password", default: "" },
+      { key: "encryption", type: "select", choices: ["aes256", "aes128"], default: "aes256" },
     ],
   },
   {

@@ -11,7 +11,7 @@ import { addInvisibleText } from "./textlayer";
 import { runsToWords } from "./convert";
 import { visualFrame, type FracRect } from "./edit";
 import { preparePdfium, redactInPlace, type Box } from "./pdfium";
-import { MAX_PASSWORD_BYTES, passwordTooLong } from "./password";
+import { MAX_PASSWORD_BYTES, passwordTooLong, type Permissions } from "./password";
 import { openForEdit, rebuilt } from "./open";
 
 export class WrongPasswordError extends Error {
@@ -57,20 +57,33 @@ function randomPassword() {
   return Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(36).padStart(2, "0")).join("");
 }
 
+// AES-256 unless AES-128 is asked for (older readers). A permission is
+// allowed unless it's false. With no open password the file opens for anyone,
+// and the restrictions still apply. Without an owner password of one's own a
+// random one is used, so nobody can lift the restrictions. Accessibility
+// (text for screen readers) is always allowed: PDF 2.0 says so, and qpdf
+// ignores the flag for AES.
 export async function protect(
   file: File,
-  o: { password: string; allowPrint: boolean; allowCopy: boolean; allowModify: boolean },
+  o: { password: string; ownerPassword?: string; encryption?: string } & Permissions,
 ): Promise<Output[]> {
-  const max = passwordTooLong(o.password);
-  if (max !== null) throw new PasswordTooLongError(max);
-  // A separate random owner password means the permissions can't be lifted with the open password.
-  const owner = randomPassword();
+  for (const p of [o.password, o.ownerPassword ?? ""]) {
+    const max = passwordTooLong(p);
+    if (max !== null) throw new PasswordTooLongError(max);
+  }
+  const owner = o.ownerPassword || randomPassword();
+  const allowed = (k: keyof Permissions) => o[k] !== false;
+  const yn = (k: keyof Permissions) => (allowed(k) ? "y" : "n");
+  const bits = o.encryption === "aes128" ? ["--bits=128", "--use-aes=y"] : ["--bits=256"];
   const { output } = await qpdfOrRebuilt(await bytesOf(file), (i, out) => [
     // --name=value, so a password like "-v" or "@notes" isn't read as an option or a file to include.
-    "--encrypt", `--user-password=${o.password}`, `--owner-password=${owner}`, "--bits=256",
-    `--print=${o.allowPrint ? "full" : "none"}`,
-    `--extract=${o.allowCopy ? "y" : "n"}`,
-    `--modify=${o.allowModify ? "all" : "none"}`,
+    "--encrypt", `--user-password=${o.password}`, `--owner-password=${owner}`, ...bits,
+    `--print=${!allowed("allowPrint") ? "none" : allowed("allowPrintHigh") ? "full" : "low"}`,
+    `--extract=${yn("allowCopy")}`,
+    `--modify-other=${yn("allowModify")}`,
+    `--annotate=${yn("allowAnnotate")}`,
+    `--form=${yn("allowForms")}`,
+    `--assemble=${yn("allowAssemble")}`,
     "--",
     i, out,
   ]);

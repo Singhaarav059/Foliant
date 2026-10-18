@@ -91,6 +91,46 @@ for (const name of engines) {
     });
   }
 
+  await test("printing off and no password: a file anyone opens but can't print", async () => {
+    await open("/en/protect-pdf");
+    await page.locator("input[type=file]").first().setInputFiles(join(fixtures, "report.pdf"));
+    // An empty password is refused while one is required.
+    let text = await refused("Protect PDF");
+    if (text !== "Enter a password.") throw new Error(`alert was "${text}"`);
+    await page.getByLabel("Require a password to open", { exact: true }).uncheck({ force: true });
+    // With every permission allowed there'd be nothing to protect.
+    for (const label of ["Allow editing", "Allow comments and notes", "Allow filling in forms", "Allow adding, removing and rotating pages"]) {
+      await page.getByLabel(label, { exact: true }).check({ force: true });
+    }
+    text = await refused("Protect PDF");
+    if (!text.startsWith("Without a password to open it")) throw new Error(`alert was "${text}"`);
+    await page.getByLabel("Allow printing", { exact: true }).uncheck({ force: true });
+    const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 60000 }), page.getByRole("button", { name: "Protect PDF", exact: true }).click()]);
+    const path = join(downloads, `${name}-${Date.now()}-${dl.suggestedFilename()}`);
+    await dl.saveAs(path);
+    const pdf = await getDocument({ data: new Uint8Array(readFileSync(path)), verbosity: 0 }).promise;
+    const perms = [...((await pdf.getPermissions()) ?? [])];
+    await pdf.loadingTask.destroy();
+    if (perms.includes(4) || perms.includes(2048) || !perms.length) throw new Error(`permissions ${JSON.stringify(perms)}`);
+    return `opens without a password, permissions ${JSON.stringify(perms)}`;
+  });
+
+  await test("a suggested password fills both fields, is shown, and protects the file", async () => {
+    await open("/en/protect-pdf");
+    await page.locator("input[type=file]").first().setInputFiles(join(fixtures, "report.pdf"));
+    await page.getByRole("button", { name: "Suggest a strong password" }).click();
+    const pw1 = await page.getByLabel("Password", { exact: true }).inputValue();
+    const pw2 = await page.getByLabel("Repeat password", { exact: true }).inputValue();
+    if (!pw1 || pw1 !== pw2) throw new Error(`fields "${pw1}" / "${pw2}"`);
+    if ((await page.getByLabel("Password", { exact: true }).getAttribute("type")) !== "text") throw new Error("the suggestion is hidden");
+    await page.getByText("Strength: strong").waitFor({ timeout: 5000 });
+    const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 60000 }), page.getByRole("button", { name: "Protect PDF", exact: true }).click()]);
+    const path = join(downloads, `${name}-${Date.now()}-${dl.suggestedFilename()}`);
+    await dl.saveAs(path);
+    if ((await opens(path, pw1)) !== 3 || (await opens(path)) !== "PasswordException") throw new Error("doesn't open with exactly the suggestion");
+    return pw1.replace(/[a-z0-9]/g, "x");
+  });
+
   await test("a 200-character password is refused on the tool page", async () => {
     await open("/en/protect-pdf");
     await page.locator("input[type=file]").first().setInputFiles(join(fixtures, "report.pdf"));

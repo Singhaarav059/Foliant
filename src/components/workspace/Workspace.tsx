@@ -17,7 +17,7 @@ import { PrintResults } from "./PrintResults";
 import { clearHandoff, peekHandoff } from "@/lib/handoff";
 import { fileExt, type Output, type Progress } from "@/lib/pdf/common";
 import { fileError } from "@/lib/pdf/errors";
-import { passwordTooLong } from "@/lib/pdf/password";
+import { PERMISSIONS, protectProblem } from "@/lib/pdf/password";
 import { pageCount } from "@/lib/pdf/thumbs";
 import { defaultOptions, LIGHT_OFFICE, LIMITS, toolById, type ToolId } from "@/lib/tools";
 
@@ -191,10 +191,14 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
 
   const validate = (): string | null => {
     if (tool.id === "protect") {
-      if (!String(options.password ?? "")) return t("ws.passwordEmpty");
-      if (options.password !== options.confirmPassword) return t("ws.passwordMismatch");
-      const max = passwordTooLong(String(options.password));
-      if (max !== null) return t("ws.passwordTooLong", { max });
+      const problem = protectProblem({
+        ...Object.fromEntries(PERMISSIONS.map((k) => [k, options[k] !== false])),
+        openPassword: options.openPassword !== false, password: String(options.password ?? ""), confirmPassword: String(options.confirmPassword ?? ""), ownerPassword: String(options.ownerPassword ?? ""),
+      });
+      if (problem?.code === "passwordEmpty") return t("ws.passwordEmpty");
+      if (problem?.code === "noRestriction") return t("ws.noRestriction");
+      if (problem?.code === "passwordMismatch") return t("ws.passwordMismatch");
+      if (problem?.code === "passwordTooLong") return t("ws.passwordTooLong", { max: problem.max });
     }
     if (tool.minFiles && files.length < tool.minFiles) return t("ws.needMore", { n: tool.minFiles });
     if (tool.id === "extract" && selected.size === 0) return t("ws.pickPages");

@@ -107,7 +107,9 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
     case "protect": {
       const { protect } = await import("./security");
       return each(files, progress, (f) => protect(f, {
-        password: s(o.password), allowPrint: b(o.allowPrint), allowCopy: b(o.allowCopy), allowModify: b(o.allowModify),
+        password: o.openPassword === false ? "" : s(o.password), allowPrint: b(o.allowPrint), allowCopy: b(o.allowCopy), allowModify: b(o.allowModify),
+        allowPrintHigh: b(o.allowPrintHigh ?? true), allowAnnotate: b(o.allowAnnotate), allowForms: b(o.allowForms), allowAssemble: b(o.allowAssemble),
+        ownerPassword: s(o.ownerPassword), encryption: s(o.encryption || "aes256"),
       }).catch((e) => {
         // qpdf can't open a file that already has an open password.
         throw (e as { code?: string }).code === "encrypted" ? new PdfError("already_encrypted", f.name, e) : e;
