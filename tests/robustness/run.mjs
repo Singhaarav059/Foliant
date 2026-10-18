@@ -4,16 +4,22 @@
 //
 //   node tests/robustness/run.mjs                 every case; exits 1 on any failure
 //   node tests/robustness/run.mjs --known         exits 1 only on a failure that
-//                                                 known-failures.json doesn't list, or on
-//                                                 a listed case that now passes (CI)
+//                                                 known-failures.json doesn't list (or lists
+//                                                 as failing another way), or on a listed
+//                                                 case that now passes (CI)
 //   node tests/robustness/run.mjs --known --prune also drops listed cases that pass
 //   node tests/robustness/run.mjs "redact|split"  only cases whose "tool[:variant] fixture" matches
 //   --jobs N                                      cases in parallel (default up to 3)
 //
 // ROBUST_TIME_LIMIT_S (60), ROBUST_RSS_MB (800) and ROBUST_KILL_S (180) set the limits;
 // ROBUST_KEEP=1 keeps the corpus and every output for a look afterwards.
-// known-failures.json maps each failing case to the backlog item that fixes it;
-// when you fix one, run with --known --prune and commit the shorter list.
+// known-failures.json maps each failing case to the backlog item that fixes it
+// ("why") and to how it fails today ("fails"): one text per problem, as the
+// FAIL line prints it, "error: <message>" for an error, and "crash: ..." only
+// for a case that may be killed or crash. Every part of the failure must
+// contain one of those texts, so a listed case that starts to fail another way
+// (a new problem, an error, a hang or a crash) counts as a new failure.
+// When you fix one, run with --known --prune and commit the shorter list.
 import { spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { availableParallelism, tmpdir } from "node:os";
@@ -32,11 +38,16 @@ const RSS_LIMIT = Number(process.env.ROBUST_RSS_MB ?? 800);
 const KILL = Number(process.env.ROBUST_KILL_S ?? 180) * 1000;
 const knownPath = join(here, "known-failures.json");
 const known = JSON.parse(readFileSync(knownPath, "utf8"));
+for (const [k, v] of Object.entries(known)) {
+  if (typeof v?.why !== "string" || !Array.isArray(v.fails) || !v.fails.length) throw new Error(`known-failures.json: "${k}" needs "why" and a non-empty "fails" list`);
+}
 
 const work = mkdtempSync(join(tmpdir(), "robust-"));
 const corpus = join(work, "corpus"), out = join(work, "out"), build = join(work, "build");
 mkdirSync(build);
 const env = { ...process.env, FOLIANT_ROBUST_BUILD: build };
+// Also on an early exit (gen.mjs failing); ROBUST_KEEP keeps everything.
+if (!process.env.ROBUST_KEEP) process.on("exit", () => rmSync(work, { recursive: true, force: true }));
 
 // The generator compiles the engines first; every case reuses that build.
 await new Promise((resolve, reject) => {
@@ -93,13 +104,18 @@ function run([tool, fixture, variant]) {
 const heavy = new Set(["bomb-orphan.pdf", "bomb-image.pdf", "huge-page.pdf", "pages-1500.pdf", "huge-scan.pdf"]);
 const light = todo.filter(([, f]) => !heavy.has(f));
 const results = [];
+const failing = (r) => r.crash || !r.ok || r.problems.length;
+// What went wrong, one part each: the crash or the error, then every problem.
+const parts = (r) => [...(r.crash ? [`crash: ${r.crash}`] : !r.ok ? [`error: ${r.error?.message ?? ""}`] : []), ...r.problems];
+const describe = (r) => parts(r).map((p) => p.slice(0, 160)).join("; ").slice(0, 400);
+// A listed case fails as listed when every part contains one of its "fails"
+// texts; a crash or a kill only ever matches a text that starts with "crash: ".
+const asListed = (r) => parts(r).every((p) => known[r.key].fails.some((f) => p.includes(f) && p.startsWith("crash: ") === f.startsWith("crash: ")));
 const report = (r) => {
   results.push(r);
-  const failed = r.crash || !r.ok || r.problems.length;
-  if (failed) console.log(`FAIL  ${r.key.padEnd(40)} ${describe(r)}${known[r.key] ? `  [known: ${known[r.key]}]` : ""}`);
+  if (failing(r)) console.log(`FAIL  ${r.key.padEnd(40)} ${describe(r)}${known[r.key] ? `  [${asListed(r) ? "known" : "listed as failing another way"}: ${known[r.key].why}]` : ""}`);
   if (results.length % 100 === 0) console.log(`      ${results.length}/${todo.length} cases run`);
 };
-const describe = (r) => (r.crash ? `crash: ${r.crash}` : !r.ok ? `error: ${r.error?.message?.slice(0, 160)}` : r.problems.join("; ").slice(0, 240));
 
 console.log(`${todo.length} cases, ${concurrency} at a time${process.env.ROBUST_KEEP ? `; outputs in ${out}` : ""}`);
 let next = 0;
@@ -109,17 +125,17 @@ await Promise.all(Array.from({ length: concurrency }, async () => {
 // Memory-hungry cases one at a time, so they don't starve each other.
 for (const c of todo.filter(([, f]) => heavy.has(f))) report(await run(c));
 
-const failed = results.filter((r) => r.crash || !r.ok || r.problems.length);
-const unexpected = failed.filter((r) => !known[r.key]);
-const fixed = results.filter((r) => known[r.key] && !failed.includes(r));
+const failed = results.filter(failing);
+const unexpected = failed.filter((r) => !known[r.key] || !asListed(r));
+const fixed = results.filter((r) => known[r.key] && !failing(r));
 console.log(`\n${results.length - failed.length}/${results.length} cases pass; ${failed.length} fail (${failed.length - unexpected.length} known, ${unexpected.length} new)`);
-for (const r of unexpected) console.log(`  new failure: ${r.key}  ${describe(r)}`);
-for (const r of fixed) console.log(`  now passes: ${r.key}  (listed for ${known[r.key]})`);
+for (const r of unexpected) console.log(`  new failure: ${r.key}  ${describe(r)}${known[r.key] ? `  (listed as failing with ${JSON.stringify(known[r.key].fails)})` : ""}`);
+for (const r of fixed) console.log(`  now passes: ${r.key}  (listed for ${known[r.key].why})`);
 
-if (!process.env.ROBUST_KEEP) rmSync(work, { recursive: true, force: true });
 if (flag("--prune") && fixed.length) {
   for (const r of fixed) delete known[r.key];
-  writeFileSync(knownPath, JSON.stringify(Object.fromEntries(Object.entries(known).sort(([a], [b]) => a.localeCompare(b))), null, 2) + "\n");
+  // One case per line, sorted, so a fix shows up as removed lines.
+  writeFileSync(knownPath, `{\n${Object.keys(known).sort((a, b) => a.localeCompare(b)).map((k) => `  ${JSON.stringify(k)}: ${JSON.stringify(known[k])}`).join(",\n")}\n}\n`);
   console.log(`  removed ${fixed.length} from known-failures.json`);
 }
 if (flag("--known")) process.exit(unexpected.length || (fixed.length && !flag("--prune")) ? 1 : 0);

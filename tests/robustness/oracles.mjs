@@ -6,9 +6,8 @@
 // file. run.mjs adds the time and memory limits. Prints one RESULT line.
 //
 //   node tests/robustness/oracles.mjs <corpus-dir> <out-dir> <tool> <fixture> [variant]
-import { readFileSync, writeFileSync, mkdirSync, mkdtempSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { load, refInfo, refOpen, fileOf, vendorDir, require } from "./env.mjs";
 
 const [corpus, outRoot, tool, fixture, variant = ""] = process.argv.slice(2);
@@ -226,7 +225,11 @@ try {
       delete globalThis.document;
       const { createWorker, createScheduler } = await import("tesseract.js");
       globalThis.document = savedDoc;
-      const cache = mkdtempSync(join(tmpdir(), "tess-"));
+      // tesseract.js copies the language data (about 6 MB) into its cache. It
+      // lives in this case's output folder and goes once the OCR is done (or
+      // with the folder, if the case dies first).
+      const cache = join(outDir, "tesseract-cache");
+      mkdirSync(cache, { recursive: true });
       ocrMod.engine.create = async (lang, count) => {
         const scheduler = createScheduler();
         // tesseract.js takes the browser path when `document` exists; hide the canvas polyfill meanwhile.
@@ -241,7 +244,12 @@ try {
         };
       };
       const { ocr } = await load("optimize");
-      const [o] = await ocr(f, { ocrLang: "eng", dpi: variant || "200", ocrEngine: "standard" });
+      let o;
+      try {
+        [o] = await ocr(f, { ocrLang: "eng", dpi: variant || "200", ocrEngine: "standard" });
+      } finally {
+        rmSync(cache, { recursive: true, force: true });
+      }
       await savePdf(o);
       const s = await samePages(o, "ocr");
       result.info.note = o.note;

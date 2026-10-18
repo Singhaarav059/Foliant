@@ -7,7 +7,7 @@
 // run.mjs passes one build folder to every case in FOLIANT_ROBUST_BUILD, so
 // only the first process (the fixture generator) runs tsc.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -21,6 +21,8 @@ const vendorSrc = readFileSync(join(ROOT, "src/lib/vendor.ts"), "utf8");
 export const vendorDir = join(ROOT, "public", vendorSrc.match(/VENDOR = "([^"]+)"/)[1]) + "/";
 
 const OUT = process.env.FOLIANT_ROBUST_BUILD ?? mkdtempSync(join(tmpdir(), "robust-build-"));
+// A build of its own (gen.mjs or oracles.mjs run by hand) goes with the process.
+if (!process.env.FOLIANT_ROBUST_BUILD) process.on("exit", () => rmSync(OUT, { recursive: true, force: true }));
 if (!existsSync(join(OUT, "hooks.mjs"))) {
   execFileSync(join(ROOT, "node_modules/.bin/tsc"), [
     "--outDir", OUT, "--module", "esnext", "--target", "es2022", "--moduleResolution", "bundler",

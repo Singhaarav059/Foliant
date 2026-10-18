@@ -18,7 +18,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const base = process.env.BASE_URL ?? "http://localhost:3202";
+// Paths below start with "/", so a pasted address ending in "/" would double it.
+const base = (process.env.BASE_URL ?? "http://localhost:3202").replace(/\/+$/, "");
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 const specDir = join(dirname(fileURLToPath(import.meta.url)), "e2e");
 const specs = await Promise.all(readdirSync(specDir).filter((f) => f.endsWith(".mjs")).sort().map((f) => import(pathToFileURL(join(specDir, f)).href)));

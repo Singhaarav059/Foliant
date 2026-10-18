@@ -43,8 +43,15 @@ function parseHeaders(text) {
 
 const headersFor = isFile(join(root, "_headers")) ? parseHeaders(readFileSync(join(root, "_headers"), "utf8")) : () => ({});
 
-createServer((req, res) => {
-  const path = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
+const server = createServer((req, res) => {
+  // A request the URL parser or the decoder rejects ("//", a bad %-escape)
+  // gets a 400; thrown here, it would stop the server for every later test.
+  let path;
+  try {
+    path = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
+  } catch {
+    return res.writeHead(400).end();
+  }
   const target = join(root, path);
   if (!target.startsWith(root)) return res.writeHead(400).end();
   let file = [target, `${target}.html`, join(target, "index.html")].find(isFile);
@@ -59,4 +66,6 @@ createServer((req, res) => {
   if (!file) return res.writeHead(404, headersFor(path)).end("Not found");
   res.writeHead(status, { ...headersFor(path), "Content-Type": types[extname(file)] ?? "application/octet-stream" });
   res.end(readFileSync(file));
-}).listen(port, () => console.log(`Serving ${root} on http://localhost:${port}`));
+});
+// Port 0 picks a free port; the line below says which.
+server.listen(port, () => console.log(`Serving ${root} on http://localhost:${server.address().port}`));

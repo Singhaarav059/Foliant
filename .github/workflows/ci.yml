@@ -123,5 +123,7 @@ jobs:
           cache: npm
       - run: npm ci
       # Fails on a failure tests/robustness/known-failures.json doesn't list,
-      # and on a listed one that now passes (prune it with --known --prune).
+      # on a listed case that fails another way than listed (a hang, a crash,
+      # a new problem), and on a listed one that now passes (prune it with
+      # --known --prune).
       - run: npm run test:robust -- --known
