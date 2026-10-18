@@ -198,6 +198,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
       if (problem?.code === "passwordEmpty") return t("ws.passwordEmpty");
       if (problem?.code === "noRestriction") return t("ws.noRestriction");
       if (problem?.code === "passwordMismatch") return t("ws.passwordMismatch");
+      if (problem?.code === "ownerSameAsOpen") return t("ws.ownerSameAsOpen");
       if (problem?.code === "passwordTooLong") return t("ws.passwordTooLong", { max: problem.max });
     }
     if (tool.minFiles && files.length < tool.minFiles) return t("ws.needMore", { n: tool.minFiles });

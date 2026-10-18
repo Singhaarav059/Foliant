@@ -140,6 +140,7 @@ export function Workflows() {
     if (bad?.code === "passwordEmpty") return say(t("ws.passwordEmpty"));
     if (bad?.code === "noRestriction") return say(t("ws.noRestriction"));
     if (bad?.code === "passwordMismatch") return say(t("ws.passwordMismatch"));
+    if (bad?.code === "ownerSameAsOpen") return say(t("ws.ownerSameAsOpen"));
     if (bad?.code === "passwordTooLong") return say(t("ws.passwordTooLong", { max: bad.max }));
     const { runTool } = await import("@/lib/pdf/run");
     let current = files;

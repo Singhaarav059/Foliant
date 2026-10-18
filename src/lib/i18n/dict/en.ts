@@ -304,6 +304,7 @@ const en = {
   "ws.cancel": "Cancel",
   "ws.encrypted": "{name} is password-protected. Unlock it first.",
   "ws.passwordMismatch": "The passwords don't match.",
+  "ws.ownerSameAsOpen": "Use a different permissions password. The same one as the open password would let anyone who opens the file change its permissions.",
   "ws.passwordEmpty": "Enter a password.",
   "ws.noRestriction": "Without a password to open it, turn off at least one permission. Otherwise the file wouldn't be protected at all.",
   "ws.wrongPassword": "That password is wrong. Check it and try again.",

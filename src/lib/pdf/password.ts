@@ -34,6 +34,9 @@ export function protectProblem(o: { openPassword?: boolean; password: string; co
   if (open && !o.password) return { code: "passwordEmpty" as const };
   if (!open && !PERMISSIONS.some((k) => o[k] === false)) return { code: "noRestriction" as const };
   if (open && o.password !== o.confirmPassword) return { code: "passwordMismatch" as const };
+  // Opening with the permissions password gives every right, so one equal to
+  // the open password would lift all the restrictions for anyone who has it.
+  if (open && o.ownerPassword && o.ownerPassword === o.password) return { code: "ownerSameAsOpen" as const };
   for (const p of [open ? o.password : "", o.ownerPassword ?? ""]) {
     const max = passwordTooLong(p);
     if (max !== null) return { code: "passwordTooLong" as const, max };

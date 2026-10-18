@@ -163,6 +163,9 @@ await test("the form's checks: an open password, or at least one restriction", a
   eq(check({ password: "a", confirmPassword: "b" })?.code, "passwordMismatch", "mismatch");
   eq(check({ password: "a", confirmPassword: "a" }), null, "a password");
   eq(check({ openPassword: false, allowCopy: false, ownerPassword: "é".repeat(64) })?.code, "passwordTooLong", "owner password too long");
+  // The permissions password opens with full rights, so the same one for both would lift every restriction.
+  eq(check({ password: "same", confirmPassword: "same", ownerPassword: "same", allowPrint: false })?.code, "ownerSameAsOpen", "permissions password same as the open one");
+  eq(check({ openPassword: false, password: "same", ownerPassword: "same", allowPrint: false }), null, "the same text when no open password is set");
 });
 
 await test("suggested passwords are random and rated strong; short ones weak", async () => {
