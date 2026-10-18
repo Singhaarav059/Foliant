@@ -334,6 +334,56 @@ await test("PDF/A-1b: stand-ins use a plain WinAnsi encoding, or are symbolic wi
   eq(two.lookup(PDFName.of("Encoding")) instanceof PDFDict, true, "2b keeps WinAnsi plus Differences");
 });
 
+// A Type3 font drawing code 0x41 (/blot, a name Unicode doesn't know), with a ToUnicode map.
+const type3With = async (cmapBody) => {
+  const d = await PDFDocument.create();
+  const ctx = d.context;
+  const pg = d.addPage([595, 842]);
+  const glyph = ctx.register(ctx.stream("500 0 0 0 500 500 d1 0 0 500 500 re f"));
+  const cmap = ctx.register(ctx.stream(`/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CMapName /X def 1 begincodespacerange <00> <FF> endcodespacerange ${cmapBody} endcmap CMapName currentdict /CMap defineresource pop end end`));
+  const font = ctx.register(ctx.obj({
+    Type: "Font", Subtype: "Type3", FontBBox: [0, 0, 500, 500], FontMatrix: [0.001, 0, 0, 0.001, 0, 0],
+    CharProcs: { blot: glyph }, Encoding: { Type: "Encoding", Differences: [65, PDFName.of("blot")] }, FirstChar: 65, LastChar: 65, Widths: [500], Resources: {}, ToUnicode: cmap,
+  }));
+  const f = pg.node.newFontDictionary("T3", font);
+  pg.pushOperators(PDFOperator.of("BT"), PDFOperator.of("Tf", [f, ctx.obj(24)]), PDFOperator.of("Td", [ctx.obj(50), ctx.obj(700)]), PDFOperator.of("Tj", [PDFString.of("A")]), PDFOperator.of("ET"));
+  return PDFDocument.load(await d.save());
+};
+await test("PDF/A-2u: a ToUnicode map counts only for the codes it really maps", async () => {
+  eq((await fixForPdfA(await type3With("1 beginbfchar <42> <0042> endbfchar"), "2u")).level, "2b", "code drawn missing from the map");
+  eq((await fixForPdfA(await type3With("1 beginbfchar <41> <0000> endbfchar"), "2u")).level, "2b", "code mapped to U+0000");
+  eq((await fixForPdfA(await type3With("1 beginbfchar <41> <FEFF> endbfchar"), "2u")).level, "2b", "code mapped to U+FEFF");
+  eq((await fixForPdfA(await type3With("1 beginbfchar <41> <25A0> endbfchar"), "2u")).level, "2u", "bfchar");
+  eq((await fixForPdfA(await type3With("1 beginbfrange <40> <42> <25A0> endbfrange"), "2u")).level, "2u", "bfrange");
+  eq((await fixForPdfA(await type3With("1 beginbfrange <41> <41> [<25A0>] endbfrange"), "2u")).level, "2u", "bfrange with an array");
+  // A composite font (Identity-H, two-byte codes) as pdf-lib embeds it, with its ToUnicode map.
+  const composite = async (edit) => {
+    const d = await PDFDocument.create();
+    d.registerFontkit(fontkit);
+    // The TrueType program of an Arimo stand-in made above.
+    const ttf = decodePDFRawStream(fonts[0].lookup(PDFName.of("FontDescriptor"), PDFDict).lookup(PDFName.of("FontFile2"), PDFRawStream)).decode();
+    const font = await d.embedFont(ttf);
+    d.addPage([595, 842]).drawText("Hello", { x: 50, y: 700, size: 14, font });
+    const loaded = await PDFDocument.load(await d.save());
+    const t0 = loaded.context.enumerateIndirectObjects().map(([, o]) => o).find((o) => o instanceof PDFDict && o.get(PDFName.of("Subtype")) === PDFName.of("Type0"));
+    edit(t0, loaded);
+    return loaded;
+  };
+  // A map of just the two-byte codes the page draws, all of them or all but the first.
+  const mapOf = (keep) => (f, d) => {
+    const contents = d.getPage(0).node.Contents();
+    const content = (contents instanceof PDFArray ? contents.asArray().map((r) => d.context.lookup(r)) : [contents])
+      .map((st) => new TextDecoder().decode(decodePDFRawStream(st).decode())).join("\n");
+    const codes = [...new Set(content.match(/<([0-9A-Fa-f]+)>\s*Tj/)[1].match(/.{4}/g))].slice(keep);
+    f.set(PDFName.of("ToUnicode"), d.context.register(d.context.stream(
+      `/CIDInit /ProcSet findresource begin 12 dict begin begincmap 1 begincodespacerange <0000> <FFFF> endcodespacerange ${codes.length} beginbfchar ${codes.map((c) => `<${c}> <0041>`).join(" ")} endbfchar endcmap end end`,
+    )));
+  };
+  eq((await fixForPdfA(await composite(() => {}), "2u")).level, "2u", "composite font with pdf-lib's map");
+  eq((await fixForPdfA(await composite(mapOf(0)), "2u")).level, "2u", "composite font whose map has exactly the codes drawn");
+  eq((await fixForPdfA(await composite(mapOf(1)), "2u")).level, "2b", "composite font whose map misses a code drawn");
+});
+
 // Full validation, when a veraPDF command line is available (CI).
 if (process.env.VERAPDF) {
   const dir = mkdtempSync(join(tmpdir(), "pdfa-"));

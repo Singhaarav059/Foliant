@@ -240,7 +240,10 @@ function scan(streams: Uint8Array[], resources: PDFDict | undefined, u: Usage, c
     if (!font) return;
     let set = u.fonts.get(font);
     if (!set) u.fonts.set(font, (set = new Set()));
-    for (const b of s) set.add(b);
+    // Composite fonts with an Identity encoding draw two-byte codes; others, one byte each.
+    const enc = font.get(N("Subtype")) === N("Type0") ? font.get(N("Encoding")) : undefined;
+    if (enc === N("Identity-H") || enc === N("Identity-V")) for (let i = 0; i + 1 < s.length; i += 2) set.add((s[i] << 8) | s[i + 1]);
+    else for (const b of s) set.add(b);
   };
   const form = (x: PDFRawStream) => {
     if (seen.has(x)) return;
@@ -748,7 +751,7 @@ export async function fixForPdfA(doc: PDFDocument, level: PdfaLevel = "2b"): Pro
   let reached = level;
   if (level.endsWith("u")) {
     for (const [font, codes] of allCodes)
-      if ([...fontPages.get(font)!].some((p) => !raster.has(p)) && !mapsToUnicode(font, codes)) reached = `${part}b` as PdfaLevel;
+      if ([...fontPages.get(font)!].some((p) => !raster.has(p)) && !mapsToUnicode(font, codes, doc)) reached = `${part}b` as PdfaLevel;
   }
 
   return { raster, substituted, removed, level: reached };
@@ -762,16 +765,70 @@ export function pdfaVersion(bytes: Uint8Array, level: PdfaLevel): Uint8Array {
   return bytes;
 }
 
-// Unicode for every code drawn: a ToUnicode map, or glyph names Unicode knows.
-// Composite fonts, symbolic fonts and built-in encodings need the map.
-function mapsToUnicode(font: PDFDict, codes: Set<number>): boolean {
-  if (font.get(N("ToUnicode")) instanceof PDFStream || font.lookup(N("ToUnicode")) instanceof PDFStream) return true;
+// code → Unicode text, from a ToUnicode CMap's bfchar and bfrange entries.
+function toUnicodeMap(font: PDFDict, doc: PDFDocument): Map<number, string> | undefined {
+  const streams = contentBytes(font.get(N("ToUnicode")), doc);
+  if (!streams.length) return undefined;
+  const map = new Map<number, string>();
+  const int = (b: Uint8Array) => b.reduce((n, x) => n * 256 + x, 0);
+  const text = (b: Uint8Array) => String.fromCharCode(...Array.from({ length: b.length >> 1 }, (_, i) => (b[2 * i] << 8) | b[2 * i + 1]));
+  let operands: (Uint8Array | "[" | "]")[] = [];
+  for (const bytes of streams)
+    for (const t of tokens(bytes)) {
+      if ("str" in t) operands.push(t.str);
+      else if ("mark" in t && (t.mark === "[" || t.mark === "]")) operands.push(t.mark);
+      else if ("op" in t) {
+        if (t.op === "endbfchar")
+          for (let i = 0; i + 1 < operands.length; i += 2) {
+            const [src, dst] = operands.slice(i, i + 2);
+            if (src instanceof Uint8Array && dst instanceof Uint8Array) map.set(int(src), text(dst));
+          }
+        if (t.op === "endbfrange")
+          for (let i = 0; i + 2 < operands.length; ) {
+            const [lo, hi, dst] = operands.slice(i, i + 3);
+            if (!(lo instanceof Uint8Array) || !(hi instanceof Uint8Array)) break;
+            const from = int(lo), to = Math.min(int(hi), from + 65535);
+            if (dst instanceof Uint8Array) {
+              // The last character of the destination counts up across the range.
+              const base = text(dst);
+              for (let c = from; c <= to; c++) map.set(c, base.slice(0, -1) + String.fromCharCode(base.charCodeAt(base.length - 1) + c - from));
+              i += 3;
+            } else if (dst === "[") {
+              let j = i + 3;
+              for (let c = from; j < operands.length && operands[j] !== "]"; j++, c++) {
+                const d = operands[j];
+                if (d instanceof Uint8Array && c <= to) map.set(c, text(d));
+              }
+              i = j + 1;
+            } else break;
+          }
+        operands = [];
+      }
+    }
+  return map;
+}
+
+// Unicode for every code drawn, from the ToUnicode map, or else from glyph names
+// Unicode knows (ISO 19005-2, 6.2.11.7.2); a code mapped to U+0000, U+FEFF or
+// U+FFFE doesn't count. Composite fonts, symbolic fonts and built-in encodings need the map.
+function mapsToUnicode(font: PDFDict, codes: Set<number>, doc: PDFDocument): boolean {
+  const map = toUnicodeMap(font, doc);
+  const mapped = (code: number) => {
+    const t = map?.get(code);
+    return !!t && t !== "\u0000" && t !== "\ufeff" && t !== "\ufffe";
+  };
   const sub = String(font.get(N("Subtype")));
-  if (sub === "/Type0") return false;
+  if (sub === "/Type0") {
+    if (!map) return false;
+    // Only Identity codes are known here; with any other CMap the map is taken as it is.
+    const enc = font.get(N("Encoding"));
+    return enc === N("Identity-H") || enc === N("Identity-V") ? [...codes].every(mapped) : true;
+  }
   const desc = font.lookupMaybe(N("FontDescriptor"), PDFDict);
   const flags = desc?.lookup(N("Flags"));
-  if (sub !== "/Type3" && flags instanceof PDFNumber && flags.asNumber() & 4) return false;
-  if (sub !== "/Type3" && embeddedFile(desc) && !font.has(N("Encoding"))) return false;
-  const enc = encodingOf(font, sub === "/Type1" && !embeddedFile(desc));
-  return !!enc && [...codes].every((code) => unicodeOf(enc[code]) !== undefined);
+  const named =
+    (sub === "/Type3" || !(flags instanceof PDFNumber && flags.asNumber() & 4)) && (sub === "/Type3" || !embeddedFile(desc) || font.has(N("Encoding")))
+      ? encodingOf(font, sub === "/Type1" && !embeddedFile(desc))
+      : null;
+  return [...codes].every((code) => mapped(code) || (!!named && unicodeOf(named[code]) !== undefined));
 }
