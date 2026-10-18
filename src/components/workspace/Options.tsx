@@ -1,7 +1,8 @@
 "use client";
 
-import { useId, useRef } from "react";
-import { ImagePlus, X } from "lucide-react";
+import { useId, useRef, useState } from "react";
+import { Eye, EyeOff, ImagePlus, Sparkles, X } from "lucide-react";
+import { passwordStrength, suggestPassword } from "@/lib/pdf/password";
 import { useI18n } from "../I18n";
 import { optionVisible, type OptionDef } from "@/lib/tools";
 
@@ -74,7 +75,13 @@ export function Options({
                 </select>
               )
             )}
-            {(d.type === "text" || d.type === "password") && (
+            {d.type === "password" && d.strength && (
+              <PasswordOption id={id} value={String(value ?? "")} onChange={(v, suggested) => {
+                onChange(d.key, v);
+                if (suggested && d.confirm) onChange(d.confirm, v);
+              }} />
+            )}
+            {(d.type === "text" || (d.type === "password" && !d.strength)) && (
               <input
                 id={id}
                 type={d.type}
@@ -168,6 +175,64 @@ function ImageOption({ value, onChange }: { value?: File; onChange: (f: File | u
           <X size={16} />
         </button>
       )}
+    </div>
+  );
+}
+
+// A new password: shown or hidden, rated as it's typed, or suggested (and
+// then shown, so it can be copied).
+function PasswordOption({ id, value, onChange }: { id: string; value: string; onChange: (v: string, suggested: boolean) => void }) {
+  const { t } = useI18n();
+  const [shown, setShown] = useState(false);
+  const [suggested, setSuggested] = useState<string | null>(null);
+  const level = passwordStrength(value);
+  return (
+    <div>
+      <div className="relative">
+        <input
+          id={id}
+          type={shown ? "text" : "password"}
+          className="field pe-11"
+          value={value}
+          autoComplete="new-password"
+          spellCheck={false}
+          aria-describedby={`${id}-strength`}
+          onChange={(e) => {
+            setSuggested(null);
+            onChange(e.target.value, false);
+          }}
+        />
+        <button
+          type="button"
+          className="icon-btn absolute end-1 top-1/2 -translate-y-1/2"
+          aria-label={shown ? t("pw.hide") : t("pw.show")}
+          aria-pressed={shown}
+          onClick={() => setShown((s) => !s)}
+        >
+          {shown ? <EyeOff size={16} /> : <Eye size={16} />}
+        </button>
+      </div>
+      <div id={`${id}-strength`} className="mt-2 flex h-4 items-center gap-2" aria-live="polite">
+        <span className="flex w-24 shrink-0 gap-1" aria-hidden="true">
+          {[1, 2, 3, 4].map((n) => (
+            <span key={n} className={`h-1 flex-1 rounded-full ${n <= level ? (level <= 1 ? "bg-danger" : level === 2 ? "bg-accent" : "bg-success") : "bg-line-strong"}`} />
+          ))}
+        </span>
+        {value && <span className="text-[12px] text-muted">{t("pw.strength", { level: t(`pw.level.${level}`) })}</span>}
+      </div>
+      <button
+        type="button"
+        className="btn btn-quiet btn-sm mt-2"
+        onClick={() => {
+          const pw = suggestPassword();
+          setSuggested(pw);
+          setShown(true);
+          onChange(pw, true);
+        }}
+      >
+        <Sparkles size={14} /> {t("pw.suggest")}
+      </button>
+      {suggested && suggested === value && <p className="mt-2 text-[13px] text-muted">{t("pw.suggested")}</p>}
     </div>
   );
 }

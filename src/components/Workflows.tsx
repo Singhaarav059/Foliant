@@ -11,7 +11,7 @@ import { Results } from "./workspace/Results";
 import { ErrorBox, useProblem, type Problem } from "./workspace/ErrorBox";
 import { defaultOptions, TOOLS, toolById, type ToolId } from "@/lib/tools";
 import type { Output } from "@/lib/pdf/common";
-import { passwordTooLong } from "@/lib/pdf/password";
+import { PERMISSIONS, protectProblem } from "@/lib/pdf/password";
 import { BRAND } from "@/lib/brand";
 import { STATIC } from "@/lib/mode";
 
@@ -132,10 +132,16 @@ export function Workflows() {
     if (!steps.length) return say(t("wf.needSteps"));
     if (!files.length) return say(t("ws.needMore", { n: 1 }));
     const protect = steps.find((s) => s.tool === "protect");
-    if (protect && !String(protect.options.password ?? "")) return say(t("ws.passwordEmpty"));
-    if (protect && protect.options.password !== protect.options.confirmPassword) return say(t("ws.passwordMismatch"));
-    const max = protect ? passwordTooLong(String(protect.options.password)) : null;
-    if (max !== null) return say(t("ws.passwordTooLong", { max }));
+    const o = protect?.options ?? {};
+    const bad = protect && protectProblem({
+      ...Object.fromEntries(PERMISSIONS.map((k) => [k, o[k] !== false])),
+      openPassword: o.openPassword !== false, password: String(o.password ?? ""), confirmPassword: String(o.confirmPassword ?? ""), ownerPassword: String(o.ownerPassword ?? ""),
+    });
+    if (bad?.code === "passwordEmpty") return say(t("ws.passwordEmpty"));
+    if (bad?.code === "noRestriction") return say(t("ws.noRestriction"));
+    if (bad?.code === "passwordMismatch") return say(t("ws.passwordMismatch"));
+    if (bad?.code === "ownerSameAsOpen") return say(t("ws.ownerSameAsOpen"));
+    if (bad?.code === "passwordTooLong") return say(t("ws.passwordTooLong", { max: bad.max }));
     const { runTool } = await import("@/lib/pdf/run");
     let current = files;
     let out: Output[] = [];

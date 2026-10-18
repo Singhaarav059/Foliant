@@ -9,6 +9,7 @@
 // page itself when it was reached by a link. Only while a service worker controls the page, and not on
 // Data Saver or 2G.
 import { pdfjs } from "./pdf/common";
+import { prepareQpdf } from "./pdf/qpdf";
 import { toolById, type ToolId } from "./tools";
 import { VENDOR } from "./vendor";
 
@@ -36,9 +37,11 @@ export async function warm(id: ToolId, code: () => Promise<unknown>) {
   const visited = !!(await caches.match(location.pathname).catch(() => null));
   const pdf = toolById(id).accept.includes("pdf");
   await code().catch(() => {});
-  if (pdf) await pdfjs().catch(() => {});
+  // Every PDF tool opens its files through qpdf (pdf/open.ts): its glue code
+  // here, its WebAssembly below. Without them a file opens as it is.
+  if (pdf) await Promise.all([pdfjs(), prepareQpdf()]).catch(() => {});
   // One at a time, so the page itself is never kept waiting.
-  for (const file of [...(pdf ? ["pdf.worker.min.mjs"] : []), ...(ENGINES[id] ?? [])]) {
+  for (const file of new Set([...(pdf ? ["pdf.worker.min.mjs", "qpdf.wasm"] : []), ...(ENGINES[id] ?? [])])) {
     await fetch(`${VENDOR}${file}`).then((r) => r.arrayBuffer()).catch(() => {});
   }
   if (window.parent !== window) window.parent.postMessage(WARMED, location.origin);

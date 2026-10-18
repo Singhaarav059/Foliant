@@ -8,6 +8,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { base, dict, fixture, suite } from "./kit.mjs";
+import { corpus } from "../lib/corpus.mjs";
 
 const vendor = readFileSync(fixture("../../src/lib/vendor.ts"), "utf8").match(/VENDOR = "([^"]+)"/)[1];
 const downloads = mkdtempSync(join(tmpdir(), "offline-"));
@@ -125,6 +126,39 @@ await suite(async ({ name, browser, test }) => {
       }
     });
   }
+
+  // Every PDF tool opens files through qpdf, so offline it must have qpdf's
+  // code too: without it pdf-lib refuses a file with only an owner password.
+  await test("en: watermark opens an owner-password file offline", async () => {
+    const t = dict("en");
+    const owner = join(downloads, "owner.pdf");
+    writeFileSync(owner, corpus(["enc-aes256-owner.pdf"])["enc-aes256-owner.pdf"]);
+    const ctx = await browser.newContext({ locale: "en-US", viewport: { width: 1280, height: 900 } });
+    const page = await ctx.newPage();
+    try {
+      await page.goto(base + "/en/add-watermark");
+      await controlled(page);
+      await hydrated(page);
+      await until(page, async () => !document.querySelector("iframe") && !!(await caches.match(location.pathname)),
+        null, "the page itself to be cached", 60000);
+      let paths = await cached(page);
+      for (let before = -1; before !== paths.length; ) {
+        before = paths.length;
+        await page.waitForTimeout(1000);
+        paths = await cached(page);
+      }
+      await ctx.setOffline(true);
+      if (!(await swOffline(page))) return "skipped: setOffline doesn't reach the service worker here";
+      await page.reload({ waitUntil: "load" });
+      await hydrated(page);
+      await page.locator("input[type=file]").first().setInputFiles(owner);
+      await page.getByRole("button", { name: t["tool.watermark.action"], exact: true }).click();
+      await page.getByText(t["res.doneTitle"]).waitFor({ timeout: 60000 });
+      return "watermarked offline";
+    } finally {
+      await ctx.close();
+    }
+  });
 
   await test("an unvisited page offline falls back to its language's home", async () => {
     const ctx = await browser.newContext({ locale: "de-DE" });

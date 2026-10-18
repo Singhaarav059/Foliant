@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { load, root, check, eq } from "./lib/load.mjs";
+import { corpus } from "./lib/corpus.mjs";
 
 const { protect, unlock } = await load("security");
 const results = { failed: 0 };
@@ -80,6 +81,101 @@ await test("Unlock opens what Protect made, with an option-like password", async
   const bytes = await protectedWith("@Secure2024");
   const [out] = await unlock(file(bytes, "locked.pdf"), { password: "@Secure2024" });
   eq(await opens(await out.blob.arrayBuffer()), 3, "unlocked pages without a password");
+});
+
+// Damaged files every reader opens (P1-03): qpdf alone gives up on them.
+const fx = corpus(["garbage-prefix.pdf", "deep-tree.pdf", "truncated-tail.pdf", "startxref-garbage.pdf"]);
+for (const [name, pages] of [["garbage-prefix.pdf", 3], ["deep-tree.pdf", 1], ["truncated-tail.pdf", 3], ["startxref-garbage.pdf", 3]]) {
+  await test(`Protect and Unlock take ${name}, a damaged file readers open`, async () => {
+    const [out] = await protect(file(fx[name], name), { password: "pw", ...options });
+    const bytes = new Uint8Array(await out.blob.arrayBuffer());
+    eq(await opens(bytes), "PasswordException", "without a password");
+    eq(await opens(bytes, "pw"), pages, "pages with the password");
+    // The same damage on a protected file.
+    const junk = new Uint8Array([...new TextEncoder().encode("JUNK ".repeat(300)), ...bytes]);
+    const [open] = await unlock(file(junk, "locked.pdf"), { password: "pw" });
+    eq(await opens(await open.blob.arrayBuffer()), pages, "unlocked pages without a password");
+  });
+}
+
+// ── Permissions (P1-12): seven restrictions, an owner password of one's own,
+// restrictions without an open password, AES-256 by default.
+const { qpdfReport } = await load("qpdf");
+const pw = await load("password");
+const all = { allowPrint: true, allowPrintHigh: true, allowCopy: true, allowModify: true, allowAnnotate: true, allowForms: true, allowAssemble: true };
+const report = (bytes, password = "") => qpdfReport(new Uint8Array(bytes), (i) => ["--show-encryption", `--password=${password}`, i]);
+const permsOf = async (bytes, password) => {
+  const pdf = await openPdf(bytes, password);
+  const perms = await pdf.getPermissions();
+  await pdf.loadingTask.destroy();
+  return perms && [...perms];
+};
+
+await test("printing off with no open password: opens without one, printing disabled", async () => {
+  const bytes = await protectedWith("", { ...all, allowPrint: false });
+  eq(await opens(bytes), 3, "pages without a password");
+  const perms = await permsOf(bytes);
+  // pdf.js lists what's allowed: print (4) and high-quality print (2048) must not be.
+  eq(Boolean(perms && !perms.includes(4) && !perms.includes(2048) && perms.includes(16)), true, `permissions ${JSON.stringify(perms)}`);
+});
+
+const FLAGS = {
+  allowPrint: ["print low resolution", "print high resolution"],
+  allowPrintHigh: ["print high resolution"],
+  allowCopy: ["extract for any purpose"],
+  allowModify: ["modify other"],
+  allowAnnotate: ["modify annotations"],
+  allowForms: ["modify forms"],
+  allowAssemble: ["modify document assembly"],
+};
+for (const [flag, lines] of Object.entries(FLAGS)) {
+  await test(`AES-256 (R = 6) and ${flag} off denies exactly that`, async () => {
+    const bytes = await protectedWith("open", { ...all, [flag]: false });
+    const text = await report(bytes, "open");
+    eq(/^R = 6$/m.test(text), true, "R = 6");
+    eq(/file encryption method: AESv3/.test(text), true, "AES-256");
+    for (const line of ["print low resolution", "print high resolution", "extract for any purpose", "modify other", "modify annotations", "modify forms", "modify document assembly"]) {
+      eq(new RegExp(`^${line}: ${lines.includes(line) ? "not allowed" : "allowed"}$`, "m").test(text), true, `${line} (${text.replace(/\n/g, "; ")})`);
+    }
+  });
+}
+
+await test("an owner password of one's own opens the file as its owner", async () => {
+  const bytes = await protectedWith("reader", { ...all, allowCopy: false, ownerPassword: "boss-pw" });
+  eq(await opens(bytes, "boss-pw"), 3, "pages with the owner password");
+  eq(/Supplied password is owner password/.test(await report(bytes, "boss-pw")), true, "owner password");
+  eq(/Supplied password is user password/.test(await report(bytes, "reader")), true, "open password");
+});
+
+await test("AES-128 for older readers", async () => {
+  const bytes = await protectedWith("old", { ...all, encryption: "aes128" });
+  const text = await report(bytes, "old");
+  eq(/^R = 4$/m.test(text) && /file encryption method: AESv2/.test(text), true, text.replace(/\n/g, "; "));
+  eq(await opens(bytes, "old"), 3, "pages with the password");
+});
+
+await test("the form's checks: an open password, or at least one restriction", async () => {
+  const check = (o) => pw.protectProblem({ password: "", confirmPassword: "", ownerPassword: "", ...all, ...o });
+  eq(check({})?.code, "passwordEmpty", "no password");
+  eq(check({ allowPrint: false })?.code, "passwordEmpty", "a password is asked for unless turned off");
+  eq(check({ openPassword: false })?.code, "noRestriction", "nothing to protect");
+  eq(check({ openPassword: false, allowPrint: false, password: "x" }), null, "restrictions only (a typed password is ignored)");
+  eq(check({ password: "a", confirmPassword: "b" })?.code, "passwordMismatch", "mismatch");
+  eq(check({ password: "a", confirmPassword: "a" }), null, "a password");
+  eq(check({ openPassword: false, allowCopy: false, ownerPassword: "é".repeat(64) })?.code, "passwordTooLong", "owner password too long");
+  // The permissions password opens with full rights, so the same one for both would lift every restriction.
+  eq(check({ password: "same", confirmPassword: "same", ownerPassword: "same", allowPrint: false })?.code, "ownerSameAsOpen", "permissions password same as the open one");
+  eq(check({ openPassword: false, password: "same", ownerPassword: "same", allowPrint: false }), null, "the same text when no open password is set");
+});
+
+await test("suggested passwords are random and rated strong; short ones weak", async () => {
+  const a = pw.suggestPassword(), b = pw.suggestPassword();
+  eq(a !== b && a.length >= 20, true, `${a} / ${b}`);
+  eq(pw.passwordStrength(a), 4, "suggested");
+  eq(pw.passwordStrength(""), 0, "empty");
+  eq(pw.passwordStrength("abc") <= 1, true, "abc");
+  eq(pw.passwordStrength("password123") <= 1, true, "a common password");
+  eq(pw.passwordStrength("Tr0ub4dor&3x") >= 2, true, "mixed");
 });
 
 process.exit(results.failed ? 1 : 0);

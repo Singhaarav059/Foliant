@@ -12,6 +12,7 @@ import { addInvisibleText } from "./textlayer";
 import { srgbProfile } from "./icc";
 import { withoutText } from "./strip";
 import { loadPdf } from "./organize";
+import { openForEdit } from "./open";
 import { PdfError } from "./errors";
 import { prepareDocx } from "./word";
 
@@ -137,7 +138,7 @@ export async function pdfToImages(file: File, o: { dpi: string; format: string }
 
 // Pulls embedded images out as they are stored: JPEGs byte for byte, others re-encoded as PNG.
 export async function extractImages(file: File): Promise<Output[]> {
-  const doc = await PDFDocument.load(await bytesOf(file), { updateMetadata: false });
+  const { doc } = await openForEdit(await bytesOf(file), file.name);
   const out: Output[] = [];
   let n = 0;
   for (const [, obj] of doc.context.enumerateIndirectObjects()) {
@@ -245,6 +246,14 @@ function asNumber(text: string): number | null {
 }
 
 // ── PDF → Excel
+// A file name as a sheet name Excel accepts: none of * ? : \ / [ ], no
+// apostrophe at either end, at most 31 characters, and not "History",
+// which Excel keeps for itself.
+export function sheetName(stem: string) {
+  const name = stem.replace(/[*?:\\/[\]]/g, " ").replace(/\s+/g, " ").trim().slice(0, 31).replace(/^'+|'+$/g, "").trim();
+  return !name ? "Sheet1" : name.toLowerCase() === "history" ? `${name} 1` : name;
+}
+
 export async function pdfToExcel(file: File, o: { sheetPer: string }, progress?: Progress): Promise<Output[]> {
   const ExcelJS = (await import("exceljs")).default;
   const doc = await openPdf(await file.arrayBuffer());
@@ -293,7 +302,7 @@ export async function pdfToExcel(file: File, o: { sheetPer: string }, progress?:
     widths.forEach((w, k) => (ws.getColumn(k + 1).width = w));
   };
   if (o.sheetPer === "document") {
-    const ws = wb.addWorksheet(baseName(file.name).slice(0, 31) || "Sheet1");
+    const ws = wb.addWorksheet(sheetName(baseName(file.name)));
     layouts.forEach((l, i) => {
       write(ws, l);
       if (i < layouts.length - 1) ws.addRow([]);
