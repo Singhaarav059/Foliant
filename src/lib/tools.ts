@@ -320,13 +320,37 @@ const ALL: Tool[] = [
 // take it (src/lib/office/route.ts). HTML files always print.
 const FIDELITY: OptionDef = { key: "fidelity", type: "select", choices: ["auto", "standard", "high"], default: "auto" };
 export const LIGHT_OFFICE = ["docx", "pptx", "xlsx", "csv"];
+// LibreOffice's export options (src/lib/office/export.ts). Automatic may still
+// print, which leaves them out.
+const LO: Cond = { key: "fidelity", is: ["auto", "high"] };
+const EXPORT: OptionDef[] = [
+  { key: "officeRange", type: "text", default: "", placeholder: "1-3, 5", when: LO },
+  { key: "officeImages", type: "select", choices: ["high", "medium", "low", "lossless"], default: "high", when: LO },
+  { key: "officePdfa", type: "select", choices: ["off", "1b", "2b", "3b"], default: "off", when: LO },
+  { key: "officeBookmarks", type: "toggle", default: true, when: LO },
+  { key: "officeTagged", type: "toggle", default: false, when: LO },
+];
 const IN_BROWSER: Partial<Record<ToolId, Partial<Tool>>> = {
-  wordToPdf: { accept: ["docx", "doc", "odt", "rtf"], options: [FIDELITY] },
-  pptToPdf: { accept: ["pptx", "ppt", "odp"], options: [FIDELITY] },
+  wordToPdf: { accept: ["docx", "doc", "odt", "rtf"], options: [FIDELITY, ...EXPORT] },
+  pptToPdf: {
+    accept: ["pptx", "ppt", "odp"],
+    options: [
+      FIDELITY,
+      { key: "slideNotes", type: "select", choices: ["slides", "both", "notes"], default: "slides", when: LO },
+      { key: "hiddenSlides", type: "toggle", default: false, when: LO },
+      ...EXPORT,
+    ],
+  },
   excelToPdf: {
     accept: ["xlsx", "xls", "ods", "csv"],
     // LibreOffice follows each sheet's own page setup, so orientation is for standard only.
-    options: [FIDELITY, { key: "orientation", type: "select", choices: ["auto", "portrait", "landscape"], default: "auto", when: { key: "fidelity", is: ["standard"] } }],
+    options: [
+      FIDELITY,
+      { key: "orientation", type: "select", choices: ["auto", "portrait", "landscape"], default: "auto", when: { key: "fidelity", is: ["standard"] } },
+      { key: "sheetFit", type: "select", choices: ["file", "width", "page"], default: "file", when: LO },
+      { key: "sheetPick", type: "text", default: "", placeholder: "1, 3", when: LO },
+      ...EXPORT,
+    ],
   },
   // An HTML file, a zipped page or pasted HTML; a URL would need a server.
   htmlToPdf: {

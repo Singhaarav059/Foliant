@@ -140,7 +140,7 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
         const fallback = light && o.fidelity !== "high";
         if (fallback && !officeAvailable()) return print();
         try {
-          return await each(files, progress, async (f, p) => [await officeToPdf(f, p)]);
+          return await each(files, progress, async (f, p) => [await officeToPdf(f, p, o)]);
         } catch (e) {
           if (!fallback) throw e;
           return print();
