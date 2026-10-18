@@ -249,7 +249,11 @@ function dropAnnotsUnder(page: PDFPage, boxes: Box[]) {
     grew = false;
     for (const a of dicts) {
       if (!a || gone.has(a)) continue;
-      const owner = a.lookupMaybe(name("Parent"), PDFDict) ?? a.lookupMaybe(name("IRT"), PDFDict);
+      const dictAt = (key: string) => {
+        const o = a.lookup(name(key));
+        return o instanceof PDFDict ? o : undefined;
+      };
+      const owner = dictAt("Parent") ?? dictAt("IRT");
       if (owner && gone.has(owner)) {
         gone.add(a);
         grew = true;
@@ -295,11 +299,13 @@ function detach(doc: PDFDocument) {
     else if (!kept(a.get(name("Parent")))) a.delete(name("Parent"));
     for (const key of ["IRT", "Popup"]) if (!kept(a.get(name(key)))) a.delete(name(key));
     if (!live(a.get(name("P")))) a.delete(name("P"));
-    const dest = a.lookupMaybe(name("Dest"), PDFArray);
-    if (dest && !live(dest.get(0))) a.delete(name("Dest"));
-    const action = a.lookupMaybe(name("A"), PDFDict);
-    const target = action?.lookupMaybe(name("D"), PDFArray);
-    if (target && !live(target.get(0))) a.delete(name("A"));
+    // A destination may be a name or a string (a named destination) rather
+    // than an array, so these are checked, not typed lookups that would throw.
+    const dest = a.lookup(name("Dest"));
+    if (dest instanceof PDFArray && !live(dest.get(0))) a.delete(name("Dest"));
+    const action = a.lookup(name("A"));
+    const target = action instanceof PDFDict ? action.lookup(name("D")) : undefined;
+    if (target instanceof PDFArray && !live(target.get(0))) a.delete(name("A"));
   }
 }
 
