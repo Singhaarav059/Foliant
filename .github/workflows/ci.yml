@@ -85,6 +85,9 @@ jobs:
       - name: Protect
         if: success() || failure()
         run: npm run test:e2e:protect -- ${{ matrix.browser }}
+      - name: Images to PDF
+        if: success() || failure()
+        run: npm run test:e2e:images -- ${{ matrix.browser }}
       - name: Office to PDF with LibreOffice, first visit
         if: matrix.browser == 'chromium'
         run: npm run test:e2e-office

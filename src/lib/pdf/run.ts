@@ -53,14 +53,15 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
     case "jpgToPdf": {
       const { imagesToPdf } = await import("./convert");
       return imagesToPdf(files, files.map((f) => f.name), {
-        orientation: s(o.orientation), pageSize: s(o.pageSize), margin: s(o.margin), separate: b(o.separate),
+        orientation: s(o.orientation), pageSize: s(o.pageSize), margin: n(o.margin), width: n(o.pageWidth), height: n(o.pageHeight),
+        separate: b(o.separate),
       }, progress);
     }
     case "scan": {
       const { imagesToPdf, scanFilter } = await import("./convert");
       const filtered = await Promise.all(files.map((f) => scanFilter(f, s(o.filter))));
       return imagesToPdf(filtered, files.map((_, i) => `scan-${i + 1}`), {
-        orientation: "auto", pageSize: s(o.pageSize), margin: "none", separate: false,
+        orientation: "auto", pageSize: s(o.pageSize), margin: 0, separate: false,
       }, progress).then((r) => r.map((x) => ({ ...x, name: `scan-${new Date().toISOString().slice(0, 10)}.pdf` })));
     }
     case "pdfToJpg": {

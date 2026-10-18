@@ -6,7 +6,7 @@ import { dict, open, pick, suite } from "./kit.mjs";
 
 const RAW = /line:|offset|qpdf/i;
 
-await suite(async ({ name, browser, test }) => {
+await suite(async ({ browser, test }) => {
   const ctx = await browser.newContext({ locale: "en-US", viewport: { width: 1280, height: 900 } });
   const page = await ctx.newPage();
   // The alert carrying `text`; Next's route announcer is an empty alert too.
@@ -57,7 +57,7 @@ await suite(async ({ name, browser, test }) => {
     return "already protected";
   });
 
-  await test("jpg-to-pdf: HEIC is converted or explained", async () => {
+  await test("jpg-to-pdf: HEIC converts in every browser", async () => {
     const t = dict("en");
     await open(page, "/en/jpg-to-pdf");
     await pick(page, ["photo.heic"]);
@@ -65,11 +65,22 @@ await suite(async ({ name, browser, test }) => {
     await page.getByRole("button", { name: t["tool.jpgToPdf.action"], exact: true }).click();
     const alert = alertWith(t["err.imageUnsupported"]);
     const outcome = await Promise.race([download, alert.waitFor({ timeout: 15000 }).then(() => "explained")]);
-    // Chromium can't decode HEIC; WebKit can.
-    if (name === "chromium" && outcome !== "explained") throw new Error(outcome ?? "nothing shown");
-    if (!outcome) throw new Error("nothing shown");
-    if (outcome === "explained" && !(await alert.innerText()).includes("photo.heic")) throw new Error("no file name");
+    // Safari decodes HEIC itself; elsewhere libheif does (src/lib/pdf/images.ts).
+    if (outcome !== "converted") throw new Error(outcome ?? "nothing shown");
     return outcome;
+  });
+
+  await test("jpg-to-pdf: an unreadable image is explained", async () => {
+    const t = dict("en");
+    await open(page, "/en/jpg-to-pdf");
+    // A HEIC header with nothing after it.
+    const broken = Buffer.from("000000186674797068656963000000006d69663168656963", "hex");
+    await page.locator("input[type=file]").first().setInputFiles({ name: "broken.heic", mimeType: "image/heic", buffer: broken });
+    await page.getByRole("button", { name: t["tool.jpgToPdf.action"], exact: true }).click();
+    const alert = alertWith(t["err.imageUnsupported"]);
+    await alert.waitFor({ timeout: 15000 });
+    if (!(await alert.innerText()).includes("broken.heic")) throw new Error("no file name");
+    return "explained";
   });
 
   await ctx.close();

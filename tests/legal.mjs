@@ -145,6 +145,13 @@ await test("compiled-in projects are named with licence and source", () => {
   ok(/Copyright \(C\) 2001-\d{4} Leptonica/.test(included("tesseract.txt", "Leptonica")), "no Leptonica licence text");
   ok(/Redistributions in binary form must reproduce/.test(included("tesseract.txt", "Leptonica")), "Leptonica licence incomplete");
   ok(/qpdf is copyright/.test(included("qpdf.txt", "qpdf")) && /Apache License/.test(included("qpdf.txt", "qpdf")), "no qpdf NOTICE with its licence");
+  // LGPL-3.0 §4(b): the GNU GPL and the LGPL go with the object code, as do
+  // the copyright notices of libheif and the libde265 compiled into it.
+  const heif = readFileSync(join(licDir, "libheif.txt"), "utf8");
+  ok(heif.includes("GNU LESSER GENERAL PUBLIC LICENSE") && heif.includes("GNU GENERAL PUBLIC LICENSE"), "libheif.txt lacks the LGPL-3.0 or GPL-3.0 text");
+  ok(/Copyright \(c\) [\d-]+ Dirk Farin/.test(included("libheif.txt", "libheif")), "no libheif copyright notice");
+  const de265 = included("libheif.txt", "libde265");
+  ok(/Copyright \(c\) [\d-]+ Struktur AG/.test(de265) && de265.includes("GNU GENERAL PUBLIC LICENSE"), "no libde265 copyright notice and licence");
 });
 
 await test("every library in the page code is listed with its licence text", () => {

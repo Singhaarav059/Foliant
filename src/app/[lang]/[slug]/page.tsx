@@ -270,6 +270,7 @@ function Licenses({ wrap, t }: { wrap: (title: string, body: React.ReactNode, su
           ))}
         </ul>
         <p className="mt-4 max-w-[64ch] text-pretty text-[15px] leading-relaxed text-ink-2">{t["lic.mpl"]}</p>
+        <p className="mt-3 max-w-[64ch] text-pretty text-[15px] leading-relaxed text-ink-2">{t["lic.lgpl"]}</p>
       </section>
       <section>
         <h2 className="eyebrow mb-3">{t["lic.libraries"]}</h2>

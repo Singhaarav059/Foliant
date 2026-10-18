@@ -19,6 +19,8 @@ const ENGINES: Partial<Record<ToolId, string[]>> = {
   protect: ["qpdf.wasm"],
   unlock: ["qpdf.wasm"],
   redact: ["pdfium.wasm"],
+  // The HEIC decoder for browsers without one (src/lib/pdf/images.ts).
+  jpgToPdf: ["heif/worker.js", "heif/libheif.js", "heif/libheif.wasm"],
 };
 
 export async function warm(id: ToolId, code: () => Promise<unknown>) {
