@@ -10,6 +10,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { PDFDocument, PDFDict, PDFName } from "pdf-lib";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { suite, open, pick, fixture } from "./kit.mjs";
 
@@ -30,12 +31,26 @@ function briefWith(name, runs) {
 const run = (text, { font, italic } = {}) =>
   `<w:r><w:rPr>${font ? `<w:rFonts w:ascii="${font}" w:hAnsi="${font}" w:cs="${font}"/>` : ""}${italic ? "<w:i/>" : ""}</w:rPr><w:t xml:space="preserve">${text}</w:t></w:r>`;
 
-async function pdfPages(path) {
+// The BaseFont of every font the pages use.
+async function pdfFonts(path) {
+  const doc = await PDFDocument.load(readFileSync(path));
+  const names = new Set();
+  for (const page of doc.getPages()) {
+    const fonts = page.node.Resources()?.lookupMaybe(PDFName.of("Font"), PDFDict);
+    for (const ref of fonts?.values() ?? []) {
+      const base = doc.context.lookup(ref, PDFDict).get(PDFName.of("BaseFont"));
+      if (base) names.add(String(base));
+    }
+  }
+  return [...names];
+}
+
+async function pdfPages(path, between = " ") {
   const bytes = new Uint8Array(readFileSync(path));
   if (Buffer.from(bytes.subarray(0, 5)).toString("latin1") !== "%PDF-") throw new Error("not a PDF");
   const doc = await getDocument({ data: bytes, verbosity: 0 }).promise;
   const pages = [];
-  for (let i = 1; i <= doc.numPages; i++) pages.push((await (await doc.getPage(i)).getTextContent()).items.map((t) => t.str).join(" ").replace(/\s+/g, " "));
+  for (let i = 1; i <= doc.numPages; i++) pages.push((await (await doc.getPage(i)).getTextContent()).items.map((t) => t.str).join(between).replace(/\s+/g, " "));
   return pages;
 }
 
@@ -131,6 +146,23 @@ await suite(async ({ name, browser, test }) => {
     } finally {
       await noFonts.close();
     }
+  });
+
+  // Polish, Czech, Turkish, Romanian, Vietnamese: the document's own font, not
+  // Noto Sans word pieces, and italics stay italic.
+  await test("Word → PDF on a phone: accented Latin in the document's font", async () => {
+    const file = briefWith("accents.docx", run("Zażółć gęślą jaźń ", { font: "Times New Roman" }) + run("Şişli ăđươ", { font: "Times New Roman", italic: true }));
+    await convert("/en/word-to-pdf", file);
+    const out = join(downloads, `${name}-accents.pdf`);
+    // Each subset is its own embedded font, so a word can be several text
+    // items; they sit side by side, and the spaces are in the text.
+    const text = (await pdfPages(out, "")).join(" ");
+    for (const want of ["Zażółć gęślą jaźń", "Şişli ăđươ"]) if (!text.includes(want)) throw new Error(`"${want}" not in ${JSON.stringify(text.slice(0, 160))}`);
+    const fonts = await pdfFonts(out);
+    // (Noto's CJK slices draw the list bullets, which no Office stand-in has.)
+    if (fonts.some((f) => /NotoSans-/i.test(f))) throw new Error(`fell back to Noto Sans: ${fonts.join(", ")}`);
+    if (!fonts.some((f) => /Tinos.*Italic/i.test(f))) throw new Error(`no italic Tinos: ${fonts.join(", ")}`);
+    return fonts.join(", ");
   });
 
   // Offline before the Noto slices were cached: Hindi (or any script the

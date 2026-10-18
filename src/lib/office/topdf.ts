@@ -19,7 +19,7 @@ import {
   pushGraphicsState, popGraphicsState, rectangle, clip, endPath,
 } from "pdf-lib";
 import { layoutText } from "../pdf/fonts";
-import { fontBase, fontFaces, fontFile, type Family } from "./faces";
+import { fontBase, fontFaces, fontFile, inSubset, subsetsOf, type Family, type Subset } from "./faces";
 
 const PT = 0.75; // CSS px → PDF points
 
@@ -51,8 +51,8 @@ class Fonts {
   constructor(private doc: PDFDocument) {
     doc.registerFontkit(fontkit);
   }
-  get(family: Family, bold: boolean, italic: boolean) {
-    const file = fontFile(family, bold, italic);
+  get(family: Family, bold: boolean, italic: boolean, subset: Subset = "latin") {
+    const file = fontFile(family, bold, italic, subset);
     let p = this.faces.get(file);
     if (!p) {
       p = (async () => {
@@ -309,15 +309,20 @@ async function draw(page: PDFPage, item: Item, X: (x: number) => number, Y: (y: 
   }
   const s = item.style;
   const face = await fonts.get(s.family, s.bold, s.italic);
+  const pieces = await inFace(item.text, s, fonts);
   const size = s.size * k;
   // The line box of an inline run is the font's ascent + descent; the baseline sits between them.
   const baseline = Y(b.y + (b.h * face.ascent) / (face.ascent + face.descent));
   const x = X(b.x);
   const color = rgb(s.color.r, s.color.g, s.color.b);
   const text = item.text;
-  const covered = [...text].every((c) => face.kit.hasGlyphForCodePoint(c.codePointAt(0)!));
-  if (covered) page.drawText(text, { x, y: baseline, size, font: face.font, color, opacity: s.color.a });
-  else {
+  if (pieces) {
+    let at = x;
+    for (const p of pieces) {
+      page.drawText(p.text, { x: at, y: baseline, size, font: p.face.font, color, opacity: s.color.a });
+      at += p.face.font.widthOfTextAtSize(p.text, size);
+    }
+  } else {
     // Without the Noto slices (offline before they were cached), or with a
     // character none of them has, the word would silently drop out of the
     // PDF; printing still has the browser's own fonts.
@@ -330,6 +335,28 @@ async function draw(page: PDFPage, item: Item, X: (x: number) => number, Y: (y: 
   const width = b.w * k; // the measured box never includes the trailing space
   if (s.underline) page.drawRectangle({ x, y: baseline - size * 0.12, width, height: Math.max(0.5, size * 0.06), color });
   if (s.strike) page.drawRectangle({ x, y: baseline + size * 0.28, width, height: Math.max(0.5, size * 0.06), color });
+}
+
+// The word in the document's own font: each character in the subset the
+// browser laid it out with (the first whose unicode-range has it), marks
+// staying with their letter. Null if some character is in none of them.
+async function inFace(text: string, s: TextStyle, fonts: Fonts) {
+  const pieces: { face: Face; text: string }[] = [];
+  for (const ch of text) {
+    const cp = ch.codePointAt(0)!;
+    const last = pieces[pieces.length - 1];
+    if (last && /\p{M}/u.test(ch) && last.face.kit.hasGlyphForCodePoint(cp)) { last.text += ch; continue; }
+    let face: Face | null = null;
+    for (const subset of subsetsOf(s.family)) {
+      if (!inSubset(subset, cp)) continue;
+      const f = await fonts.get(s.family, s.bold, s.italic, subset);
+      if (f.kit.hasGlyphForCodePoint(cp)) { face = f; break; }
+    }
+    if (!face) return null;
+    if (last && last.face === face) last.text += ch;
+    else pieces.push({ face, text: ch });
+  }
+  return pieces;
 }
 
 // ── CSS counters (Word's list numbers): docx-preview draws them with
@@ -421,6 +448,21 @@ export function materializeMarkers(root: Element) {
   }
 }
 
+// document.fonts.ready, except that WebKit can leave it pending for good once
+// a face fails (seen with Carlito's Greek Extended subset in a sandboxed
+// frame), so this also ends when no face is still loading, or after 20 s.
+function fontsSettled(doc: Document) {
+  return new Promise<void>((done) => {
+    const started = Date.now();
+    void doc.fonts.ready.then(() => done());
+    const poll = () => {
+      if (![...doc.fonts].some((f) => f.status === "loading") || Date.now() - started > 20000) done();
+      else setTimeout(poll, 50);
+    };
+    setTimeout(poll, 50);
+  });
+}
+
 // ── HTML the converters wrote (PowerPoint, Excel), laid out in a hidden
 // frame of this origin. Its scripts can't run (sandbox without allow-scripts).
 export async function inFrame<T>(html: string, width: number, withDoc: (doc: Document) => Promise<T>): Promise<T> {
@@ -429,7 +471,7 @@ export async function inFrame<T>(html: string, width: number, withDoc: (doc: Doc
   frame.setAttribute("aria-hidden", "true");
   frame.tabIndex = -1;
   frame.style.cssText = `position:fixed;left:-100000px;top:0;width:${Math.ceil(width)}px;height:1000px;border:0;`;
-  const faces = `<style>${fontFaces(fontBase())}</style>`;
+  const faces = `<style>${fontFaces(fontBase(), html)}</style>`;
   frame.srcdoc = html.replace(/<head[^>]*>/i, (m) => m + faces);
   const loaded = new Promise<void>((ok) => frame.addEventListener("load", () => ok(), { once: true }));
   document.body.append(frame);
@@ -437,7 +479,7 @@ export async function inFrame<T>(html: string, width: number, withDoc: (doc: Doc
     await loaded;
     const doc = frame.contentDocument!;
     void doc.body.offsetHeight; // lay out, so the fonts it uses start loading
-    await doc.fonts.ready;
+    await fontsSettled(doc);
     await Promise.all([...doc.images].map((i) => (i.complete ? null : i.decode().catch(() => {}))));
     return await withDoc(doc);
   } finally {
