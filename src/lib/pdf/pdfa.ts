@@ -329,6 +329,8 @@ function scan(streams: Uint8Array[], resources: PDFDict | undefined, u: Usage, c
       const sh = pat.lookup(N("Shading"));
       const d = sh instanceof PDFDict ? sh : sh instanceof PDFStream ? sh.dict : undefined;
       if (d && cmykSpace(d.get(N("ColorSpace")), resources, c)) u.cmyk = true;
+      const gs = pat.lookup(N("ExtGState"));
+      if (gs instanceof PDFDict && transparentState(gs)) u.transparency = true;
     }
   }
   for (const [, g] of resources?.lookupMaybe(N("ExtGState"), PDFDict)?.entries() ?? []) {

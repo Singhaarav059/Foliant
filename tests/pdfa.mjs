@@ -428,6 +428,22 @@ await test("PDF/A-1b: a rendered page draws its annotations even when they weren
   }
 });
 
+await test("PDF/A-1b: a shading pattern whose graphics state fades renders the page", async () => {
+  const d = await PDFDocument.create();
+  const ctx = d.context;
+  const N = (s) => PDFName.of(s);
+  const pg = d.addPage([200, 200]);
+  const pattern = ctx.obj({
+    PatternType: 2, ExtGState: { ca: 0.3, CA: 0.3 },
+    Shading: { ShadingType: 2, ColorSpace: "DeviceRGB", Coords: [0, 0, 200, 0], Function: { FunctionType: 2, Domain: [0, 1], C0: [1, 0, 0], C1: [0, 0, 1], N: 1 } },
+  });
+  pg.node.Resources().set(N("Pattern"), ctx.obj({ P0: pattern }));
+  pg.pushOperators(PDFOperator.of("cs", [N("Pattern")]), PDFOperator.of("scn", [N("P0")]), PDFOperator.of("re", [0, 0, 200, 200].map((n) => ctx.obj(n))), PDFOperator.of("f"));
+  const bytes = await d.save();
+  eq([...(await fixForPdfA(await PDFDocument.load(bytes), "1b")).raster].join(","), "0", "1b renders the page");
+  eq([...(await fixForPdfA(await PDFDocument.load(bytes), "2b")).raster].join(","), "", "2b keeps it as vectors");
+});
+
 await test("render-options preflight: one file at a time, stops at the first that needs rendering, skips huge files", async () => {
   const { pdfaPreflight, PDFA_PREFLIGHT_MAX } = await load("pdfa");
   const reads = [];
