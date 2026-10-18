@@ -15,7 +15,7 @@
 
 import fontkit from "@pdf-lib/fontkit";
 import {
-  PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage,
+  PDFDocument, PDFString, rgb, type PDFFont, type PDFImage, type PDFPage,
   pushGraphicsState, popGraphicsState, rectangle, clip, endPath,
 } from "pdf-lib";
 import { layoutText } from "../pdf/fonts";
@@ -82,7 +82,8 @@ type TextStyle = { family: Family; bold: boolean; italic: boolean; size: number;
 type Item =
   | { kind: "fill"; box: Box; color: Color }
   | { kind: "image"; box: Box; el: HTMLImageElement | SVGSVGElement | HTMLCanvasElement }
-  | { kind: "text"; box: Box; text: string; style: TextStyle };
+  | { kind: "text"; box: Box; text: string; style: TextStyle }
+  | { kind: "link"; box: Box; url: string };
 
 function parseColor(v: string): Color | null {
   const m = v.match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,/]\s*([\d.]+%?))?\s*\)/);
@@ -188,6 +189,11 @@ function collect(root: Element): Item[] {
         if (r && r.width > 0 && r.height > 0) (["Top", "Right", "Bottom", "Left"] as const).forEach(side);
       }
       const tag = el.localName;
+      // Web and mail links stay clickable: one annotation per line the link is on.
+      if (tag === "a" && /^(https?|mailto):$/.test((el as HTMLAnchorElement).protocol)) {
+        const url = (el as HTMLAnchorElement).href;
+        for (const r of el.getClientRects()) if (r.width > 0 && r.height > 0) items.push({ kind: "link", box: toBox(r), url });
+      }
       if (tag === "img" || tag === "svg" || tag === "canvas") {
         const r = el.getBoundingClientRect();
         if (r.width > 0 && r.height > 0) items.push({ kind: "image", box: toBox(r), el: el as HTMLImageElement });
@@ -284,6 +290,17 @@ export async function paint(sheets: Sheet[], title?: string): Promise<Uint8Array
         if (mid < box.y || mid >= box.y + box.h) continue;
       } else if (b.y + b.h <= box.y || b.y >= box.y + box.h) continue;
       if (b.x + b.w <= box.x || b.x >= box.x + box.w) continue;
+      if (item.kind === "link") {
+        // The part of the link on this page, in page space.
+        const x0 = Math.max(b.x, box.x), x1 = Math.min(b.x + b.w, box.x + box.w);
+        const y0 = Math.max(b.y, box.y), y1 = Math.min(b.y + b.h, box.y + box.h);
+        const annot = doc.context.obj({
+          Type: "Annot", Subtype: "Link", Rect: [X(x0), Y(y1), X(x1), Y(y0)], Border: [0, 0, 0],
+          A: { Type: "Action", S: "URI", URI: PDFString.of(item.url.replace(/[^\x20-\x7e]/g, encodeURIComponent).replace(/[\\()]/g, "\\$&")) },
+        });
+        page.node.addAnnot(doc.context.register(annot));
+        continue;
+      }
       try {
         await draw(page, item, X, Y, k, doc, fonts, images);
       } catch (e) {
@@ -296,7 +313,7 @@ export async function paint(sheets: Sheet[], title?: string): Promise<Uint8Array
   return doc.save();
 }
 
-async function draw(page: PDFPage, item: Item, X: (x: number) => number, Y: (y: number) => number, k: number, doc: PDFDocument, fonts: Fonts, images: Map<string, Promise<PDFImage | null>>) {
+async function draw(page: PDFPage, item: Exclude<Item, { kind: "link" }>, X: (x: number) => number, Y: (y: number) => number, k: number, doc: PDFDocument, fonts: Fonts, images: Map<string, Promise<PDFImage | null>>) {
   const b = item.box;
   if (item.kind === "fill") {
     page.drawRectangle({ x: X(b.x), y: Y(b.y + b.h), width: b.w * k, height: b.h * k, color: rgb(item.color.r, item.color.g, item.color.b), opacity: item.color.a });

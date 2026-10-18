@@ -19,8 +19,11 @@ const downloads = mkdtempSync(join(tmpdir(), "e2e-office-phone-"));
 const LIBREOFFICE_PAGES = { "brief.docx": 1, "rich.docx": 4 };
 
 // brief.docx with `runs` (WordprocessingML <w:r> elements) as a paragraph after the heading.
-function briefWith(name, runs) {
+function briefWith(name, runs, links = {}) {
   const files = unzipSync(new Uint8Array(readFileSync(fixture("brief.docx"))));
+  const rels = strFromU8(files["word/_rels/document.xml.rels"]);
+  const added = Object.entries(links).map(([id, url]) => `<Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${url}" TargetMode="External"/>`).join("");
+  files["word/_rels/document.xml.rels"] = strToU8(rels.replace("</Relationships>", `${added}</Relationships>`));
   const xml = strFromU8(files["word/document.xml"]);
   const at = xml.indexOf("</w:p>") + "</w:p>".length;
   files["word/document.xml"] = strToU8(xml.slice(0, at) + `<w:p>${runs}</w:p>` + xml.slice(at));
@@ -163,6 +166,18 @@ await suite(async ({ name, browser, test }) => {
     if (fonts.some((f) => /NotoSans-/i.test(f))) throw new Error(`fell back to Noto Sans: ${fonts.join(", ")}`);
     if (!fonts.some((f) => /Tinos.*Italic/i.test(f))) throw new Error(`no italic Tinos: ${fonts.join(", ")}`);
     return fonts.join(", ");
+  });
+
+  // Word's hyperlinks stay clickable, as they were when the browser printed the PDF.
+  await test("Word → PDF on a phone: hyperlinks stay clickable", async () => {
+    const link = `<w:hyperlink r:id="rIdDocs"><w:r><w:rPr><w:color w:val="0563C1"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">Read the docs here</w:t></w:r></w:hyperlink>`;
+    const file = briefWith("links.docx", run("See: ") + link, { rIdDocs: "https://example.com/docs?a=1&amp;b=(2)" });
+    await convert("/en/word-to-pdf", file);
+    const doc = await getDocument({ data: new Uint8Array(readFileSync(join(downloads, `${name}-links.pdf`))), verbosity: 0 }).promise;
+    const links = [];
+    for (let i = 1; i <= doc.numPages; i++) for (const a of await (await doc.getPage(i)).getAnnotations()) if (a.subtype === "Link") links.push(a.url ?? a.unsafeUrl);
+    if (!links.includes("https://example.com/docs?a=1&b=(2)")) throw new Error(`links: ${JSON.stringify(links)}`);
+    return `${links.length} link(s)`;
   });
 
   // Offline before the Noto slices were cached: Hindi (or any script the
