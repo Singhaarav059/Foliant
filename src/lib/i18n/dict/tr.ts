@@ -76,6 +76,7 @@ const d: { [K in DictKey]?: string } = {
   "tool.excelToPdf.desc": "Tabloları PDF’ye dönüştürün; her sayfa alanı için bir sayfa.",
   "tool.excelToPdf.action": "PDF’ye dönüştür",
   "tool.htmlToPdf.name": "Web sayfasından PDF’ye",
+  "tool.htmlToPdf.desc": "Herhangi bir web sayfasını veya HTML dosyasını PDF olarak kaydedin.",
   "tool.htmlToPdf.action": "PDF’ye dönüştür",
   "tool.pdfToJpg.name": "PDF’den görsele",
   "tool.pdfToJpg.desc": "Her sayfayı JPG veya PNG yapın ya da gömülü görselleri çıkarın.",

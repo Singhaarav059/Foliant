@@ -76,6 +76,7 @@ const d: { [K in DictKey]?: string } = {
   "tool.excelToPdf.desc": "把电子表格转换成 PDF，每个工作表区域一页。",
   "tool.excelToPdf.action": "转换为 PDF",
   "tool.htmlToPdf.name": "网页转 PDF",
+  "tool.htmlToPdf.desc": "把任意网页或 HTML 文件保存为 PDF。",
   "tool.htmlToPdf.action": "转换为 PDF",
   "tool.pdfToJpg.name": "PDF 转图片",
   "tool.pdfToJpg.desc": "把每一页转成 JPG 或 PNG，或提取其中嵌入的图片。",

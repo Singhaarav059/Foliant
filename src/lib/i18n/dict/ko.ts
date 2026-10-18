@@ -76,6 +76,7 @@ const d: { [K in DictKey]?: string } = {
   "tool.excelToPdf.desc": "스프레드시트를 PDF로 변환합니다. 시트 영역마다 한 페이지입니다.",
   "tool.excelToPdf.action": "PDF로 변환",
   "tool.htmlToPdf.name": "웹 페이지를 PDF로",
+  "tool.htmlToPdf.desc": "어떤 웹 페이지나 HTML 파일이든 PDF로 저장합니다.",
   "tool.htmlToPdf.action": "PDF로 변환",
   "tool.pdfToJpg.name": "PDF를 이미지로",
   "tool.pdfToJpg.desc": "각 페이지를 JPG나 PNG로 만들거나 포함된 이미지를 꺼냅니다.",

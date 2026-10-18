@@ -76,6 +76,7 @@ const d: { [K in DictKey]?: string } = {
   "tool.excelToPdf.desc": "表計算シートを PDF に変換します。シート範囲ごとに 1 ページです。",
   "tool.excelToPdf.action": "PDF に変換",
   "tool.htmlToPdf.name": "ウェブページを PDF に",
+  "tool.htmlToPdf.desc": "あらゆるウェブページや HTML ファイルを PDF として保存します。",
   "tool.htmlToPdf.action": "PDF に変換",
   "tool.pdfToJpg.name": "PDF を画像に",
   "tool.pdfToJpg.desc": "各ページを JPG・PNG にするか、埋め込まれた画像を取り出します。",

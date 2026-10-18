@@ -76,6 +76,7 @@ const d: { [K in DictKey]?: string } = {
   "tool.excelToPdf.desc": "Конвертуйте таблиці в PDF — одна сторінка на область аркуша.",
   "tool.excelToPdf.action": "Конвертувати в PDF",
   "tool.htmlToPdf.name": "Вебсторінка в PDF",
+  "tool.htmlToPdf.desc": "Збережіть будь-яку вебсторінку чи HTML-файл як PDF.",
   "tool.htmlToPdf.action": "Конвертувати в PDF",
   "tool.pdfToJpg.name": "PDF у зображення",
   "tool.pdfToJpg.desc": "Перетворіть кожну сторінку на JPG чи PNG або витягніть вбудовані зображення.",

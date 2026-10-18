@@ -7,7 +7,7 @@ import { Workspace } from "@/components/workspace/Workspace";
 import { ToolIcon } from "@/components/ToolIcon";
 import { getDictionary, format, type Dict, type DictKey } from "@/lib/i18n/dictionary";
 import { hasLocale, LOCALE_CODES } from "@/lib/i18n/locales";
-import { CATEGORIES, LIMITS, TOOLS, toolBySlug, type Tool } from "@/lib/tools";
+import { CATEGORIES, LIMITS, TOOLS, descKey, toolBySlug, type Tool } from "@/lib/tools";
 import { LEGAL, LEGAL_UPDATED } from "@/lib/legal";
 import { BRAND, OPERATOR } from "@/lib/brand";
 import { readLicenses, LICENSES_URL } from "@/lib/licenses";
@@ -41,7 +41,7 @@ export async function generateMetadata({ params }: PageProps<"/[lang]/[slug]">):
   const tool = toolBySlug(slug);
   if (tool) {
     const title = t[`tool.${tool.id}.name` as DictKey];
-    const description = t[`tool.${tool.id}.desc` as DictKey];
+    const description = t[descKey(tool) as DictKey];
     return { title, description, ...pageMetadata({ lang, path: `/${slug}`, title, description, image: tool.slug }) };
   }
   if ((INFO as readonly string[]).includes(slug)) {
@@ -85,7 +85,7 @@ function ToolPage({ tool, t, lang }: { tool: Tool; t: Dict; lang: string }) {
           <span>{k(`cat.${tool.category}`)}</span>
         </nav>
         <h1 className="mt-5 text-balance text-[2.25rem] font-semibold leading-[1.05] tracking-[-0.04em] sm:text-[3rem]">{k(`tool.${tool.id}.name`)}</h1>
-        <p className="mt-3 max-w-[520px] text-pretty text-[17px] leading-relaxed text-ink-2">{k(`tool.${tool.id}.desc`)}</p>
+        <p className="mt-3 max-w-[520px] text-pretty text-[17px] leading-relaxed text-ink-2">{k(descKey(tool))}</p>
         <p className="mt-4 flex items-center gap-1.5 text-[13px] text-muted">
           <Badge size={14} strokeWidth={1.75} className={tool.runtime === "browser" ? "text-success" : ""} />
           {tool.runtime === "browser" ? t["home.privateBadge"] : t["home.serverBadge"]}
@@ -203,7 +203,7 @@ function InfoPage({ slug, t, lang }: { slug: Info; t: Dict; lang: string }) {
                   <ToolIcon tool={tool} size={40} />
                   <div className="min-w-0 flex-1">
                     <p className="font-medium tracking-[-0.01em]">{k(`tool.${tool.id}.name`)}</p>
-                    <p className="text-[15px] text-muted">{k(`tool.${tool.id}.desc`)}</p>
+                    <p className="text-[15px] text-muted">{k(descKey(tool))}</p>
                   </div>
                   <Link href={`/${lang}/${tool.slug}`} className="btn btn-quiet btn-sm hidden sm:inline-flex">
                     {t["guide.open"]} <ArrowRight size={15} className="rtl:rotate-180" />

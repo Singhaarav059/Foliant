@@ -6,22 +6,54 @@
 //   node scripts/serve-static.mjs out 3202 &
 //   node tests/e2e/office-phone.mjs [chromium] [firefox] [webkit]
 import pw from "playwright-core";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
-import { suite, open, pick } from "./kit.mjs";
+import { PDFDocument, PDFDict, PDFName } from "pdf-lib";
+import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
+import { suite, open, pick, fixture } from "./kit.mjs";
 
 const downloads = mkdtempSync(join(tmpdir(), "e2e-office-phone-"));
 // Page counts LibreOffice writes for the fixtures (its WASM build, as in tests/libreoffice.mjs).
 const LIBREOFFICE_PAGES = { "brief.docx": 1, "rich.docx": 4 };
 
-async function pdfPages(path) {
+// brief.docx with `runs` (WordprocessingML <w:r> elements) as a paragraph after the heading.
+function briefWith(name, runs, links = {}) {
+  const files = unzipSync(new Uint8Array(readFileSync(fixture("brief.docx"))));
+  const rels = strFromU8(files["word/_rels/document.xml.rels"]);
+  const added = Object.entries(links).map(([id, url]) => `<Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${url}" TargetMode="External"/>`).join("");
+  files["word/_rels/document.xml.rels"] = strToU8(rels.replace("</Relationships>", `${added}</Relationships>`));
+  const xml = strFromU8(files["word/document.xml"]);
+  const at = xml.indexOf("</w:p>") + "</w:p>".length;
+  files["word/document.xml"] = strToU8(xml.slice(0, at) + `<w:p>${runs}</w:p>` + xml.slice(at));
+  const out = join(downloads, name);
+  writeFileSync(out, zipSync(files));
+  return out;
+}
+const run = (text, { font, italic } = {}) =>
+  `<w:r><w:rPr>${font ? `<w:rFonts w:ascii="${font}" w:hAnsi="${font}" w:cs="${font}"/>` : ""}${italic ? "<w:i/>" : ""}</w:rPr><w:t xml:space="preserve">${text}</w:t></w:r>`;
+
+// The BaseFont of every font the pages use.
+async function pdfFonts(path) {
+  const doc = await PDFDocument.load(readFileSync(path));
+  const names = new Set();
+  for (const page of doc.getPages()) {
+    const fonts = page.node.Resources()?.lookupMaybe(PDFName.of("Font"), PDFDict);
+    for (const ref of fonts?.values() ?? []) {
+      const base = doc.context.lookup(ref, PDFDict).get(PDFName.of("BaseFont"));
+      if (base) names.add(String(base));
+    }
+  }
+  return [...names];
+}
+
+async function pdfPages(path, between = " ") {
   const bytes = new Uint8Array(readFileSync(path));
   if (Buffer.from(bytes.subarray(0, 5)).toString("latin1") !== "%PDF-") throw new Error("not a PDF");
   const doc = await getDocument({ data: bytes, verbosity: 0 }).promise;
   const pages = [];
-  for (let i = 1; i <= doc.numPages; i++) pages.push((await (await doc.getPage(i)).getTextContent()).items.map((t) => t.str).join(" ").replace(/\s+/g, " "));
+  for (let i = 1; i <= doc.numPages; i++) pages.push((await (await doc.getPage(i)).getTextContent()).items.map((t) => t.str).join(between).replace(/\s+/g, " "));
   return pages;
 }
 
@@ -116,6 +148,64 @@ await suite(async ({ name, browser, test }) => {
       return "PDF with text";
     } finally {
       await noFonts.close();
+    }
+  });
+
+  // Polish, Czech, Turkish, Romanian, Vietnamese: the document's own font, not
+  // Noto Sans word pieces, and italics stay italic.
+  await test("Word → PDF on a phone: accented Latin in the document's font", async () => {
+    const file = briefWith("accents.docx", run("Zażółć gęślą jaźń ", { font: "Times New Roman" }) + run("Şişli ăđươ", { font: "Times New Roman", italic: true }));
+    await convert("/en/word-to-pdf", file);
+    const out = join(downloads, `${name}-accents.pdf`);
+    // Each subset is its own embedded font, so a word can be several text
+    // items; they sit side by side, and the spaces are in the text.
+    const text = (await pdfPages(out, "")).join(" ");
+    for (const want of ["Zażółć gęślą jaźń", "Şişli ăđươ"]) if (!text.includes(want)) throw new Error(`"${want}" not in ${JSON.stringify(text.slice(0, 160))}`);
+    const fonts = await pdfFonts(out);
+    // (Noto's CJK slices draw the list bullets, which no Office stand-in has.)
+    if (fonts.some((f) => /NotoSans-/i.test(f))) throw new Error(`fell back to Noto Sans: ${fonts.join(", ")}`);
+    if (!fonts.some((f) => /Tinos.*Italic/i.test(f))) throw new Error(`no italic Tinos: ${fonts.join(", ")}`);
+    return fonts.join(", ");
+  });
+
+  // Word's hyperlinks stay clickable, as they were when the browser printed the PDF.
+  await test("Word → PDF on a phone: hyperlinks stay clickable", async () => {
+    const link = `<w:hyperlink r:id="rIdDocs"><w:r><w:rPr><w:color w:val="0563C1"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">Read the docs here</w:t></w:r></w:hyperlink>`;
+    const file = briefWith("links.docx", run("See: ") + link, { rIdDocs: "https://example.com/docs?a=1&amp;b=(2)" });
+    await convert("/en/word-to-pdf", file);
+    const doc = await getDocument({ data: new Uint8Array(readFileSync(join(downloads, `${name}-links.pdf`))), verbosity: 0 }).promise;
+    const links = [];
+    for (let i = 1; i <= doc.numPages; i++) for (const a of await (await doc.getPage(i)).getAnnotations()) if (a.subtype === "Link") links.push(a.url ?? a.unsafeUrl);
+    if (!links.includes("https://example.com/docs?a=1&b=(2)")) throw new Error(`links: ${JSON.stringify(links)}`);
+    return `${links.length} link(s)`;
+  });
+
+  // Offline before the Noto slices were cached: Hindi (or any script the
+  // Office stand-ins don't cover) must not silently drop out of the PDF.
+  await test("Word → PDF with the Noto fonts unavailable: Hindi text, or the print preview", async () => {
+    const file = briefWith("hindi.docx", run("परियोजना सारांश"));
+    const noNoto = await browser.newContext({ ...(name === "firefox" ? firefoxSafe : { ...firefoxSafe, isMobile }), acceptDownloads: true, locale: "en-US", serviceWorkers: "block" });
+    try {
+      await noNoto.route(/\/vendor\/[^/]+\/fonts\//, (route) => route.abort());
+      const page = await noNoto.newPage();
+      await page.addInitScript(() => {
+        window.print = () => {};
+      });
+      await open(page, "/en/word-to-pdf");
+      await pick(page, [file]);
+      const shown = page.getByRole("heading", { name: "Ready to save as PDF" }).waitFor({ timeout: 120000 }).then(() => "preview");
+      const saved = Promise.all([page.waitForEvent("download", { timeout: 120000 }), page.getByRole("button", { name: "Convert to PDF", exact: true }).click()]).then(([dl]) => dl);
+      shown.catch(() => {});
+      saved.catch(() => {});
+      const outcome = await Promise.race([shown, saved]);
+      if (outcome === "preview") return "print preview";
+      const out = join(downloads, `${name}-nonoto-${outcome.suggestedFilename()}`);
+      await outcome.saveAs(out);
+      const text = (await pdfPages(out)).join(" ");
+      if (!/[\u0900-\u097F]/.test(text)) throw new Error(`a PDF without its Hindi text: ${JSON.stringify(text.slice(0, 80))}`);
+      return "PDF with Hindi text";
+    } finally {
+      await noNoto.close();
     }
   });
 

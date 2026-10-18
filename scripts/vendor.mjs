@@ -51,12 +51,16 @@ const files = [
 // Metric-compatible stand-ins for fonts a PDF names but doesn't embed, which
 // PDF/A requires embedded (src/lib/pdf/pdfa.ts): Arimo for Arial/Helvetica,
 // Tinos for Times, Cousine for Courier, Carlito for Calibri, Caladea for Cambria.
+// Office to PDF (src/lib/office/faces.ts) also lays text out in them, so
+// every subset they come in is copied, not only Latin.
 for (const family of ["arimo", "tinos", "cousine", "carlito", "caladea"])
-  for (const weight of [400, 700])
-    for (const style of ["normal", "italic"]) {
-      const file = `${family}-latin-${weight}-${style}.woff`;
-      files.push([join(pkgDir(`@fontsource/${family}`), "files", file), `pdfa-fonts/${file}`]);
-    }
+  for (const subset of ["latin", "latin-ext", "vietnamese", "cyrillic", "cyrillic-ext", "greek", "greek-ext"])
+    for (const weight of [400, 700])
+      for (const style of ["normal", "italic"]) {
+        const file = `${family}-${subset}-${weight}-${style}.woff`;
+        const from = join(pkgDir(`@fontsource/${family}`), "files", file);
+        if (subset === "latin" || existsSync(from)) files.push([from, `pdfa-fonts/${file}`]);
+      }
 // Handwriting fonts for typed signatures (src/components/workspace/SignaturePad.tsx),
 // so they look the same on every system. Latin and Latin Extended slices.
 for (const family of ["dancing-script", "great-vibes", "caveat"])

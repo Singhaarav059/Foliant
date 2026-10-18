@@ -15,11 +15,11 @@
 
 import fontkit from "@pdf-lib/fontkit";
 import {
-  PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage,
+  PDFDocument, PDFString, rgb, type PDFFont, type PDFImage, type PDFPage,
   pushGraphicsState, popGraphicsState, rectangle, clip, endPath,
 } from "pdf-lib";
 import { layoutText } from "../pdf/fonts";
-import { fontBase, fontFaces, fontFile, type Family } from "./faces";
+import { fontBase, fontFaces, fontFile, inSubset, subsetsOf, type Family, type Subset } from "./faces";
 
 const PT = 0.75; // CSS px → PDF points
 
@@ -51,8 +51,8 @@ class Fonts {
   constructor(private doc: PDFDocument) {
     doc.registerFontkit(fontkit);
   }
-  get(family: Family, bold: boolean, italic: boolean) {
-    const file = fontFile(family, bold, italic);
+  get(family: Family, bold: boolean, italic: boolean, subset: Subset = "latin") {
+    const file = fontFile(family, bold, italic, subset);
     let p = this.faces.get(file);
     if (!p) {
       p = (async () => {
@@ -82,7 +82,8 @@ type TextStyle = { family: Family; bold: boolean; italic: boolean; size: number;
 type Item =
   | { kind: "fill"; box: Box; color: Color }
   | { kind: "image"; box: Box; el: HTMLImageElement | SVGSVGElement | HTMLCanvasElement }
-  | { kind: "text"; box: Box; text: string; style: TextStyle };
+  | { kind: "text"; box: Box; text: string; style: TextStyle }
+  | { kind: "link"; box: Box; url: string };
 
 function parseColor(v: string): Color | null {
   const m = v.match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,/]\s*([\d.]+%?))?\s*\)/);
@@ -188,6 +189,11 @@ function collect(root: Element): Item[] {
         if (r && r.width > 0 && r.height > 0) (["Top", "Right", "Bottom", "Left"] as const).forEach(side);
       }
       const tag = el.localName;
+      // Web and mail links stay clickable: one annotation per line the link is on.
+      if (tag === "a" && /^(https?|mailto):$/.test((el as HTMLAnchorElement).protocol)) {
+        const url = (el as HTMLAnchorElement).href;
+        for (const r of el.getClientRects()) if (r.width > 0 && r.height > 0) items.push({ kind: "link", box: toBox(r), url });
+      }
       if (tag === "img" || tag === "svg" || tag === "canvas") {
         const r = el.getBoundingClientRect();
         if (r.width > 0 && r.height > 0) items.push({ kind: "image", box: toBox(r), el: el as HTMLImageElement });
@@ -284,6 +290,17 @@ export async function paint(sheets: Sheet[], title?: string): Promise<Uint8Array
         if (mid < box.y || mid >= box.y + box.h) continue;
       } else if (b.y + b.h <= box.y || b.y >= box.y + box.h) continue;
       if (b.x + b.w <= box.x || b.x >= box.x + box.w) continue;
+      if (item.kind === "link") {
+        // The part of the link on this page, in page space.
+        const x0 = Math.max(b.x, box.x), x1 = Math.min(b.x + b.w, box.x + box.w);
+        const y0 = Math.max(b.y, box.y), y1 = Math.min(b.y + b.h, box.y + box.h);
+        const annot = doc.context.obj({
+          Type: "Annot", Subtype: "Link", Rect: [X(x0), Y(y1), X(x1), Y(y0)], Border: [0, 0, 0],
+          A: { Type: "Action", S: "URI", URI: PDFString.of(item.url.replace(/[^\x20-\x7e]/g, encodeURIComponent).replace(/[\\()]/g, "\\$&")) },
+        });
+        page.node.addAnnot(doc.context.register(annot));
+        continue;
+      }
       try {
         await draw(page, item, X, Y, k, doc, fonts, images);
       } catch (e) {
@@ -296,7 +313,7 @@ export async function paint(sheets: Sheet[], title?: string): Promise<Uint8Array
   return doc.save();
 }
 
-async function draw(page: PDFPage, item: Item, X: (x: number) => number, Y: (y: number) => number, k: number, doc: PDFDocument, fonts: Fonts, images: Map<string, Promise<PDFImage | null>>) {
+async function draw(page: PDFPage, item: Exclude<Item, { kind: "link" }>, X: (x: number) => number, Y: (y: number) => number, k: number, doc: PDFDocument, fonts: Fonts, images: Map<string, Promise<PDFImage | null>>) {
   const b = item.box;
   if (item.kind === "fill") {
     page.drawRectangle({ x: X(b.x), y: Y(b.y + b.h), width: b.w * k, height: b.h * k, color: rgb(item.color.r, item.color.g, item.color.b), opacity: item.color.a });
@@ -309,22 +326,54 @@ async function draw(page: PDFPage, item: Item, X: (x: number) => number, Y: (y: 
   }
   const s = item.style;
   const face = await fonts.get(s.family, s.bold, s.italic);
+  const pieces = await inFace(item.text, s, fonts);
   const size = s.size * k;
   // The line box of an inline run is the font's ascent + descent; the baseline sits between them.
   const baseline = Y(b.y + (b.h * face.ascent) / (face.ascent + face.descent));
   const x = X(b.x);
   const color = rgb(s.color.r, s.color.g, s.color.b);
   const text = item.text;
-  const covered = [...text].every((c) => face.kit.hasGlyphForCodePoint(c.codePointAt(0)!));
-  if (covered) page.drawText(text, { x, y: baseline, size, font: face.font, color, opacity: s.color.a });
-  else {
-    const laid = await layoutText(doc, text, size, s.bold);
-    if (!laid) return;
+  if (pieces) {
+    let at = x;
+    for (const p of pieces) {
+      page.drawText(p.text, { x: at, y: baseline, size, font: p.face.font, color, opacity: s.color.a });
+      at += p.face.font.widthOfTextAtSize(p.text, size);
+    }
+  } else {
+    // Without the Noto slices (offline before they were cached), or with a
+    // character none of them has, the word would silently drop out of the
+    // PDF; printing still has the browser's own fonts.
+    const laid = await layoutText(doc, text, size, s.bold).catch((e) => {
+      throw new FontUnavailable(`Fonts for "${text}" unavailable: ${e instanceof Error ? e.message : e}`);
+    });
+    if (!laid) throw new FontUnavailable(`No bundled font has every character of "${text}"`);
     for (const run of laid.runs) page.drawText(run.text, { x: x + run.x, y: baseline, size, font: run.font, color, opacity: s.color.a });
   }
   const width = b.w * k; // the measured box never includes the trailing space
   if (s.underline) page.drawRectangle({ x, y: baseline - size * 0.12, width, height: Math.max(0.5, size * 0.06), color });
   if (s.strike) page.drawRectangle({ x, y: baseline + size * 0.28, width, height: Math.max(0.5, size * 0.06), color });
+}
+
+// The word in the document's own font: each character in the subset the
+// browser laid it out with (the first whose unicode-range has it), marks
+// staying with their letter. Null if some character is in none of them.
+async function inFace(text: string, s: TextStyle, fonts: Fonts) {
+  const pieces: { face: Face; text: string }[] = [];
+  for (const ch of text) {
+    const cp = ch.codePointAt(0)!;
+    const last = pieces[pieces.length - 1];
+    if (last && /\p{M}/u.test(ch) && last.face.kit.hasGlyphForCodePoint(cp)) { last.text += ch; continue; }
+    let face: Face | null = null;
+    for (const subset of subsetsOf(s.family)) {
+      if (!inSubset(subset, cp)) continue;
+      const f = await fonts.get(s.family, s.bold, s.italic, subset);
+      if (f.kit.hasGlyphForCodePoint(cp)) { face = f; break; }
+    }
+    if (!face) return null;
+    if (last && last.face === face) last.text += ch;
+    else pieces.push({ face, text: ch });
+  }
+  return pieces;
 }
 
 // ── CSS counters (Word's list numbers): docx-preview draws them with
@@ -416,6 +465,21 @@ export function materializeMarkers(root: Element) {
   }
 }
 
+// document.fonts.ready, except that WebKit can leave it pending for good once
+// a face fails (seen with Carlito's Greek Extended subset in a sandboxed
+// frame), so this also ends when no face is still loading, or after 20 s.
+function fontsSettled(doc: Document) {
+  return new Promise<void>((done) => {
+    const started = Date.now();
+    void doc.fonts.ready.then(() => done());
+    const poll = () => {
+      if (![...doc.fonts].some((f) => f.status === "loading") || Date.now() - started > 20000) done();
+      else setTimeout(poll, 50);
+    };
+    setTimeout(poll, 50);
+  });
+}
+
 // ── HTML the converters wrote (PowerPoint, Excel), laid out in a hidden
 // frame of this origin. Its scripts can't run (sandbox without allow-scripts).
 export async function inFrame<T>(html: string, width: number, withDoc: (doc: Document) => Promise<T>): Promise<T> {
@@ -424,7 +488,7 @@ export async function inFrame<T>(html: string, width: number, withDoc: (doc: Doc
   frame.setAttribute("aria-hidden", "true");
   frame.tabIndex = -1;
   frame.style.cssText = `position:fixed;left:-100000px;top:0;width:${Math.ceil(width)}px;height:1000px;border:0;`;
-  const faces = `<style>${fontFaces(fontBase())}</style>`;
+  const faces = `<style>${fontFaces(fontBase(), html)}</style>`;
   frame.srcdoc = html.replace(/<head[^>]*>/i, (m) => m + faces);
   const loaded = new Promise<void>((ok) => frame.addEventListener("load", () => ok(), { once: true }));
   document.body.append(frame);
@@ -432,7 +496,7 @@ export async function inFrame<T>(html: string, width: number, withDoc: (doc: Doc
     await loaded;
     const doc = frame.contentDocument!;
     void doc.body.offsetHeight; // lay out, so the fonts it uses start loading
-    await doc.fonts.ready;
+    await fontsSettled(doc);
     await Promise.all([...doc.images].map((i) => (i.complete ? null : i.decode().catch(() => {}))));
     return await withDoc(doc);
   } finally {

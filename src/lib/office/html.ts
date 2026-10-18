@@ -436,9 +436,24 @@ const attr = (names: string) => new RegExp(`(\\s(?:${names})\\s*=\\s*)(?:"([^"]*
 
 // One page from a zip: index.html (the shallowest), with its stylesheets,
 // images, fonts and media inlined. Links to other pages stay as they are.
+// What a zipped page may unpack in all: every file ends up base64 in one
+// HTML string, which a phone's tab can't hold much beyond this.
+export const ZIP_LIMIT = 150 * 2 ** 20;
+
 export async function siteFromZip(data: Uint8Array): Promise<string> {
   const { unzipSync, strFromU8 } = await import("fflate");
-  const files = unzipSync(data);
+  // Only files a page can use are unpacked (not backups, archives or
+  // binaries it never references), and only up to ZIP_LIMIT.
+  let total = 0;
+  const files = unzipSync(data, {
+    filter: (f) => {
+      const ext = f.name.split(".").pop()!.toLowerCase();
+      if (f.name.endsWith("/") || f.name.startsWith("__MACOSX/") || !(ext === "html" || ext === "htm" || ext in MIME)) return false;
+      total += f.originalSize;
+      if (total > ZIP_LIMIT) throw new Error(`This zip is too big to convert here: its page files come to more than ${ZIP_LIMIT / 2 ** 20} MB.`);
+      return true;
+    },
+  });
   const names = Object.keys(files).filter((n) => !n.endsWith("/") && !n.startsWith("__MACOSX/"));
   const depth = (n: string) => n.split("/").length;
   const pages = names.filter((n) => /\.html?$/i.test(n)).sort((a, b) => depth(a) - depth(b));
@@ -499,6 +514,9 @@ export async function siteFromZip(data: Uint8Array): Promise<string> {
   return html;
 }
 
+// CSS escapes (\\68 or \\h) read as the characters they stand for.
+const unescapeCss = (s: string) => s.replace(/\\([0-9a-fA-F]{1,6})\s?|\\([\s\S])/g, (_, hex: string | undefined, ch: string) => (hex ? String.fromCodePoint(Math.min(parseInt(hex, 16), 0x10ffff) || 0xfffd) : ch));
+
 // Anything that resolves to another host, the way a browser reads it
 // ("https:host", "\\host" and " //host" included). Relative URLs stay on
 // this site; data:, blob: and about: load nothing.
@@ -527,10 +545,15 @@ const LOADS = new Set(["src", "poster", "data", "background", "lowsrc", "dynsrc"
 export function blockRemote(input: string): { html: string; blocked: number } {
   let blocked = 0;
   const hit = () => (blocked++, true);
+  // URLs may be written with CSS escapes (url(\\68ttps://…)), and image-set()
+  // takes plain strings as well as url().
+  const remote = (ref: string) => isRemote(unescapeCss(ref)) && hit();
   const css = (text: string) =>
     text
-      .replace(/@import\s+(?:url\(\s*)?(["']?)([^"')\s;]+)\1\s*\)?[^;]*;?/gi, (all, _q, ref: string) => (isRemote(ref) && hit() ? "" : all))
-      .replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/gi, (all, _q, ref: string) => (isRemote(ref) && hit() ? "url(data:,)" : all));
+      .replace(/@import\s+(?:url\(\s*)?(["']?)([^"')\s;]+)\1\s*\)?[^;]*;?/gi, (all, _q, ref: string) => (remote(ref) ? "" : all))
+      .replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/gi, (all, _q, ref: string) => (remote(ref) ? "url(data:,)" : all))
+      .replace(/((?:-webkit-)?image-set\()([^)]*(?:\([^)]*\)[^)]*)*)\)/gi, (_all, open: string, args: string) =>
+        `${open}${args.replace(/(["'])((?:\\[\s\S]|(?!\1)[^\\])*)\1/g, (str, _q, ref: string) => (remote(ref) ? '"data:,"' : str))})`);
 
   const doc = new DOMParser().parseFromString(input, "text/html");
   for (const el of [...doc.querySelectorAll("*")]) {

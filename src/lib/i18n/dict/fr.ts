@@ -76,6 +76,7 @@ const d: { [K in DictKey]?: string } = {
   "tool.excelToPdf.desc": "Convertissez des feuilles de calcul en PDF, une page par zone de feuille.",
   "tool.excelToPdf.action": "Convertir en PDF",
   "tool.htmlToPdf.name": "Page web en PDF",
+  "tool.htmlToPdf.desc": "Enregistrez n’importe quelle page web ou fichier HTML en PDF.",
   "tool.htmlToPdf.action": "Convertir en PDF",
   "tool.pdfToJpg.name": "PDF en images",
   "tool.pdfToJpg.desc": "Transformez chaque page en JPG ou PNG, ou extrayez les images intégrées.",

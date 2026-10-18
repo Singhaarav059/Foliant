@@ -67,6 +67,8 @@ export type Tool = {
   // Can be a step in a saved workflow (no interactive canvas, PDF in → PDF out).
   chainable?: boolean;
   isNew?: boolean;
+  // The dictionary key of its description, when not tool.<id>.desc (see descKey).
+  desc?: string;
 };
 
 const PDF = ["pdf"];
@@ -329,6 +331,7 @@ const IN_BROWSER: Partial<Record<ToolId, Partial<Tool>>> = {
   // An HTML file, a zipped page or pasted HTML; a URL would need a server.
   htmlToPdf: {
     mode: "files",
+    desc: "tool.htmlToPdf.descStatic",
     accept: ["html", "htm", "zip"],
     options: [
       { key: "pageSize", type: "select", choices: ["a4", "letter", "a3", "a5"], default: "a4" },
@@ -342,6 +345,9 @@ const IN_BROWSER: Partial<Record<ToolId, Partial<Tool>>> = {
 export const TOOLS: Tool[] = STATIC
   ? ALL.map((t) => (t.runtime === "server" ? { ...t, ...IN_BROWSER[t.id], runtime: "browser" } : t))
   : ALL;
+
+// A build can describe a tool differently (the static HTML to PDF takes no URL).
+export const descKey = (tool: Tool) => tool.desc ?? `tool.${tool.id}.desc`;
 
 export const toolBySlug = (slug: string) => TOOLS.find((t) => t.slug === slug);
 export const toolById = (id: ToolId) => TOOLS.find((t) => t.id === id)!;

@@ -76,6 +76,7 @@ const d: { [K in DictKey]?: string } = {
   "tool.excelToPdf.desc": "Konvertera kalkylblad till PDF, en sida per bladområde.",
   "tool.excelToPdf.action": "Konvertera till PDF",
   "tool.htmlToPdf.name": "Webbsida till PDF",
+  "tool.htmlToPdf.desc": "Spara valfri webbsida eller HTML-fil som PDF.",
   "tool.htmlToPdf.action": "Konvertera till PDF",
   "tool.pdfToJpg.name": "PDF till bilder",
   "tool.pdfToJpg.desc": "Gör varje sida till JPG eller PNG, eller plocka ut inbäddade bilder.",

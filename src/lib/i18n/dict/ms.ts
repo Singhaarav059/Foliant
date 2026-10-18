@@ -76,6 +76,7 @@ const d: { [K in DictKey]?: string } = {
   "tool.excelToPdf.desc": "Tukar hamparan ke PDF, satu halaman bagi setiap kawasan helaian.",
   "tool.excelToPdf.action": "Tukar ke PDF",
   "tool.htmlToPdf.name": "Halaman web ke PDF",
+  "tool.htmlToPdf.desc": "Simpan mana-mana halaman web atau fail HTML sebagai PDF.",
   "tool.htmlToPdf.action": "Tukar ke PDF",
   "tool.pdfToJpg.name": "PDF ke imej",
   "tool.pdfToJpg.desc": "Tukar setiap halaman kepada JPG atau PNG, atau keluarkan imej terbenam.",

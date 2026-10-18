@@ -8,7 +8,7 @@
 //
 //   node tests/html-site.mjs
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -74,6 +74,42 @@ await test("zip without an HTML page is refused", async () => {
   eq(/no HTML page/.test(error?.message ?? ""), true, `error: ${error?.message}`);
 });
 
+// Sets the uncompressed size a zip declares for `name`, in its local and central headers.
+function claimSize(zip, name, size) {
+  const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+  const bytes = Buffer.from(name);
+  for (let i = 0; i < zip.length - 4; i++) {
+    const sig = view.getUint32(i, true);
+    const [nameAt, sizeAt] = sig === 0x04034b50 ? [30, 22] : sig === 0x02014b50 ? [46, 24] : [];
+    if (nameAt && Buffer.from(zip.subarray(i + nameAt, i + nameAt + bytes.length)).equals(bytes)) view.setUint32(i + sizeAt, size, true);
+  }
+  return zip;
+}
+
+// Files the page can't use aren't unpacked, and what it can use is capped,
+// so a small zip can't take gigabytes of a phone's memory.
+await test("zip: only page files are unpacked, up to a total size", async () => {
+  // An entry that would fail to inflate: unpacking it at all throws.
+  const zip = zipSync({ "index.html": strToU8("<p>Hello</p>"), "backup.bin": new Uint8Array(4096).fill(7) }, { level: 9 });
+  const at = Buffer.from(zip).indexOf(Buffer.from("backup.bin")) + "backup.bin".length;
+  zip.fill(0xff, at, at + 16);
+  let error = null;
+  try {
+    eq(/Hello/.test(await siteFromZip(zip)), true, "page read");
+  } catch (e) {
+    error = e;
+  }
+  eq(error, null, `an unused entry was unpacked: ${error?.message}`);
+  // A media file that says it is 300 MB.
+  let big = null;
+  try {
+    await siteFromZip(claimSize(zipSync({ "index.html": strToU8('<video src="v.mp4"></video>'), "v.mp4": new Uint8Array(10) }, { level: 0 }), "v.mp4", 300 * 2 ** 20));
+  } catch (e) {
+    big = e;
+  }
+  eq(/too (big|large)/i.test(big?.message ?? ""), true, `error: ${big?.message}`);
+});
+
 await test("remote URLs are replaced and counted; links stay", async () => {
   const { html, blocked, cspIn, cspFirst } = await blockRemote(`<!doctype html><html><head>
     <base href="https://example.com/">
@@ -118,6 +154,24 @@ await test("tags a regex misreads: > in a value, / before a name, odd schemes", 
   eq((await blockRemote(pages.schemes)).blocked, 4, "every odd scheme counted");
 });
 
+// CSS a url() regex misses: image-set() with plain strings, and escapes.
+// The CSP blocks these anyway; the notice has to count them.
+await test("CSS image-set() strings and escaped URLs are taken out and counted", async () => {
+  const pages = {
+    imageSet: `<div style="background-image: image-set('https://example.com/x.png' 1x, &quot;https://example.com/y.png&quot; 2x)">a</div>`,
+    webkit: `<style>p { background-image: -webkit-image-set("https://example.com/w.png" 1x) }</style><p>b</p>`,
+    escaped: `<style>p { background: url(\\68ttps://example.com/e.png) }</style><p>c</p>`,
+    escapedQuoted: `<style>p { background: url("\\68 ttps://example.com/q.png") }</style><p>d</p>`,
+  };
+  const want = { imageSet: 2, webkit: 1, escaped: 1, escapedQuoted: 1 };
+  for (const [name, input] of Object.entries(pages)) {
+    const { html, blocked } = await blockRemote(input);
+    eq(blocked, want[name], `${name}: counted`);
+    eq(/example\.com/.test(html), false, `${name}: remote URL left in ${html.match(/[^>]*example\.com[^<]*/)?.[0]}`);
+  }
+  eq((await blockRemote(`<style>p { background: image-set("ok.png" 1x); content: "\\201C" }</style>`)).blocked, 0, "local image-set and other escapes left alone");
+});
+
 await test("page size, orientation, margins and screen width", () => {
   const page = htmlPage("<!doctype html><html><head><title>x</title></head><body>hi</body></html>", { pageSize: "a3", orientation: "landscape", margin: "none", screenWidth: "390" });
   eq(/@page \{ size: A3 landscape; margin: 0(mm)?; \}/.test(page), true, `@page: ${page.match(/@page[^}]*}/)?.[0]}`);
@@ -127,6 +181,29 @@ await test("page size, orientation, margins and screen width", () => {
   eq(/zoom/.test(fit), false, "fit to page by default");
   eq(/size: A5 portrait; margin: 25mm/.test(htmlPage("<p>x</p>", { pageSize: "a5", margin: "large" })), true, "A5, large margin");
   eq(/size: letter portrait/.test(htmlPage("<p>x</p>", { pageSize: "letter" })), true, "letter");
+});
+
+// The description is shared by the pages, the tool grid and the OG image. The
+// server build takes a URL and only .html, so it keeps its own wording.
+await test("each build describes the input it takes", async () => {
+  const lib = mkdtempSync(join(tmpdir(), "html-site-tools-"));
+  execFileSync(join(root, "node_modules/.bin/tsc"), ["--outDir", lib, "--module", "esnext", "--target", "es2022", "--moduleResolution", "bundler", "--skipLibCheck", "--noCheck", "src/lib/tools.ts"], { cwd: root, stdio: "inherit" });
+  cpSync(lib, `${lib}-static`, { recursive: true });
+  const en = {};
+  for (const m of readFileSync(join(root, "src/lib/i18n/dict/en.ts"), "utf8").matchAll(/^\s*"([^"]+)":\s*"((?:[^"\\]|\\.)*)",?\s*$/gm)) en[m[1]] = JSON.parse(`"${m[2]}"`);
+  const desc = async (dir, flag) => {
+    process.env.NEXT_PUBLIC_STATIC = flag;
+    const { toolById, descKey } = await import(pathToFileURL(join(dir, "tools.js")).href);
+    const tool = toolById("htmlToPdf");
+    return { mode: tool.mode, text: en[descKey(tool)] };
+  };
+  const server = await desc(lib, "0");
+  const site = await desc(`${lib}-static`, "1");
+  eq(server.mode, "url", "server build takes a URL");
+  eq(/zip|paste/i.test(server.text ?? ""), false, `server copy offers zip or paste: ${server.text}`);
+  eq(/web page/i.test(server.text ?? ""), true, `server copy mentions web pages: ${server.text}`);
+  eq(site.mode, "files", "static build takes files");
+  eq(/zip/i.test(site.text ?? "") && /paste/i.test(site.text ?? ""), true, `static copy names zip and paste: ${site.text}`);
 });
 
 await browser.close();

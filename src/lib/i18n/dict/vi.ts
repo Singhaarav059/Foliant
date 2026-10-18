@@ -76,6 +76,7 @@ const d: { [K in DictKey]?: string } = {
   "tool.excelToPdf.desc": "Chuyển bảng tính sang PDF, mỗi vùng trang tính một trang.",
   "tool.excelToPdf.action": "Chuyển sang PDF",
   "tool.htmlToPdf.name": "Trang web sang PDF",
+  "tool.htmlToPdf.desc": "Lưu bất kỳ trang web hoặc tệp HTML nào thành PDF.",
   "tool.htmlToPdf.action": "Chuyển sang PDF",
   "tool.pdfToJpg.name": "PDF sang ảnh",
   "tool.pdfToJpg.desc": "Chuyển từng trang thành JPG hoặc PNG, hoặc lấy ra ảnh được nhúng.",
