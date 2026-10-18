@@ -153,12 +153,13 @@ async function editable(docx: Docx, pdf: PDFDocumentProxy, progress?: Progress) 
   // ── Pictures: cropped from the rendered page, so vector art on top comes along.
 
   const SCALE = 2;
-  const pictures = async (pageNo: number, figures: Figure[]) => {
+  const pictures = async (pageNo: number, figures: Figure[], rotation?: number) => {
     const out = new Map<Figure, { data: Uint8Array; type: "png" | "jpg" }>();
     if (!figures.length) return out;
     try {
       const page = await pdf.getPage(pageNo);
-      const canvas = await renderPage(page, SCALE);
+      // Drawn in the view the layout was read in, so the boxes match.
+      const canvas = await renderPage(page, SCALE, undefined, rotation);
       page.cleanup();
       for (const f of figures) {
         const w = Math.max(1, Math.round((f.x1 - f.x0) * SCALE));
@@ -222,21 +223,26 @@ async function editable(docx: Docx, pdf: PDFDocumentProxy, progress?: Progress) 
     const props = (extra: object) => ({ page: { size, margin }, ...extra });
 
     if (textChars < 20) {
-      // Probably a scan or a picture page: keep it as an image.
+      // Probably a scan or a picture page: keep it as an image, the way the
+      // page is shown. A label up the margin may have turned the layout's view;
+      // its size and margins are then the page's own, not the layout's.
       const page = await pdf.getPage(i + 1);
+      const shown = (p.rotation ?? page.rotate) === page.rotate;
+      const view = page.getViewport({ scale: 1 });
       const canvas = await renderPage(page, 1.6);
       const data = await bytesOf(await canvasToBlob(canvas, "image/jpeg", 0.85));
       page.cleanup();
-      const w = Math.min(textWidth, p.width - 36);
+      const w = shown ? Math.min(textWidth, p.width - 36) : view.width - 144;
+      const own = { page: { size: { width: twip(view.width), height: twip(view.height) }, margin: { left: 1440, right: 1440, top: 1440, bottom: 1440 } } };
       sections.push({
-        properties: props({}),
-        children: [new Paragraph({ children: [new ImageRun({ type: "jpg", data, transformation: { width: px(w), height: px((w * p.height) / p.width) } })] })],
+        properties: shown ? props({}) : own,
+        children: [new Paragraph({ children: [new ImageRun({ type: "jpg", data, transformation: { width: px(w), height: px((w * view.height) / view.width) } })] })],
       });
       progress?.(pageCount + i + 1, pageCount * 2);
       continue;
     }
 
-    const pics = await pictures(i + 1, p.figures);
+    const pics = await pictures(i + 1, p.figures, p.rotation);
     p.sections.forEach((sec, si) => {
       const cols = sec.columns.length;
       const gap = cols > 1 ? Math.max(6, (sec.columns[cols - 1].x0 - sec.columns[0].x1 - sec.columns.slice(1, -1).reduce((s, col) => s + col.x1 - col.x0, 0)) / (cols - 1)) : 0;

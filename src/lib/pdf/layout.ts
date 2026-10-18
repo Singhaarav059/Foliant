@@ -35,6 +35,11 @@ type Box = Rect & ({ kind: "word"; run: Run } | { kind: "table"; table: Table } 
 function words(runs: Run[]): Run[] {
   const out: Run[] = [];
   for (const r of runs) {
+    // Turned text (a label up the margin) stays whole: its box is all that's known.
+    if (r.turn) {
+      out.push(r);
+      continue;
+    }
     const n = r.text.length;
     const xs = r.xs && r.xs.length === n + 1 ? r.xs : Array.from({ length: n + 1 }, (_, k) => r.x + (r.w * k) / n);
     let s = -1;
@@ -210,8 +215,8 @@ function xyCut(boxes: Box[], size: number, depth = 0): Section[] {
 
 // ── Page parts
 
-async function pageLinks(page: PDFPageProxy): Promise<{ rect: Rect; url: string }[]> {
-  const viewport = page.getViewport({ scale: 1 });
+async function pageLinks(page: PDFPageProxy, rotation?: number): Promise<{ rect: Rect; url: string }[]> {
+  const viewport = page.getViewport({ scale: 1, rotation });
   const annots = (await page.getAnnotations()) as { subtype?: string; url?: string; unsafeUrl?: string; rect?: number[] }[];
   return annots
     .filter((a) => a.subtype === "Link" && (a.url || a.unsafeUrl) && a.rect)
@@ -288,13 +293,16 @@ function finish(base: Layout, figures: Figure[], furniture: Set<string>, body: n
 type Base = Layout & { images: Rect[] };
 
 async function basePage(page: PDFPageProxy): Promise<Base> {
-  const text = await pageText(page);
+  // A sideways table or a page turned with Rotate is read the way its text runs;
+  // lines, links and pictures are all taken in that same view.
+  const text = await pageText(page, { upright: true });
+  const rotation = text.rotation;
   try {
-    const [edges, links] = await Promise.all([pageEdges(page), pageLinks(page).catch(() => [])]);
+    const [edges, links] = await Promise.all([pageEdges(page, rotation), pageLinks(page, rotation).catch(() => [])]);
     const base = findTables({ ...text, items: withLinks(text.items, links) }, edges);
-    return { ...base, images: edges.images ?? [] };
+    return { ...base, rotation, images: edges.images ?? [] };
   } catch {
-    return { width: text.width, height: text.height, tables: [], lines: text.lines, rest: text.items, images: [] };
+    return { width: text.width, height: text.height, rotation, tables: [], lines: text.lines, rest: text.items, images: [] };
   }
 }
 

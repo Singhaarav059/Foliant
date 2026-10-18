@@ -21,6 +21,7 @@ const MESSAGES: Record<ErrorCode, [key: string, fix?: Fix]> = {
   already_encrypted: ["err.alreadyEncrypted", "unlock"],
   password_too_long: ["err.passwordTooLong"],
   protect_unverified: ["ws.protectUnverified"],
+  redaction_leak: ["ws.redactionLeak"],
   no_pages: ["err.noPages"],
   image_unsupported: ["err.imageUnsupported"],
   page_too_large: ["err.pageTooLarge"],
@@ -46,7 +47,7 @@ const FIXES: Record<Fix, { path: string; tool: string }> = {
 };
 
 // Failures that may be ours rather than the file's, so worth a report.
-const REPORTABLE = new Set<ErrorCode>(["damaged", "unrecoverable", "no_pages", "page_too_large", "out_of_memory", "protect_unverified", "unknown"]);
+const REPORTABLE = new Set<ErrorCode>(["damaged", "unrecoverable", "no_pages", "page_too_large", "out_of_memory", "protect_unverified", "redaction_leak", "unknown"]);
 
 // Turns anything thrown into a Problem.
 export function useProblem() {

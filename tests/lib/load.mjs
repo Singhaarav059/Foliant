@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { register } from "node:module";
+import { createRequire, register } from "node:module";
 
 export const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const out = mkdtempSync(join(tmpdir(), "pdf-lib-"));
@@ -55,6 +55,19 @@ export { vendorDir };
 export async function openPdf(bytes) {
   const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
   return getDocument({ data: bytes, fontExtraProperties: true, standardFontDataUrl: join(root, "node_modules/pdfjs-dist/standard_fonts/"), verbosity: 0 }).promise;
+}
+
+// Pages drawn as images need a canvas: a Node one stands in for the browser's.
+// @napi-rs/canvas (MIT) comes with pdfjs-dist, which uses it in Node.
+export function nodeCanvas() {
+  const { createCanvas } = createRequire(join(root, "package.json"))("@napi-rs/canvas");
+  globalThis.document = {
+    createElement: () => {
+      const c = createCanvas(1, 1);
+      c.toBlob = (cb, type, q) => cb(new Blob([c.toBuffer(type === "image/png" ? "image/png" : "image/jpeg", Math.round((q ?? 0.9) * 100))]));
+      return c;
+    },
+  };
 }
 
 export function check(results) {

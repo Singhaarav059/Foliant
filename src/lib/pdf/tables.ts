@@ -24,8 +24,9 @@ export type Table = {
   ruled: boolean; // false when the columns came from the text
 };
 // `lines` are the lines outside tables, grouped across the whole page width;
-// `rest` holds the same text as runs, for reading-order analysis.
-export type Layout = { width: number; height: number; tables: Table[]; lines: Line[]; rest: Run[] };
+// `rest` holds the same text as runs, for reading-order analysis. `rotation`
+// is the viewport rotation the page was read in (see pageText's `upright`).
+export type Layout = { width: number; height: number; tables: Table[]; lines: Line[]; rest: Run[]; rotation?: number };
 
 const SNAP = 3; // edges this close are the same line
 const JOIN = 3; // collinear edges with gaps this small are one line
@@ -45,9 +46,9 @@ const asMatrix = (a: unknown): M => {
   return [src[0], src[1], src[2], src[3], src[4], src[5]].map(Number) as M;
 };
 
-export async function pageEdges(page: PDFPageProxy): Promise<Edges> {
+export async function pageEdges(page: PDFPageProxy, rotation?: number): Promise<Edges> {
   const { OPS } = await import("pdfjs-dist");
-  const viewport = page.getViewport({ scale: 1 });
+  const viewport = page.getViewport({ scale: 1, rotation });
   const list = await page.getOperatorList();
   const h: Edge[] = [];
   const v: Edge[] = [];
@@ -209,6 +210,8 @@ function groupCells(rects: Rect[]): Rect[][] {
 // Splits a run where `inside` changes its answer (cell borders, link areas),
 // using per-character positions when known.
 export function pieces(run: Run, inside: (x: number, y: number) => number): { owner: number; run: Run }[] {
+  // Turned text has no per-character positions across the page: it goes whole by its centre.
+  if (run.turn) return [{ owner: inside(run.x + run.w / 2, run.y + run.h / 2), run }];
   const n = run.text.length;
   const xs = run.xs && run.xs.length === n + 1 ? run.xs : Array.from({ length: n + 1 }, (_, k) => run.x + (run.w * k) / n);
   const cy = run.y + run.h / 2;
@@ -302,6 +305,10 @@ export function bandCells(band: Rect, runs: Run[]): Rect[] | null {
   const words: { x0: number; x1: number; line: number }[] = [];
   lines.forEach((l, li) => {
     for (const r of l.runs) {
+      if (r.turn) {
+        words.push({ x0: r.x, x1: r.x + r.w, line: li });
+        continue;
+      }
       const n = r.text.length;
       const xs = r.xs && r.xs.length === n + 1 ? r.xs : Array.from({ length: n + 1 }, (_, k) => r.x + (r.w * k) / n);
       let s = -1;

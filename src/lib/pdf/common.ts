@@ -39,8 +39,9 @@ export async function openPdf(data: ArrayBuffer | Uint8Array, password?: string)
 // Frees the worker-side copy of a document.
 export const closePdf = (doc: PDFDocumentProxy) => doc.loadingTask.destroy();
 
-export async function renderPage(page: PDFPageProxy, scale: number, background = "#ffffff") {
-  const viewport = page.getViewport({ scale });
+// `rotation` overrides the page's own, to draw it in the view a layout was read in.
+export async function renderPage(page: PDFPageProxy, scale: number, background = "#ffffff", rotation?: number) {
+  const viewport = page.getViewport({ scale, rotation });
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(viewport.width));
   canvas.height = Math.max(1, Math.round(viewport.height));

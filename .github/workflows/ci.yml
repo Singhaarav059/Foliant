@@ -125,6 +125,8 @@ jobs:
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:layout
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:rotated-text
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:compress
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:ocr
