@@ -30,6 +30,8 @@
     "test:layout": "node tests/layout.mjs",
     "test:rotated-text": "node tests/rotated-text.mjs",
     "test:word": "node tests/word-content.mjs",
+    "test:word-structure": "node tests/word-structure.mjs",
+    "test:docx-features": "node tests/docx-features.mjs",
     "test:compress": "node tests/compress.mjs",
     "test:ocr": "node tests/ocr.mjs",
     "test:redact": "node tests/redact.mjs",
@@ -39,6 +41,7 @@
     "test:pdfa": "node tests/pdfa.mjs",
     "test:ocr-accuracy": "node tests/ocr-accuracy.mjs",
     "test:libreoffice": "node tests/libreoffice.mjs",
+    "test:libreoffice-parts": "node tests/libreoffice-parts.mjs",
     "test:robust": "node tests/robustness/run.mjs",
     "test:static": "node tests/static-extras.mjs && node tests/serve-static.mjs",
     "test:seo": "node tests/seo.mjs",
@@ -48,7 +51,9 @@
     "test:e2e:errors": "node tests/e2e/errors.mjs",
     "test:e2e:intake": "node tests/e2e/intake.mjs",
     "test:e2e:offline": "node tests/e2e/offline.mjs",
-    "test:e2e:compare": "node tests/e2e/compare.mjs"
+    "test:e2e:compare": "node tests/e2e/compare.mjs",
+    "test:e2e:tools": "node tests/e2e/tools/run.mjs",
+    "test:e2e:office-high": "node tests/e2e/office-high.mjs chromium"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

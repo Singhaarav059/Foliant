@@ -1,0 +1,13 @@
+[
+  {
+    "slug": "repair-pdf",
+    "variant": "truncated file",
+    "reason": "P3-04: Repair can't read a PDF cut off at 60% and says it's damaged and that repairing it may help"
+  },
+  {
+    "slug": "sign-pdf",
+    "variant": "date",
+    "langs": ["ar"],
+    "reason": "the Arabic date stamp is drawn as a picture with its digits out of order (18/10/2026 shows as 182026/10/)"
+  }
+]
