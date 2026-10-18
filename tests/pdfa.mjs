@@ -294,12 +294,52 @@ await test("PDF/A-3b: files only in the catalog's AF are made valid; AF entries 
   eq(pageAF.length === 1 && d.context.lookup(pageAF[0]).lookup(PDFName.of("UF")).decodeText() === "figures.csv", true, "page AF kept");
 });
 
+// A legacy Type1 Helvetica with no Encoding: its built-in StandardEncoding puts ’ at 39 and ‘ at 96.
+const legacy = async (s) => {
+  const d = await PDFDocument.create();
+  const ctx = d.context;
+  const pg = d.addPage([595, 842]);
+  const f = pg.node.newFontDictionary("F1", ctx.register(ctx.obj({ Type: "Font", Subtype: "Type1", BaseFont: "Helvetica" })));
+  pg.pushOperators(PDFOperator.of("BT"), PDFOperator.of("Tf", [f, ctx.obj(14)]), PDFOperator.of("Td", [ctx.obj(50), ctx.obj(700)]), PDFOperator.of("Tj", [PDFString.of(s)]), PDFOperator.of("ET"));
+  return d.save();
+};
+const trueTypeOf = (d) => d.context.enumerateIndirectObjects().map(([, x]) => x).find((x) => x instanceof PDFDict && x.get(PDFName.of("Subtype")) === PDFName.of("TrueType"));
+// (platform, encoding) of every cmap subtable in a TrueType program.
+const cmapEncodings = (sfnt) => {
+  const v = new DataView(sfnt.buffer, sfnt.byteOffset, sfnt.byteLength);
+  for (let i = 0; i < v.getUint16(4); i++) {
+    if (v.getUint32(12 + i * 16) !== 0x636d6170) continue;
+    const at = v.getUint32(20 + i * 16);
+    return Array.from({ length: v.getUint16(at + 2) }, (_, j) => `${v.getUint16(at + 4 + j * 8)},${v.getUint16(at + 6 + j * 8)}`);
+  }
+  return [];
+};
+const legacyQuote = await legacy("It's `done`");
+const out1bQuote = await outputOf(legacyQuote, "1b");
+await test("PDF/A-1b: stand-ins use a plain WinAnsi encoding, or are symbolic with one (3,0) cmap", async () => {
+  const plain = trueTypeOf(await PDFDocument.load((await outputOf(await legacy("Plain words"), "1b")).bytes));
+  eq(String(plain.get(PDFName.of("Encoding"))), "/WinAnsiEncoding", "codes WinAnsi agrees with: plain WinAnsiEncoding");
+  const d = await PDFDocument.load(out1bQuote.bytes);
+  const f = trueTypeOf(d);
+  const desc = f.lookup(PDFName.of("FontDescriptor"), PDFDict);
+  const flags = desc.lookup(PDFName.of("Flags")).asNumber();
+  eq(`${flags & 4},${flags & 32}`, "4,0", "symbolic, not non-symbolic");
+  eq(f.has(PDFName.of("Encoding")), false, "a symbolic TrueType has no Encoding");
+  eq(cmapEncodings(decodePDFRawStream(desc.lookup(PDFName.of("FontFile2"), PDFRawStream)).decode()).join(";"), "3,0", "exactly one cmap, (3,0)");
+  eq((await text(out1bQuote.bytes))[0], (await text(legacyQuote))[0], "text and quotes unchanged");
+  eq(out1bQuote.note, undefined, "no downgrade");
+  eq((await fixForPdfA(await PDFDocument.load(legacyQuote), "1b")).raster.size, 0, "nothing rendered");
+  // PDF/A-2 allows Differences on a non-symbolic TrueType; that stays.
+  const two = trueTypeOf(await PDFDocument.load((await outputOf(legacyQuote, "2b")).bytes));
+  eq(two.lookup(PDFName.of("Encoding")) instanceof PDFDict, true, "2b keeps WinAnsi plus Differences");
+});
+
 // Full validation, when a veraPDF command line is available (CI).
 if (process.env.VERAPDF) {
   const dir = mkdtempSync(join(tmpdir(), "pdfa-"));
   for (const [flavour, bytes, tag] of [
     ["2b", output, ""], ["1b", out1b.bytes, ""], ["2u", out2u.bytes, ""], ["3b", out3b.bytes, ""],
-    ["1b", out1bAF.bytes, "attachments"], ["2b", out2bAF.bytes, "attachments"], ["3b", out3bAF.bytes, "attachments"],
+    ["1b", out1bAF.bytes, "attachments"], ["2b", out2bAF.bytes, "attachments"], ["3b", out3bAF.bytes, "attachments"], ["1b", out1bQuote.bytes, "legacy Helvetica"],
   ]) {
     await test(`veraPDF: PDF/A-${flavour}${tag ? ` (${tag})` : ""} compliant`, () => {
       const file = join(dir, `report-pdfa-${flavour}${tag ? `-${tag.replace(/ /g, "-")}` : ""}.pdf`);

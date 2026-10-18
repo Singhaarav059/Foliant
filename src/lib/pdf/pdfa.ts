@@ -42,36 +42,98 @@ const N = (s: string) => PDFName.of(s);
 
 // ── Fonts
 
-// WOFF 1.0 → plain OpenType/TrueType (what a PDF embeds).
-function woffToSfnt(w: Uint8Array): Uint8Array {
-  const v = new DataView(w.buffer, w.byteOffset, w.byteLength);
-  const count = v.getUint16(12);
-  const tables = Array.from({ length: count }, (_, i) => {
-    const e = 44 + i * 20;
-    const offset = v.getUint32(e + 4), comp = v.getUint32(e + 8), orig = v.getUint32(e + 12);
-    const raw = w.subarray(offset, offset + comp);
-    return { tag: v.getUint32(e), checksum: v.getUint32(e + 16), data: comp < orig ? unzlibSync(raw) : raw };
-  });
+type Table = { tag: number; data: Uint8Array };
+
+// An OpenType/TrueType file from its tables.
+function sfntOf(version: number, tables: Table[]): Uint8Array {
+  const count = tables.length;
   const pad = (n: number) => (n + 3) & ~3;
   const size = 12 + 16 * count + tables.reduce((s, t) => s + pad(t.data.length), 0);
   const out = new Uint8Array(size);
   const o = new DataView(out.buffer);
   const log = Math.floor(Math.log2(count));
-  o.setUint32(0, v.getUint32(4));
+  o.setUint32(0, version);
   o.setUint16(4, count);
   o.setUint16(6, 16 * 2 ** log);
   o.setUint16(8, log);
   o.setUint16(10, count * 16 - 16 * 2 ** log);
   let at = 12 + 16 * count;
   tables.forEach((t, i) => {
+    out.set(t.data, at);
+    let sum = 0;
+    for (let j = 0; j < pad(t.data.length); j += 4) sum = (sum + o.getUint32(at + j)) >>> 0;
     o.setUint32(12 + i * 16, t.tag);
-    o.setUint32(16 + i * 16, t.checksum);
+    o.setUint32(16 + i * 16, sum);
     o.setUint32(20 + i * 16, at);
     o.setUint32(24 + i * 16, t.data.length);
-    out.set(t.data, at);
     at += pad(t.data.length);
   });
   return out;
+}
+
+// WOFF 1.0 → plain OpenType/TrueType (what a PDF embeds).
+function woffToSfnt(w: Uint8Array): Uint8Array {
+  const v = new DataView(w.buffer, w.byteOffset, w.byteLength);
+  const tables = Array.from({ length: v.getUint16(12) }, (_, i) => {
+    const e = 44 + i * 20;
+    const offset = v.getUint32(e + 4), comp = v.getUint32(e + 8), orig = v.getUint32(e + 12);
+    const raw = w.subarray(offset, offset + comp);
+    return { tag: v.getUint32(e), data: comp < orig ? unzlibSync(raw) : raw };
+  });
+  return sfntOf(v.getUint32(4), tables);
+}
+
+const CMAP = 0x636d6170;
+
+// The same font with one cmap, (3,0) symbolic, mapping 0xF000 + code to a glyph:
+// what PDF/A-1 asks of a symbolic TrueType font (ISO 19005-1, 6.3.7).
+function withSymbolicCmap(sfnt: Uint8Array, glyphs: Map<number, number>): Uint8Array {
+  const v = new DataView(sfnt.buffer, sfnt.byteOffset, sfnt.byteLength);
+  const tables = Array.from({ length: v.getUint16(4) }, (_, i) => {
+    const at = v.getUint32(20 + i * 16);
+    return { tag: v.getUint32(12 + i * 16), data: sfnt.subarray(at, at + v.getUint32(24 + i * 16)) };
+  });
+  // Format 4, one segment per code, then the 0xFFFF end segment.
+  const codes = [...glyphs.keys()].sort((a, b) => a - b);
+  const segs = codes.length + 1;
+  const log = Math.floor(Math.log2(segs));
+  const sub = new DataView(new ArrayBuffer(16 + 8 * segs));
+  [4, 16 + 8 * segs, 0, segs * 2, 2 * 2 ** log, log, 2 * segs - 2 * 2 ** log].forEach((x, i) => sub.setUint16(i * 2, x));
+  const ends = 14, starts = 16 + 2 * segs, deltas = 16 + 4 * segs; // idRangeOffset stays 0
+  codes.forEach((code, i) => {
+    sub.setUint16(ends + i * 2, 0xf000 + code);
+    sub.setUint16(starts + i * 2, 0xf000 + code);
+    sub.setUint16(deltas + i * 2, (glyphs.get(code)! - 0xf000 - code) & 0xffff);
+  });
+  sub.setUint16(ends + codes.length * 2, 0xffff);
+  sub.setUint16(starts + codes.length * 2, 0xffff);
+  sub.setUint16(deltas + codes.length * 2, 1);
+  const cmap = new Uint8Array(12 + sub.byteLength);
+  const c = new DataView(cmap.buffer);
+  c.setUint16(2, 1);
+  c.setUint16(4, 3);
+  c.setUint16(6, 0);
+  c.setUint32(8, 12);
+  cmap.set(new Uint8Array(sub.buffer), 12);
+  return sfntOf(v.getUint32(0), tables.map((t) => (t.tag === CMAP ? { tag: CMAP, data: cmap } : t)));
+}
+
+// A ToUnicode map for a simple font.
+function toUnicodeCMap(unicode: Map<number, number>): string {
+  const hex = (n: number, digits: number) => n.toString(16).toUpperCase().padStart(digits, "0");
+  const utf16 = (cp: number) => {
+    const s = String.fromCodePoint(cp);
+    return Array.from({ length: s.length }, (_, i) => hex(s.charCodeAt(i), 4)).join("");
+  };
+  const entries = [...unicode].map(([code, cp]) => `<${hex(code, 2)}> <${utf16(cp)}>`);
+  const blocks: string[] = [];
+  for (let i = 0; i < entries.length; i += 100) blocks.push(`${entries.slice(i, i + 100).length} beginbfchar\n${entries.slice(i, i + 100).join("\n")}\nendbfchar`);
+  return [
+    "/CIDInit /ProcSet findresource begin", "12 dict begin", "begincmap",
+    "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def", "/CMapName /Adobe-Identity-UCS def", "/CMapType 2 def",
+    "1 begincodespacerange", "<00> <FF>", "endcodespacerange", ...blocks,
+    "endcmap", "CMapName currentdict /CMap defineresource pop", "end", "end",
+  ].join("\n");
 }
 
 type Face = { sfnt: Uint8Array; font: ReturnType<typeof fontkit.create>; family: string };
@@ -606,8 +668,8 @@ export async function fixForPdfA(doc: PDFDocument, level: PdfaLevel = "2b"): Pro
     const flagsObj = desc?.lookup(N("Flags"));
     const flags = flagsObj instanceof PDFNumber ? flagsObj.asNumber() : 0;
     if (/symbol|dingbat|wingding|webding/i.test(base)) { fail(); continue; }
-    const enc = encodingOf(font, sub === "/Type1" && !desc);
-    if (!enc) { fail(); continue; }
+    const drawn = encodingOf(font, sub === "/Type1" && !desc);
+    if (!drawn) { fail(); continue; }
     const bold = /bold|black|heavy|semibold|demi/i.test(base) || !!(flags & 262144);
     const italic = /italic|oblique/i.test(base) || !!(flags & 64);
     let face: Face;
@@ -620,11 +682,17 @@ export async function fixForPdfA(doc: PDFDocument, level: PdfaLevel = "2b"): Pro
     const kit = face.font;
     // Every character drawn needs a glyph in the stand-in.
     const missing = [...codes].some((code) => {
-      const cp = unicodeOf(enc[code]);
+      const cp = unicodeOf(drawn[code]);
       if (cp === undefined) return code >= 32;
       return cp !== 0x20 && cp !== 0xa0 && !kit.hasGlyphForCodePoint(cp);
     });
     if (missing) { fail(); continue; }
+
+    // PDF/A-1: a non-symbolic TrueType font names WinAnsi or MacRoman, with no Differences
+    // (ISO 19005-1, 6.3.7). When the codes drawn mean what WinAnsi says they mean, it is
+    // WinAnsi; otherwise the stand-in is symbolic, its cmap built for the codes.
+    const symbolic = part === 1 && [...codes].some((code) => drawn[code] !== WIN_ANSI[code]);
+    const enc = part === 1 && !symbolic ? WIN_ANSI : drawn;
 
     const scale = 1000 / kit.unitsPerEm;
     const widths = Array.from({ length: 256 }, (_, code) => {
@@ -632,12 +700,18 @@ export async function fixForPdfA(doc: PDFDocument, level: PdfaLevel = "2b"): Pro
       return cp !== undefined && kit.hasGlyphForCodePoint(cp) ? Math.round(kit.glyphForCodePoint(cp).advanceWidth * scale) : 0;
     });
     const ctx = doc.context;
-    const fontFile = ctx.flateStream(face.sfnt, { Length1: face.sfnt.length });
+    const unicode = new Map<number, number>();
+    enc.forEach((g, code) => {
+      const cp = unicodeOf(g);
+      if (cp !== undefined && kit.hasGlyphForCodePoint(cp)) unicode.set(code, cp);
+    });
+    const program = symbolic ? withSymbolicCmap(face.sfnt, new Map([...unicode].map(([code, cp]) => [code, kit.glyphForCodePoint(cp).id]))) : face.sfnt;
+    const fontFile = ctx.flateStream(program, { Length1: program.length });
     const name = kit.postscriptName ?? `${face.family}-${bold ? "Bold" : "Regular"}`;
     const descriptor = ctx.obj({
       Type: "FontDescriptor",
       FontName: N(name),
-      Flags: 32 | (face.family === "cousine" ? 1 : 0) | (face.family === "tinos" || face.family === "caladea" ? 2 : 0) | (italic ? 64 : 0),
+      Flags: (symbolic ? 4 : 32) | (face.family === "cousine" ? 1 : 0) | (face.family === "tinos" || face.family === "caladea" ? 2 : 0) | (italic ? 64 : 0),
       FontBBox: [kit.bbox.minX, kit.bbox.minY, kit.bbox.maxX, kit.bbox.maxY].map((v) => Math.round(v * scale)),
       ItalicAngle: kit.italicAngle,
       Ascent: Math.round(kit.ascent * scale),
@@ -661,7 +735,11 @@ export async function fixForPdfA(doc: PDFDocument, level: PdfaLevel = "2b"): Pro
     font.set(N("LastChar"), PDFNumber.of(255));
     font.set(N("Widths"), ctx.obj(widths));
     font.set(N("FontDescriptor"), ctx.register(descriptor));
-    font.set(N("Encoding"), diffs.length ? ctx.obj({ Type: "Encoding", BaseEncoding: "WinAnsiEncoding", Differences: diffs }) : N("WinAnsiEncoding"));
+    if (symbolic) {
+      // A symbolic TrueType font has no Encoding; text keeps its meaning through ToUnicode.
+      font.delete(N("Encoding"));
+      if (!font.has(N("ToUnicode"))) font.set(N("ToUnicode"), ctx.register(ctx.flateStream(toUnicodeCMap(unicode))));
+    } else font.set(N("Encoding"), diffs.length ? ctx.obj({ Type: "Encoding", BaseEncoding: "WinAnsiEncoding", Differences: diffs }) : N("WinAnsiEncoding"));
     substituted.set(base, name);
   }
 
