@@ -2,10 +2,11 @@
 // dropdown, list, date, signature) are drawn on a blank page, given options
 // in the side panel and saved; the saved form is opened again, filled in,
 // saved, and opened a third time with its values in place. Every saved file
-// is read back with pdf.js, as a viewer would.
+// is read back with pdf.js, as a viewer would. Then a flat form's blanks are
+// detected, one suggestion is rejected and the rest accepted.
 //
 //   node tests/e2e/forms.mjs [chromium] [firefox] [webkit]   (see kit.mjs)
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,6 +20,24 @@ const blankPdf = join(downloads, "blank.pdf");
   const doc = await PDFDocument.create();
   doc.addPage([612, 792]);
   writeFileSync(blankPdf, await doc.save());
+}
+
+// A flat form: three blanks to write on and two boxes to tick.
+const flatPdf = join(downloads, "flat.pdf");
+{
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([612, 792]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const at = (s, x, y) => page.drawText(s, { x, y: 792 - y, size: 11, font });
+  at("Name: ______________________", 72, 100);
+  at("Email: _____________________", 72, 130);
+  at("Phone:", 72, 160);
+  page.drawLine({ start: { x: 115, y: 792 - 162 }, end: { x: 300, y: 792 - 162 }, thickness: 0.75 });
+  for (const [y, label] of [[200, "I agree to the terms"], [225, "Send me news"]]) {
+    page.drawRectangle({ x: 72, y: 792 - y, width: 11, height: 11, borderWidth: 0.75, borderColor: rgb(0, 0, 0) });
+    at(label, 90, y - 1);
+  }
+  writeFileSync(flatPdf, await doc.save());
 }
 
 // name → { type, value } for each field pdf.js finds, plus the list's choices
@@ -139,5 +158,28 @@ await suite(async ({ name, browser, test }) => {
     const again = await readBack(await save());
     if (again.when.value !== "18/10/2026" || again.planet.value !== "Mars") throw new Error(JSON.stringify(again));
     return "values kept";
+  });
+
+  await test("detected blanks are suggested, one rejected, the rest accepted", async () => {
+    await load(flatPdf);
+    const elsewhere = [];
+    const watch = (r) => { if (new URL(r.url()).origin !== new URL(page.url()).origin && !r.url().startsWith("blob:") && !r.url().startsWith("data:")) elsewhere.push(r.url()); };
+    page.on("request", watch);
+    await panel().getByRole("button", { name: t["ed.detectFields"], exact: true }).click();
+    await panel().getByText(t["ed.detectFound"].replace("{n}", "5")).waitFor({ timeout: 30000 });
+    page.off("request", watch);
+    if (elsewhere.length) throw new Error(`requests to other sites: ${elsewhere.slice(0, 3).join(" ")}`);
+    const shown = await page.locator("[data-suggestion]").count();
+    if (shown !== 5) throw new Error(`${shown} suggestions on the page`);
+    await page.getByRole("button", { name: t["ed.rejectSuggestion"].replace("{label}", "Send me news"), exact: true }).click();
+    await panel().getByRole("button", { name: t["ed.acceptAll"], exact: true }).click();
+    if (await page.locator("[data-suggestion]").count()) throw new Error("suggestions left after accepting all");
+    const items = await page.locator("[data-item]").count();
+    if (items !== 4) throw new Error(`${items} fields added`);
+    const got = await readBack(await save());
+    const names = Object.keys(got).sort().join();
+    if (names !== "Email,I_agree_to_the_terms,Name,Phone") throw new Error(`fields ${names}`);
+    if (got.I_agree_to_the_terms.type !== "checkbox" || got.Name.type !== "text") throw new Error(JSON.stringify(got));
+    return names;
   });
 });

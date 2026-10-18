@@ -4,13 +4,20 @@
 // how it looks on the page while it's edited, its settings in the side panel,
 // and the inputs that fill in fields a PDF already has.
 
-import { ChevronDown, PenLine } from "lucide-react";
+import { Check, ChevronDown, PenLine, WandSparkles, X } from "lucide-react";
 import { useI18n } from "../I18n";
 import type { EditorItem, FieldInfo } from "@/lib/pdf/edit";
+import type { Suggestion } from "@/lib/pdf/formsdetect";
 import { DATE_FORMATS, formatDate, hasOptions, parseDate, type DateFormat, type FieldKind } from "@/lib/pdf/formsmeta";
 
 type T = ReturnType<typeof useI18n>["t"];
 type Value = string | boolean | string[];
+
+// How each kind of field is announced.
+export const FIELD_LABELS: Record<FieldKind, string> = {
+  textField: "ed.addTextField", checkbox: "ed.addCheckbox", radio: "ed.addRadio", dropdown: "ed.addDropdown",
+  optionList: "ed.addList", dateField: "ed.addDate", signatureField: "ed.addSignatureField",
+};
 
 const NAMES: Record<FieldKind, string> = {
   textField: "field", checkbox: "check", radio: "choice", dropdown: "dropdown", optionList: "list", dateField: "date", signatureField: "signature",
@@ -149,4 +156,48 @@ export function FieldInput({ field, value, onChange }: { field: FieldInfo; value
     default:
       return null;
   }
+}
+
+// ── Detected fields
+
+// Detection in the side panel: the button, what it found, and accept or reject all.
+export function DetectPanel({ state, left, onDetect, onAcceptAll, onRejectAll }: {
+  state: null | "busy" | number; left: number;
+  onDetect: () => void; onAcceptAll: () => void; onRejectAll: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="space-y-2">
+      <button className="btn btn-quiet w-full justify-start" disabled={state === "busy"} onClick={onDetect}>
+        <WandSparkles size={18} /> {t("ed.detectFields")}
+      </button>
+      <p className="text-[13px] text-muted" aria-live="polite">
+        {state === "busy" ? t("ed.detecting") : state === 0 ? t("ed.detectNone") : typeof state === "number" ? t("ed.detectFound", { n: state }) : t("ed.detectHint")}
+      </p>
+      {left > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[13px] text-ink-2">{t("ed.suggestionsLeft", { n: left })}</span>
+          <button className="btn btn-quiet btn-sm" onClick={onAcceptAll}><Check size={15} /> {t("ed.acceptAll")}</button>
+          <button className="btn btn-quiet btn-sm" onClick={onRejectAll}><X size={15} /> {t("ed.rejectAll")}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// A suggested field on the page, with buttons to accept or reject it.
+export function SuggestionBox({ s, onAccept, onReject }: { s: Suggestion; onAccept: () => void; onReject: () => void }) {
+  const { t } = useI18n();
+  const label = s.label || t(FIELD_LABELS[s.kind]);
+  const stop = (e: React.PointerEvent) => e.stopPropagation();
+  return (
+    <div data-suggestion={s.kind} className="absolute rounded-sm border border-dashed border-[#d97706] bg-[#f59e0b]/15"
+      style={{ left: `${s.x * 100}%`, top: `${s.y * 100}%`, width: `${s.w * 100}%`, height: `${s.h * 100}%` }} onPointerDown={stop}>
+      <span className="absolute bottom-full left-0 mb-0.5 flex items-center gap-0.5 whitespace-nowrap rounded bg-[#fffbeb] px-1 text-[10px] leading-4 text-[#92400e] shadow-sm">
+        {s.kind !== "checkbox" && <span className="max-w-[12rem] truncate pe-0.5">{label}</span>}
+        <button className="grid h-4 w-4 place-items-center rounded hover:bg-[#fde68a]" aria-label={t("ed.acceptSuggestion", { label })} title={t("ed.acceptSuggestion", { label })} onClick={onAccept}><Check size={12} /></button>
+        <button className="grid h-4 w-4 place-items-center rounded hover:bg-[#fde68a]" aria-label={t("ed.rejectSuggestion", { label })} title={t("ed.rejectSuggestion", { label })} onClick={onReject}><X size={12} /></button>
+      </span>
+    </div>
+  );
 }

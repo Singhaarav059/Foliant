@@ -59,6 +59,7 @@
     "test:html-site": "node tests/html-site.mjs",
     "test:e2e:summarize": "node tests/e2e/summarize.mjs",
     "test:forms": "node tests/forms.mjs",
+    "test:formsdetect": "node tests/formsdetect.mjs",
     "test:e2e:forms": "node tests/e2e/forms.mjs"
   },
   "dependencies": {

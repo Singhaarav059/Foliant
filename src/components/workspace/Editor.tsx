@@ -8,7 +8,8 @@ import {
 } from "lucide-react";
 import { useI18n } from "../I18n";
 import { SignaturePad, type SignatureImage } from "./SignaturePad";
-import { FieldInput, FieldPreview, FieldSettings, fieldShape, fieldSize, newField } from "./FormFields";
+import { DetectPanel, FIELD_LABELS, FieldInput, FieldPreview, FieldSettings, SuggestionBox, fieldShape, fieldSize, newField } from "./FormFields";
+import type { Suggestion } from "@/lib/pdf/formsdetect";
 import { thumbUrl, pageSizes, docFor } from "@/lib/pdf/thumbs";
 import type { EditorItem, FieldInfo, FracRect } from "@/lib/pdf/edit";
 import { parseRanges, type Output, type Progress } from "@/lib/pdf/common";
@@ -28,8 +29,7 @@ const PRESET_NAMES = ["emails", "phones", "numbers"] as const;
 // How an item on the page is announced.
 const ITEM_LABELS: Record<EditorItem["kind"], string> = {
   text: "ed.text", image: "ed.image", rect: "ed.rect", ellipse: "ed.ellipse", line: "ed.line", path: "ed.draw",
-  highlight: "ed.highlight", whiteout: "ed.whiteout", textField: "ed.addTextField", checkbox: "ed.addCheckbox",
-  radio: "ed.addRadio", dropdown: "ed.addDropdown", optionList: "ed.addList", dateField: "ed.addDate", signatureField: "ed.addSignatureField",
+  highlight: "ed.highlight", whiteout: "ed.whiteout", ...FIELD_LABELS,
 };
 // Pages a signature can be copied to.
 const PLACEMENTS = ["all", "allButLast", "last", "custom"] as const;
@@ -121,6 +121,9 @@ export function Editor({
   const [pendingImage, setPendingImage] = useState<SignatureImage | null>(null);
   const [fields, setFields] = useState<FieldInfo[]>([]);
   const [values, setValues] = useState<Record<string, string | boolean | string[]>>({});
+  // Fields found on a flat form, waiting to be accepted or rejected.
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [detected, setDetected] = useState<null | "busy" | number>(null);
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<number | null>(null);
   const [matchCase, setMatchCase] = useState(false);
@@ -399,6 +402,28 @@ export function Editor({
     setFound(new Set(hits.map((h) => h.hit)).size);
   };
 
+  // ── Forms: suggest fields for the blanks of a flat form.
+  const detectFields = async () => {
+    setDetected("busy");
+    try {
+      const [{ detectDocument }, doc] = await Promise.all([import("@/lib/pdf/formsdetect"), docFor(file)]);
+      // Skip blanks that already have a field added here.
+      const taken = (s: Suggestion) => items.value.some((i) => i.page === s.page && isFieldKind(i.kind) &&
+        s.x + s.w / 2 > i.x && s.x + s.w / 2 < i.x + i.w && s.y + s.h / 2 > i.y && s.y + s.h / 2 < i.y + i.h);
+      const found = (await detectDocument(doc)).filter((s) => !taken(s));
+      setSuggestions(found);
+      setDetected(found.length);
+      if (found.length && !found.some((s) => s.page === page)) setPage(found[0].page);
+    } catch {
+      setDetected(0);
+    }
+  };
+  const acceptSuggestions = async (list: Suggestion[]) => {
+    const { toItems } = await import("@/lib/pdf/formsdetect");
+    items.set((l) => [...l, ...toItems(list).map((i) => ({ ...i, id: uid() }))]);
+    setSuggestions((s) => s.filter((x) => !list.includes(x)));
+  };
+
   // ── Crop: trim to the inked area of the current page.
   const autoCrop = async () => {
     const doc = await docFor(file);
@@ -551,6 +576,11 @@ export function Editor({
                     value={String(values[f.name] ?? "")} onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))} aria-label={f.name} />
                 ) : null}
               </label>
+            ))}
+
+            {/* Suggested fields */}
+            {suggestions.filter((s) => s.page === page).map((s) => (
+              <SuggestionBox key={s.id} s={s} onAccept={() => void acceptSuggestions([s])} onReject={() => setSuggestions((l) => l.filter((x) => x !== s))} />
             ))}
 
             {/* Redaction marks */}
@@ -742,6 +772,11 @@ export function Editor({
               <button className="btn btn-quiet btn-sm" onClick={() => setCrops(new Map())}>{t("ed.cropReset")}</button>
             </div>
           </div>
+        )}
+
+        {toolId === "forms" && (
+          <DetectPanel state={detected} left={suggestions.length} onDetect={() => void detectFields()}
+            onAcceptAll={() => void acceptSuggestions(suggestions)} onRejectAll={() => setSuggestions([])} />
         )}
 
         {toolId === "forms" && (

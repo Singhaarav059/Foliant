@@ -48,10 +48,12 @@ const asMatrix = (a: unknown): M => {
   return [src[0], src[1], src[2], src[3], src[4], src[5]].map(Number) as M;
 };
 
-export async function pageEdges(page: PDFPageProxy, rotation?: number): Promise<Edges> {
-  const { OPS } = await import("pdfjs-dist");
+// `content` leaves out annotation appearances (form fields, stamps), whose
+// placement on the page isn't followed here.
+export async function pageEdges(page: PDFPageProxy, rotation?: number, o: { content?: boolean } = {}): Promise<Edges> {
+  const { OPS, AnnotationMode } = await import("pdfjs-dist");
   const viewport = page.getViewport({ scale: 1, rotation });
-  const list = await page.getOperatorList();
+  const list = await page.getOperatorList(o.content ? { annotationMode: AnnotationMode.DISABLE } : undefined);
   const h: Edge[] = [];
   const v: Edge[] = [];
   const images: Rect[] = [];
@@ -224,6 +226,9 @@ function groupCells(rects: Rect[]): Rect[][] {
   rects.forEach((r, i) => groups.set(find(i), [...(groups.get(find(i)) ?? []), r]));
   return [...groups.values()];
 }
+
+// Every ruled cell on the page, grouped by the table (or lone box) it belongs to.
+export const ruledCells = (raw: Edges) => groupCells(cells(crossings(mergeEdges(raw))));
 
 // ── Text into cells
 
