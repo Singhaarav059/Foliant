@@ -95,6 +95,12 @@ export const OCR_LANGS = [
   "vie", "yid", "yor",
 ];
 
+// PDF to Word, Excel, PowerPoint and Markdown read scanned pages with OCR first (ocr.ts autoOcr).
+const AUTO_OCR: OptionDef[] = [
+  { key: "ocr", type: "select", choices: ["auto", "off"], default: "auto" },
+  { key: "ocrLang", type: "multi", choices: OCR_LANGS, max: MAX_OCR_LANGS, default: "eng", when: { key: "ocr", is: ["auto"] } },
+];
+
 const ALL: Tool[] = [
   // ── Organise
   {
@@ -201,17 +207,17 @@ const ALL: Tool[] = [
   {
     id: "pdfToWord", slug: "pdf-to-word", category: "convertFrom", icon: "FileText", mode: "files",
     runtime: "browser", accept: PDF, multiple: true,
-    options: [{ key: "wordMode", type: "select", choices: ["editable", "exact"], default: "editable" }],
+    options: [{ key: "wordMode", type: "select", choices: ["editable", "exact"], default: "editable" }, ...AUTO_OCR],
   },
   {
     id: "pdfToPpt", slug: "pdf-to-powerpoint", category: "convertFrom", icon: "MonitorPlay", mode: "files",
     runtime: "browser", accept: PDF, multiple: true,
-    options: [{ key: "pptText", type: "toggle", default: true }],
+    options: [{ key: "pptText", type: "toggle", default: true }, ...AUTO_OCR],
   },
   {
     id: "pdfToExcel", slug: "pdf-to-excel", category: "convertFrom", icon: "Table", mode: "files",
     runtime: "browser", accept: PDF, multiple: true,
-    options: [{ key: "sheetPer", type: "select", choices: ["page", "document"], default: "page" }],
+    options: [{ key: "sheetPer", type: "select", choices: ["page", "document"], default: "page" }, ...AUTO_OCR],
   },
   {
     id: "pdfToPdfa", slug: "pdf-to-pdfa", category: "convertFrom", icon: "Archive", mode: "files",
@@ -224,7 +230,7 @@ const ALL: Tool[] = [
   {
     id: "pdfToMarkdown", slug: "pdf-to-markdown", category: "convertFrom", icon: "Hash", mode: "files",
     runtime: "browser", accept: PDF, multiple: true, isNew: true,
-    options: [{ key: "pageBreaks", type: "toggle", default: false }],
+    options: [{ key: "pageBreaks", type: "toggle", default: false }, ...AUTO_OCR],
   },
   // ── Edit
   {

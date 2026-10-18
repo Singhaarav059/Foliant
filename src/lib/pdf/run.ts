@@ -3,7 +3,7 @@
 import { LIGHT_OFFICE, type ToolId } from "../tools";
 import { baseName, type Output, type Progress } from "./common";
 import { forFile, PdfError, ServerError } from "./errors";
-import { STATIC } from "@/lib/mode";
+import { STATIC } from "../mode";
 
 type Opts = Record<string, unknown>;
 const s = (v: unknown) => String(v ?? "");
@@ -20,6 +20,18 @@ async function each(files: File[], progress: Progress | undefined, fn: (f: File,
     progress?.(i + 1, files.length);
   }
   return out;
+}
+
+// Auto-OCR for the conversions from PDF: scanned pages get a text layer
+// first (ocr.ts), so the conversion has their words; the result notes it.
+// Missing "ocr" (a job saved before it existed) counts as automatic.
+async function withOcr(f: File, o: Opts, p: Progress, convert: (f: File, p: Progress) => Promise<Output[]>) {
+  if (o.ocr === "off") return convert(f, p);
+  const { autoOcr } = await import("./ocr");
+  const scan = await autoOcr(f, { ocrLang: s(o.ocrLang) }, (d, t) => p(d / Math.max(1, t) / 2, 1));
+  if (!scan.pages) return convert(f, p);
+  const out = await convert(scan.file, (d, t) => p(0.5 + d / Math.max(1, t) / 2, 1));
+  return out.map((x) => ({ ...x, note: x.note ?? scan.note }));
 }
 
 export type Labels = { page: string; pageOf: string; nOf: string };
@@ -70,15 +82,15 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
     }
     case "pdfToWord": {
       const { pdfToWord } = await import("./convert");
-      return each(files, progress, (f, p) => pdfToWord(f, { wordMode: s(o.wordMode) }, p));
+      return each(files, progress, (f, p) => withOcr(f, o, p, (g, q) => pdfToWord(g, { wordMode: s(o.wordMode) }, q)));
     }
     case "pdfToPpt": {
       const { pdfToPpt } = await import("./convert");
-      return each(files, progress, (f, p) => pdfToPpt(f, { pptText: b(o.pptText) }, p));
+      return each(files, progress, (f, p) => withOcr(f, o, p, (g, q) => pdfToPpt(g, { pptText: b(o.pptText) }, q)));
     }
     case "pdfToExcel": {
       const { pdfToExcel } = await import("./convert");
-      return each(files, progress, (f, p) => pdfToExcel(f, { sheetPer: s(o.sheetPer) }, p));
+      return each(files, progress, (f, p) => withOcr(f, o, p, (g, q) => pdfToExcel(g, { sheetPer: s(o.sheetPer) }, q)));
     }
     case "pdfToPdfa": {
       const { pdfToPdfa } = await import("./convert");
@@ -86,7 +98,7 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
     }
     case "pdfToMarkdown": {
       const { pdfToMarkdown } = await import("./convert");
-      return each(files, progress, (f, p) => pdfToMarkdown(f, { pageBreaks: b(o.pageBreaks) }, p));
+      return each(files, progress, (f, p) => withOcr(f, o, p, (g, q) => pdfToMarkdown(g, { pageBreaks: b(o.pageBreaks) }, q)));
     }
     case "pageNumbers": {
       const { pageNumbers } = await import("./edit");
@@ -185,15 +197,18 @@ export async function prepare(id: ToolId): Promise<unknown> {
     case "scan":
       return import("./convert");
     case "pdfToJpg":
-    case "pdfToMarkdown":
     case "pdfToPdfa":
       return (await import("./convert")).prepare("pdf");
+    // With the auto-OCR code, which checks every file for scanned pages
+    // (Tesseract itself is still left to first use).
+    case "pdfToMarkdown":
+      return Promise.all([(await import("./convert")).prepare("pdf"), import("./ocr")]);
     case "pdfToWord":
-      return (await import("./convert")).prepare("word");
+      return Promise.all([(await import("./convert")).prepare("word"), import("./ocr")]);
     case "pdfToExcel":
-      return (await import("./convert")).prepare("excel");
+      return Promise.all([(await import("./convert")).prepare("excel"), import("./ocr")]);
     case "pdfToPpt":
-      return (await import("./convert")).prepare("ppt");
+      return Promise.all([(await import("./convert")).prepare("ppt"), import("./ocr")]);
     case "pageNumbers":
     case "watermark":
       return import("./edit");

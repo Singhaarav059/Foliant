@@ -141,6 +141,8 @@ jobs:
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:ocr-langs
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:auto-ocr
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:redact
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:office

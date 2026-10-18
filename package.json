@@ -34,6 +34,7 @@
     "test:compress": "node tests/compress.mjs",
     "test:ocr": "node tests/ocr.mjs",
     "test:ocr-langs": "node tests/ocr-langs.mjs",
+    "test:auto-ocr": "node tests/auto-ocr.mjs",
     "test:redact": "node tests/redact.mjs",
     "test:office": "node tests/office.mjs",
     "test:office-route": "node tests/office-route.mjs",

@@ -6,7 +6,7 @@
 
 import { PDFDocument, degrees } from "pdf-lib";
 import type { PageViewport } from "pdfjs-dist";
-import { baseName, bytesOf, closePdf, openPdf, pdfBlob, renderPage, type Output, type Progress } from "./common";
+import { baseName, bytesOf, closePdf, openPdf, pdfBlob, pdfjs, renderPage, type Output, type Progress } from "./common";
 import { VENDOR, VENDOR_VERSION } from "../vendor";
 import { addInvisibleText, type Word } from "./textlayer";
 import { PADDLE_LANGS, paddlePage } from "./paddle";
@@ -116,12 +116,30 @@ export function toWord(text: string, corners: [number, number][], viewport: Page
   return { text, x: ax, y: ay, width: Math.hypot(bx - ax, by - ay), height: Math.hypot(cx - ax, cy - ay), angle: Math.atan2(by - ay, bx - ax) };
 }
 
-export async function ocr(file: File, o: { ocrLang: string; dpi: string; ocrEngine?: string }, progress?: Progress): Promise<Output[]> {
-  const bytes = await bytesOf(file);
+type OcrOptions = { ocrLang: string; dpi: string; ocrEngine?: string };
+
+export async function ocr(file: File, o: OcrOptions, progress?: Progress): Promise<Output[]> {
+  const r = await textLayer(await bytesOf(file), o, false, progress);
+  return [{ name: `${baseName(file.name)}-ocr.pdf`, blob: pdfBlob(r.bytes), note: r.note }];
+}
+
+// For PDF to Word, Excel, PowerPoint and Markdown: scanned pages get the OCR
+// tool's invisible text layer first, so the conversion finds their words.
+// Only pages that are pictures of text are read: little or no text (as in
+// ocr()) and an image on them. A PDF without such pages comes back as it was,
+// and Tesseract isn't loaded. `note` says how the reading went.
+export async function autoOcr(file: File, o: { ocrLang: string }, progress?: Progress): Promise<{ file: File; pages: number; note?: string }> {
+  const r = await textLayer(await bytesOf(file), { ocrLang: o.ocrLang, dpi: "200" }, true, progress);
+  if (!r.pages) return { file, pages: 0 };
+  return { file: new File([r.bytes as BlobPart], file.name, { type: "application/pdf" }), pages: r.pages, note: r.note ?? "ocrUsed" };
+}
+
+const IMAGE_OPS = ["paintImageXObject", "paintInlineImageXObject", "paintImageXObjectRepeat", "paintInlineImageXObjectGroup", "paintImageMaskXObject"] as const;
+
+async function textLayer(bytes: Uint8Array, o: OcrOptions, scansOnly: boolean, progress?: Progress) {
   const src = await openPdf(bytes);
-  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
-  const pages = doc.getPages();
-  const scale = Number(o.dpi) / 72;
+  const { OPS } = await pdfjs();
+  const images = new Set<number>(IMAGE_OPS.map((k) => OPS[k]));
 
   // Pages that already carry real text don't need OCR.
   const todo: number[] = [];
@@ -129,8 +147,15 @@ export async function ocr(file: File, o: { ocrLang: string; dpi: string; ocrEngi
     const page = await src.getPage(i);
     const existing = await page.getTextContent();
     const chars = existing.items.reduce((s, it) => s + ("str" in it ? it.str.trim().length : 0), 0);
-    if (chars <= 40) todo.push(i);
+    if (chars <= 40 && (!scansOnly || (await page.getOperatorList()).fnArray.some((fn) => images.has(fn)))) todo.push(i);
   }
+  if (scansOnly && !todo.length) {
+    await closePdf(src);
+    return { bytes, pages: 0 };
+  }
+  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+  const pages = doc.getPages();
+  const scale = Number(o.dpi) / 72;
 
   // One worker per two cores, up to four: each holds its own copy of the language model.
   const cores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
@@ -170,5 +195,5 @@ export async function ocr(file: File, o: { ocrLang: string; dpi: string; ocrEngi
     await closePdf(src);
   }
   const note = recognised === 0 ? "ocrNone" : doubtfulPages ? "ocrDoubtful" : undefined;
-  return [{ name: `${baseName(file.name)}-ocr.pdf`, blob: pdfBlob(await doc.save({ useObjectStreams: true })), note }];
+  return { bytes: await doc.save({ useObjectStreams: true }), pages: todo.length, note };
 }

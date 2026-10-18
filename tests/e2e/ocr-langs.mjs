@@ -1,4 +1,4 @@
-// The OCR language picker in the static build: every language is listed by
+// The OCR language picker in the static build, in OCR and PDF to Word: every language is listed by
 // name, English and Hindi picked together read a page that mixes them, only
 // the picked languages' models are downloaded, and the choice is remembered.
 //
@@ -62,6 +62,20 @@ await suite(async ({ browser, test }) => {
     if (!disabled) throw new Error("a fourth language could be picked");
     await page.getByRole("button", { name: /Remove Marathi/ }).click();
     return (await checked()).join(" + ");
+  });
+
+  await test("PDF to Word reads a scan with OCR by itself, and says so", async () => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await open(page, "/en/pdf-to-word");
+    await pick(page, ["scanned.pdf"]);
+    await list().waitFor();
+    const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 240000 }), page.getByRole("button", { name: "Convert to Word", exact: true }).click()]);
+    const { default: JSZip } = await import("jszip");
+    const xml = await (await JSZip.loadAsync(readFileSync(await dl.path()))).file("word/document.xml").async("string");
+    const text = [...xml.matchAll(/<w:t(?: [^>]*)?>([^<]*)<\/w:t>/g)].map((m) => m[1]).join(" ");
+    if (!/4471/.test(text)) throw new Error(`text was "${text.slice(0, 60)}"`);
+    await page.getByText("Scanned pages were read with OCR").waitFor({ timeout: 10000 });
+    return `"${text.replace(/\s+/g, " ").trim()}"`;
   });
 
   await test("fits a phone screen", async () => {
