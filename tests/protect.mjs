@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { load, root, check, eq } from "./lib/load.mjs";
+import { corpus } from "./lib/corpus.mjs";
 
 const { protect, unlock } = await load("security");
 const results = { failed: 0 };
@@ -81,5 +82,20 @@ await test("Unlock opens what Protect made, with an option-like password", async
   const [out] = await unlock(file(bytes, "locked.pdf"), { password: "@Secure2024" });
   eq(await opens(await out.blob.arrayBuffer()), 3, "unlocked pages without a password");
 });
+
+// Damaged files every reader opens (P1-03): qpdf alone gives up on them.
+const fx = corpus(["garbage-prefix.pdf", "deep-tree.pdf", "truncated-tail.pdf", "startxref-garbage.pdf"]);
+for (const [name, pages] of [["garbage-prefix.pdf", 3], ["deep-tree.pdf", 1], ["truncated-tail.pdf", 3], ["startxref-garbage.pdf", 3]]) {
+  await test(`Protect and Unlock take ${name}, a damaged file readers open`, async () => {
+    const [out] = await protect(file(fx[name], name), { password: "pw", ...options });
+    const bytes = new Uint8Array(await out.blob.arrayBuffer());
+    eq(await opens(bytes), "PasswordException", "without a password");
+    eq(await opens(bytes, "pw"), pages, "pages with the password");
+    // The same damage on a protected file.
+    const junk = new Uint8Array([...new TextEncoder().encode("JUNK ".repeat(300)), ...bytes]);
+    const [open] = await unlock(file(junk, "locked.pdf"), { password: "pw" });
+    eq(await opens(await open.blob.arrayBuffer()), pages, "unlocked pages without a password");
+  });
+}
 
 process.exit(results.failed ? 1 : 0);

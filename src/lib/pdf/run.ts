@@ -177,7 +177,7 @@ export async function prepare(id: ToolId): Promise<unknown> {
     case "merge":
     case "split":
     case "rotate":
-      return import("./organize");
+      return (await import("./organize")).prepare();
     case "compress":
     case "repair":
       return (await import("./optimize")).prepare();

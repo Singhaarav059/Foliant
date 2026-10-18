@@ -4,7 +4,8 @@
 // (ocrprep.ts), and read by a pool of Tesseract workers in parallel; the words
 // go back onto the original page as invisible text, rotated to match the scan.
 
-import { PDFDocument, degrees } from "pdf-lib";
+import { degrees } from "pdf-lib";
+import { openForEdit, shownRotation } from "./open";
 import type { PageViewport } from "pdfjs-dist";
 import { baseName, bytesOf, closePdf, openPdf, pdfBlob, renderPage, type Output, type Progress } from "./common";
 import { VENDOR, VENDOR_VERSION } from "../vendor";
@@ -115,9 +116,9 @@ export function toWord(text: string, corners: [number, number][], viewport: Page
 }
 
 export async function ocr(file: File, o: { ocrLang: string; dpi: string; ocrEngine?: string }, progress?: Progress): Promise<Output[]> {
-  const bytes = await bytesOf(file);
+  // The file as readers see it, so the text goes onto the pages that were read.
+  const { bytes, doc } = await openForEdit(await bytesOf(file), file.name);
   const src = await openPdf(bytes);
-  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
   const pages = doc.getPages();
   const scale = Number(o.dpi) / 72;
 
@@ -157,7 +158,7 @@ export async function ocr(file: File, o: { ocrLang: string; dpi: string; ocrEngi
         if (doubtful) doubtfulPages++;
         addInvisibleText(doc, pages[i - 1], words.map((w) => toWord(w.text, w.corners, viewport)));
         // Scanned sideways or upside down: turn the page so it displays (and reads) upright.
-        if (turns && confidence >= 60) pages[i - 1].setRotation(degrees((pages[i - 1].getRotation().angle + turns * 90) % 360));
+        if (turns && confidence >= 60) pages[i - 1].setRotation(degrees((shownRotation(pages[i - 1]) + turns * 90) % 360));
         progress?.(++done, src.numPages);
       }
     }));
@@ -166,5 +167,5 @@ export async function ocr(file: File, o: { ocrLang: string; dpi: string; ocrEngi
     await closePdf(src);
   }
   const note = recognised === 0 ? "ocrNone" : doubtfulPages ? "ocrDoubtful" : undefined;
-  return [{ name: `${baseName(file.name)}-ocr.pdf`, blob: pdfBlob(await doc.save({ useObjectStreams: true })), note }];
+  return [{ name: `${baseName(file.name)}-ocr.pdf`, blob: pdfBlob(await doc.save({ useObjectStreams: true, addDefaultPage: false })), note }];
 }

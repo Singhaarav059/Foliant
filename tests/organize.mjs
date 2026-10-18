@@ -9,8 +9,9 @@ import {
   pushGraphicsState, popGraphicsState, concatTransformationMatrix, drawObject,
 } from "pdf-lib";
 import { load, openPdf, check, eq } from "./lib/load.mjs";
+import { corpus } from "./lib/corpus.mjs";
 
-const { split, buildFromPlan, extractSeparate, merge } = await load("organize");
+const { split, buildFromPlan, extractSeparate, merge, rotateAll } = await load("organize");
 const results = { failed: 0 };
 const test = check(results);
 const CHAPTERS = 60;
@@ -248,6 +249,105 @@ await test("outputs open in pdf.js with working links", async () => {
   eq(annots.length, 1, "links on the contents page");
   eq(await pdf.getPageIndex(annots[0].dest[0]), 1, "link target page");
   await pdf.loadingTask.destroy();
+});
+
+// ── Loading (P1-03): every tool opens a file the way readers do.
+const fx = corpus(["enc-aes256-owner.pdf", "enc-rc4-40-owner.pdf", "enc-aes256-user.pdf", "dup-ids.pdf", "odd-boxes.pdf", "zero-pages.pdf", "cyclic-tree.pdf", "base.pdf"]);
+const { compress } = await load("optimize");
+const { pdfToPdfa, pdfToExcel } = await load("convert");
+const { redact } = await load("security");
+const fxFile = (name, as = name) => file(fx[name], as);
+// pdf.js's page count and text of an output.
+async function readable(blob) {
+  const pdf = await openPdf(new Uint8Array(await blob.arrayBuffer()));
+  let text = "";
+  for (let i = 1; i <= pdf.numPages; i++) text += (await (await pdf.getPage(i)).getTextContent()).items.map((t) => t.str).join(" ") + "\n";
+  const pages = pdf.numPages;
+  await pdf.loadingTask.destroy();
+  return { pages, text };
+}
+const RUNS = {
+  compress: async (f) => (await compress(f, { level: "recommended" }))[0].blob,
+  merge: async (f) => (await merge([f], { bookmarks: false }))[0].blob,
+  rotate: async (f) => (await rotateAll(f, 90))[0].blob,
+  pdfa: async (f) => (await pdfToPdfa(f, { pdfaDpi: "150", keepText: true }))[0].blob,
+  redact: async (f) => (await redact(f, [{ page: 2, rect: { x: 0, y: 0.9, w: 0.1, h: 0.1 } }], { redactDpi: "150" }))[0].blob,
+  split: async (f) => (await buildFromPlan([f], [{ file: 0, page: 0, rotate: 0 }, { file: 0, page: 1, rotate: 0 }, { file: 0, page: 2, rotate: 0 }])),
+};
+for (const fixture of ["enc-aes256-owner.pdf", "enc-rc4-40-owner.pdf"]) {
+  for (const [tool, run] of Object.entries(RUNS)) {
+    await test(`${tool} opens ${fixture} (an owner password only) like any reader`, async () => {
+      const { pages, text } = await readable(await run(fxFile(fixture)));
+      eq(pages, 3, "pages");
+      eq(text.includes("ALPHA1"), true, "text ALPHA1");
+    });
+  }
+}
+await test("the result says when the owner password's restrictions were left behind", async () => {
+  eq((await rotateAll(fxFile("enc-aes256-owner.pdf"), 90))[0].note, "unrestricted", "note for an owner-password file");
+  eq((await merge([fxFile("base.pdf"), fxFile("enc-rc4-40-owner.pdf")], { bookmarks: false }))[0].note, "unrestricted", "note for a merge");
+  eq((await rotateAll(fxFile("base.pdf"), 90))[0].note, undefined, "no note for a plain file");
+});
+await test("a file that needs an open password is still refused, as encrypted", async () => {
+  let error;
+  try {
+    await rotateAll(fxFile("enc-aes256-user.pdf"), 90);
+  } catch (e) {
+    error = e;
+  }
+  eq(error?.code, "encrypted", "error code");
+});
+for (const [tool, run] of Object.entries(RUNS)) {
+  await test(`${tool} on duplicate object numbers shows what readers show`, async () => {
+    const { text } = await readable(await run(fxFile("dup-ids.pdf")).catch(async (e) => {
+      // Only three-page runs (redact marks page 3, organize keeps 3 pages); dup-ids has one.
+      if (tool === "redact" || tool === "split") return (tool === "redact" ? (await redact(fxFile("dup-ids.pdf"), [], { redactDpi: "150" }))[0].blob : buildFromPlan([fxFile("dup-ids.pdf")], [{ file: 0, page: 0, rotate: 0 }]));
+      throw e;
+    }));
+    eq(text.includes("XREFTEXT"), true, "XREFTEXT shown");
+    eq(text.includes("SHADOWTEXT"), false, "SHADOWTEXT shown");
+  });
+}
+await test("rotating pages with /Rotate 45 turns them from where readers show them", async () => {
+  const [out] = await rotateAll(fxFile("odd-boxes.pdf"), 90);
+  const pdf = await openPdf(new Uint8Array(await out.blob.arrayBuffer()));
+  const ref = await openPdf(fx["odd-boxes.pdf"].slice());
+  for (let i = 1; i <= ref.numPages; i++) eq((await pdf.getPage(i)).rotate, ((await ref.getPage(i)).rotate + 90) % 360, `page ${i} rotation`);
+  await pdf.loadingTask.destroy();
+  await ref.loadingTask.destroy();
+});
+await test("organize turns a /Rotate 45 page from where readers show it", async () => {
+  const doc = await PDFDocument.load(fx["odd-boxes.pdf"]);
+  const odd = doc.getPages().findIndex((p) => p.getRotation().angle % 90);
+  if (odd < 0) throw new Error("odd-boxes.pdf has no page with an odd /Rotate");
+  const { doc: out } = await open(await buildFromPlan([fxFile("odd-boxes.pdf")], [{ file: 0, page: odd, rotate: 90 }]));
+  eq(out.getPage(0).getRotation().angle, 90, "rotation");
+});
+for (const [label, run] of [["merge", (f) => merge([f, fxFile("base.pdf")], { bookmarks: true })], ["split", (f) => split(f, { splitMode: "every", every: 1, ranges: "", maxMb: 1, mergeRanges: false })], ["rotate", (f) => rotateAll(f, 90)], ["redact", (f) => redact(f, [], { redactDpi: "150" })], ["compress", (f) => compress(f, { level: "recommended" })]]) {
+  await test(`${label} refuses a file with no pages, as no_pages`, async () => {
+    let error;
+    try {
+      await run(fxFile("zero-pages.pdf"));
+    } catch (e) {
+      error = e;
+    }
+    eq(error?.code, "no_pages", "error code");
+  });
+}
+await test("a looped page tree is refused as damaged, not a stack overflow", async () => {
+  let error;
+  try {
+    await split(fxFile("cyclic-tree.pdf"), { splitMode: "every", every: 1, ranges: "", maxMb: 1, mergeRanges: false });
+  } catch (e) {
+    error = e;
+  }
+  eq(error?.code, "damaged", `error code (${error?.message})`);
+});
+await test("PDF to Excel, one sheet per document, takes any file name", async () => {
+  for (const name of ["Q1: report [final]?.pdf", "'quoted'.pdf", "History.pdf", "a/b\\c*d.pdf", `${"x".repeat(40)}].pdf`]) {
+    const [out] = await pdfToExcel(fxFile("base.pdf", name), { sheetPer: "document" });
+    eq(out.blob.size > 0 && /\.xlsx$/.test(out.name), true, `${name}: an xlsx`);
+  }
 });
 
 process.exit(results.failed ? 1 : 0);

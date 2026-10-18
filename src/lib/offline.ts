@@ -38,7 +38,8 @@ export async function warm(id: ToolId, code: () => Promise<unknown>) {
   await code().catch(() => {});
   if (pdf) await pdfjs().catch(() => {});
   // One at a time, so the page itself is never kept waiting.
-  for (const file of [...(pdf ? ["pdf.worker.min.mjs"] : []), ...(ENGINES[id] ?? [])]) {
+  // qpdf opens PDFs for editing (pdf/open.ts); without it they open as they are.
+  for (const file of new Set([...(pdf ? ["pdf.worker.min.mjs", "qpdf.wasm"] : []), ...(ENGINES[id] ?? [])])) {
     await fetch(`${VENDOR}${file}`).then((r) => r.arrayBuffer()).catch(() => {});
   }
   if (window.parent !== window) window.parent.postMessage(WARMED, location.origin);

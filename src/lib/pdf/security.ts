@@ -12,6 +12,7 @@ import { runsToWords } from "./convert";
 import { visualFrame, type FracRect } from "./edit";
 import { preparePdfium, redactInPlace, type Box } from "./pdfium";
 import { MAX_PASSWORD_BYTES, passwordTooLong } from "./password";
+import { openForEdit, rebuilt } from "./open";
 
 export class WrongPasswordError extends Error {
   code = "wrong_password";
@@ -33,6 +34,25 @@ export class ProtectUnverifiedError extends Error {
   }
 }
 
+// qpdf gives up on some damage every reader gets past (junk before the
+// header, a broken cross-reference stream, a page tree thousands of levels
+// deep): then it runs again on a copy pdf-lib rebuilt. A wrong password is
+// not damage.
+async function qpdfOrRebuilt(bytes: Uint8Array, args: Parameters<typeof runQpdf>[1]) {
+  try {
+    return await runQpdf(bytes, args);
+  } catch (e) {
+    if (e instanceof QpdfError && e.wrongPassword) throw e;
+    let copy: Uint8Array;
+    try {
+      copy = await rebuilt(bytes);
+    } catch {
+      throw e;
+    }
+    return runQpdf(copy, args);
+  }
+}
+
 function randomPassword() {
   return Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(36).padStart(2, "0")).join("");
 }
@@ -45,7 +65,7 @@ export async function protect(
   if (max !== null) throw new PasswordTooLongError(max);
   // A separate random owner password means the permissions can't be lifted with the open password.
   const owner = randomPassword();
-  const { output } = await runQpdf(await bytesOf(file), (i, out) => [
+  const { output } = await qpdfOrRebuilt(await bytesOf(file), (i, out) => [
     // --name=value, so a password like "-v" or "@notes" isn't read as an option or a file to include.
     "--encrypt", `--user-password=${o.password}`, `--owner-password=${owner}`, "--bits=256",
     `--print=${o.allowPrint ? "full" : "none"}`,
@@ -72,7 +92,7 @@ export async function unlock(file: File, o: { password: string }): Promise<Outpu
     if ((e as { name?: string }).name === "PasswordException") throw new WrongPasswordError(file.name);
   }
   try {
-    const { output } = await runQpdf(await bytesOf(file), (i, out) => [`--password=${o.password}`, "--decrypt", i, out]);
+    const { output } = await qpdfOrRebuilt(await bytesOf(file), (i, out) => [`--password=${o.password}`, "--decrypt", i, out]);
     return [{ name: `${baseName(file.name)}-unlocked.pdf`, blob: pdfBlob(output) }];
   } catch (e) {
     if (e instanceof QpdfError && e.wrongPassword) throw new WrongPasswordError(file.name);
@@ -324,10 +344,10 @@ export class RedactionLeakError extends Error {
 export async function redact(
   file: File, marks: { page: number; rect: FracRect }[], o: { redactDpi: string; terms?: Term[] }, progress?: Progress,
 ): Promise<Output[]> {
-  const bytes = await bytesOf(file);
+  // The file as readers see it (what the editor showed), decrypted when it has only an owner password.
+  const { bytes, doc: original } = await openForEdit(await bytesOf(file), file.name);
   const byPage = new Map<number, FracRect[]>();
   for (const m of marks) byPage.set(m.page, [...(byPage.get(m.page) ?? []), m.rect]);
-  const original = await PDFDocument.load(bytes, { updateMetadata: false });
   const boxes = new Map([...byPage].map(([i, rects]) => [i, userBoxes(original.getPage(i), rects)] as const));
 
   let pdfium: { bytes: Uint8Array; failed: number[] } | null = null;

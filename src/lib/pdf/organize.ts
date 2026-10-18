@@ -4,19 +4,24 @@ import {
   PDFDocument, PDFPage, PDFPageLeaf, PDFDict, PDFStream, PDFRef, PDFNull, degrees, PDFName, PDFArray, PDFHexString, PDFNumber, type PDFObject,
 } from "pdf-lib";
 import { baseName, bytesOf, parseRanges, pdfBlob, type Output, type Progress } from "./common";
-import { PdfError, toPdfError } from "./errors";
+import { PdfError } from "./errors";
+import { openForEdit, shownRotation } from "./open";
+import { prepareQpdf } from "./qpdf";
 
+// Opens a file as readers do (see open.ts). Throws a PdfError: encrypted
+// only when it needs an open password, damaged, not_pdf or no_pages.
 export async function loadPdf(file: Blob, name = "file.pdf") {
-  const bytes = await bytesOf(file);
-  let doc: PDFDocument;
-  try {
-    doc = await PDFDocument.load(bytes, { updateMetadata: false });
-  } catch (e) {
-    throw toPdfError(e, name, bytes.subarray(0, 1024));
-  }
-  if (!doc.getPageCount()) throw new PdfError("no_pages", name);
-  return doc;
+  return (await openForEdit(await bytesOf(file), name)).doc;
 }
+
+// The same, with a note for the outputs when the file's owner-password
+// restrictions were left behind.
+async function loadNoting(file: File) {
+  const { doc, decrypted } = await openForEdit(await bytesOf(file), file.name);
+  return { doc, note: (outputs: Output[]) => noted(outputs, decrypted) };
+}
+const noted = (outputs: Output[], decrypted: boolean) =>
+  decrypted && outputs[0] && !outputs[0].note ? [{ ...outputs[0], note: "unrestricted" }, ...outputs.slice(1)] : outputs;
 
 // The same as PdfError("encrypted"), for callers that throw it by name.
 export class EncryptedError extends PdfError {
@@ -26,7 +31,7 @@ export class EncryptedError extends PdfError {
 }
 
 async function save(doc: PDFDocument) {
-  return pdfBlob(await doc.save({ useObjectStreams: true }));
+  return pdfBlob(await doc.save({ useObjectStreams: true, addDefaultPage: false }));
 }
 
 const N = (n: string) => PDFName.of(n);
@@ -189,15 +194,18 @@ export function pageCopier(src: PDFDocument, dest: PDFDocument, keep: Iterable<n
 export async function merge(files: File[], opts: { bookmarks?: boolean }, progress?: Progress): Promise<Output[]> {
   const out = await PDFDocument.create();
   const starts: { title: string; page: number }[] = [];
+  let decrypted = false;
   for (let i = 0; i < files.length; i++) {
-    const src = await loadPdf(files[i], files[i].name);
+    const opened = await openForEdit(await bytesOf(files[i]), files[i].name);
+    const src = opened.doc;
+    decrypted ||= opened.decrypted;
     starts.push({ title: baseName(files[i].name), page: out.getPageCount() });
     const take = pageCopier(src, out, src.getPageIndices());
     for (const p of src.getPageIndices()) out.addPage(take(p));
     progress?.(i + 1, files.length);
   }
   if (opts.bookmarks) addOutline(out, starts);
-  return [{ name: `${baseName(files[0].name)}-merged.pdf`, blob: await save(out) }];
+  return noted([{ name: `${baseName(files[0].name)}-merged.pdf`, blob: await save(out) }], decrypted);
 }
 
 // A flat outline: one bookmark per entry, pointing at its first page.
@@ -243,7 +251,7 @@ export async function split(
   opts: { splitMode: string; ranges: string; every: number; maxMb: number; mergeRanges: boolean },
   progress?: Progress,
 ): Promise<Output[]> {
-  const src = await loadPdf(file, file.name);
+  const { doc: src, note } = await loadNoting(file);
   const total = src.getPageCount();
   const stem = baseName(file.name);
   let groups: number[][];
@@ -272,7 +280,7 @@ export async function split(
   }
 
   if (opts.splitMode === "ranges" && opts.mergeRanges) {
-    return [{ name: `${stem}-pages.pdf`, blob: await save(await subset(src, groups.flat())) }];
+    return note([{ name: `${stem}-pages.pdf`, blob: await save(await subset(src, groups.flat())) }]);
   }
   const outputs: Output[] = [];
   for (let g = 0; g < groups.length; g++) {
@@ -281,7 +289,7 @@ export async function split(
     outputs.push({ name: `${stem}-${label}.pdf`, blob: await save(await subset(src, pages)) });
     progress?.(g + 1, groups.length);
   }
-  return outputs;
+  return note(outputs);
 }
 
 // One entry per output page. `file` indexes the input list; `blank` inserts an empty page.
@@ -299,7 +307,7 @@ export async function buildFromPlan(files: File[], plan: PagePlan): Promise<Blob
       continue;
     }
     const copied = takers[item.file](item.page);
-    const base = copied.getRotation().angle;
+    const base = shownRotation(copied);
     copied.setRotation(degrees((((base + item.rotate) % 360) + 360) % 360));
     out.addPage(copied);
   }
@@ -307,16 +315,18 @@ export async function buildFromPlan(files: File[], plan: PagePlan): Promise<Blob
 }
 
 export async function extractSeparate(file: File, pages: number[]): Promise<Output[]> {
-  const src = await loadPdf(file, file.name);
+  const { doc: src, note } = await loadNoting(file);
   const stem = baseName(file.name);
   const outputs: Output[] = [];
   for (const p of pages) outputs.push({ name: `${stem}-page-${p + 1}.pdf`, blob: await save(await subset(src, [p])) });
-  return outputs;
+  return note(outputs);
 }
 
 export async function rotateAll(file: File, angle: number): Promise<Output[]> {
-  const doc = await loadPdf(file, file.name);
-  for (const p of doc.getPages()) p.setRotation(degrees((p.getRotation().angle + angle) % 360));
-  return [{ name: `${baseName(file.name)}-rotated.pdf`, blob: await save(doc) }];
+  const { doc, note } = await loadNoting(file);
+  for (const p of doc.getPages()) p.setRotation(degrees((((shownRotation(p) + angle) % 360) + 360) % 360));
+  return note([{ name: `${baseName(file.name)}-rotated.pdf`, blob: await save(doc) }]);
 }
 
+// Loads the code these tools run on, for src/lib/offline.ts.
+export const prepare = () => prepareQpdf();
