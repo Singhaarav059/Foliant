@@ -116,8 +116,8 @@ await test("a server's own message is kept, not made unknown", async () => {
 
 await test("the report link carries tool, code and browser only", async () => {
   const { reportUrl } = await load("errors");
-  const url = new URL(reportUrl("https://github.com/example/foliant/", { tool: "compress", code: "damaged", browser: "Firefox 140" }));
-  eq(url.pathname, "/example/foliant/issues/new", "path");
+  const url = new URL(reportUrl("https://github.com/example/nopload/", { tool: "compress", code: "damaged", browser: "Firefox 140" }));
+  eq(url.pathname, "/example/nopload/issues/new", "path");
   eq(url.searchParams.get("title"), "compress: damaged", "title");
   const body = url.searchParams.get("body");
   if (!body.includes("Tool: compress") || !body.includes("Error: damaged") || !body.includes("Browser: Firefox 140")) throw new Error(body);

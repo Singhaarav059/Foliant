@@ -145,7 +145,7 @@ console.log(`vendor: ${fontFiles} font slices`);
 {
   const pkg = pkgDir("@matbee/libreoffice-converter");
   const pkgVersion = JSON.parse(readFileSync(join(pkg, "package.json"), "utf8")).version;
-  const cache = join(process.cwd(), "node_modules", ".cache", "foliant-libreoffice", pkgVersion);
+  const cache = join(process.cwd(), "node_modules", ".cache", "nopload-libreoffice", pkgVersion);
   const loOut = join(out, "libreoffice");
   mkdirSync(loOut, { recursive: true });
   const PART = 20 * 1024 * 1024;

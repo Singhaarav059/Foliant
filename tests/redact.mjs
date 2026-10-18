@@ -352,20 +352,20 @@ await test("match case and whole words", async () => {
 
 await test("checked terms: only what the same search finds again counts as left", async () => {
   const { searchPattern } = await load("security");
-  // The output's own dates and producer hold the year and "Foliant".
+  // The output's own dates and producer hold the year and "Nopload".
   const year = String(new Date().getUTCFullYear());
   const d = await PDFDocument.create();
   const font = await d.embedFont(StandardFonts.Helvetica);
   const p = d.addPage([W, H]);
   p.drawText("Ann met Anna about the plan", { x: 20, y: 250, size: 12, font });
-  p.drawText(`Invoice of 17 Oct ${year}, printed by Foliant`, { x: 20, y: 220, size: 12, font });
+  p.drawText(`Invoice of 17 Oct ${year}, printed by Nopload`, { x: 20, y: 220, size: 12, font });
   p.drawText("Account 4471 closed", { x: 20, y: 190, size: 12, font });
   // Two table cells, far apart.
   p.drawText("44", { x: 20, y: 160, size: 12, font });
   p.drawText("71", { x: 120, y: 160, size: 12, font });
   const input = new Uint8Array(await d.save());
   const page = await textOf(await (await openPdf(input.slice())).getPage(1));
-  for (const [q, o, gone, kept] of [["ann", { wholeWord: true }, /\bAnn\b/, "Anna"], [year, {}, year, "Invoice of 17 Oct"], ["Foliant", {}, "Foliant", "printed by"], ["4471", {}, "4471", "44 71"]]) {
+  for (const [q, o, gone, kept] of [["ann", { wholeWord: true }, /\bAnn\b/, "Anna"], [year, {}, year, "Invoice of 17 Oct"], ["Nopload", {}, "Nopload", "printed by"], ["4471", {}, "4471", "44 71"]]) {
     const pattern = searchPattern(q, o);
     const hits = findMatches([page], pattern);
     const res = await redact(new File([input], "t.pdf"), hits, { redactDpi: "100", terms: termsOf(hits, pattern) }).then(([r]) => r, (e) => e);

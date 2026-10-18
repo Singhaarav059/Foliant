@@ -2,19 +2,19 @@
 // it (plus public/manifest.webmanifest, which is a plain file so static
 // builds can serve it, and the icons scripts/icons.mjs draws from the logo).
 export const BRAND = {
-  name: "Foliant",
+  name: "Nopload",
   tagline: "Every PDF tool, private by default",
 };
 
 // Site settings that differ per deployment. Set them as environment variables
 // when building (or in .env.production.local). Until they are set, pages show
-// the placeholders below, and a release build (FOLIANT_RELEASE=1) stops with
+// the placeholders below, and a release build (NOPLOAD_RELEASE=1) stops with
 // a list of what is missing, so placeholders never go live.
 const SETTINGS = {
   // The public address, without a trailing slash: canonical links, language
   // alternates, the sitemap and social cards use it. ".example" is reserved,
   // so the placeholder can never point at someone else's site.
-  NEXT_PUBLIC_SITE_URL: { value: process.env.NEXT_PUBLIC_SITE_URL, placeholder: "https://foliant.example" },
+  NEXT_PUBLIC_SITE_URL: { value: process.env.NEXT_PUBLIC_SITE_URL, placeholder: "https://nopload.example" },
   // Who runs the site, a person or a company, as the privacy policy and
   // terms name them.
   NEXT_PUBLIC_OPERATOR_NAME: { value: process.env.NEXT_PUBLIC_OPERATOR_NAME, placeholder: "[operator name]" },

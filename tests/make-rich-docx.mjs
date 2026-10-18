@@ -26,7 +26,7 @@ const footer = new Footer({ children: [new Paragraph({ alignment: AlignmentType.
 const body = "Revenue grew in every region this quarter, led by renewals in the north and new accounts in the west. ".repeat(6);
 
 const doc = new Document({
-  creator: "Foliant tests",
+  creator: "Nopload tests",
   numbering: { config: [{ reference: "steps", levels: [{ level: 0, format: LevelFormat.DECIMAL, text: "%1.", alignment: AlignmentType.START }] }] },
   sections: [
     {

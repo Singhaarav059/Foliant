@@ -139,13 +139,13 @@ else {
   await page.waitForFunction(() => window.resume);
   // Saves a job for `tool` as saveJob does, `age` ms old, and lists what's stored after peeking at `peek`.
   const after = (jobs, peek) => page.evaluate(async ({ jobs, peek }) => {
-    const db = await new Promise((ok) => { const r = indexedDB.open("foliant", 1); r.onupgradeneeded = () => r.result.createObjectStore("resume"); r.onsuccess = () => ok(r.result); });
+    const db = await new Promise((ok) => { const r = indexedDB.open("nopload", 1); r.onupgradeneeded = () => r.result.createObjectStore("resume"); r.onsuccess = () => ok(r.result); });
     const run = (mode, fn) => new Promise((ok) => { const t = db.transaction("resume", mode); const q = fn(t.objectStore("resume")); t.oncomplete = () => ok(q.result); });
     await run("readwrite", (s) => s.clear());
     for (const [tool, age] of jobs) await run("readwrite", (s) => s.put({ tool, files: [new File(["salary letter"], "salary.docx")], options: {}, at: Date.now() - age }, tool));
     db.close();
     const got = await window.resume.peekJob(peek);
-    const db2 = await new Promise((ok) => { const r = indexedDB.open("foliant", 1); r.onsuccess = () => ok(r.result); });
+    const db2 = await new Promise((ok) => { const r = indexedDB.open("nopload", 1); r.onsuccess = () => ok(r.result); });
     const keys = await new Promise((ok) => { const q = db2.transaction("resume").objectStore("resume").getAllKeys(); q.onsuccess = () => ok(q.result); });
     db2.close();
     return { got: got?.tool ?? null, kept: keys.join(",") };

@@ -4,7 +4,7 @@ name: Live site
 # a broken deploy shows up as a failed run (GitHub emails the owner) even
 # when nobody is pushing. Set the SITE_URL repository variable (Settings →
 # Secrets and variables → Actions → Variables), for example
-# https://foliant.example. Run it by hand from the Actions tab, optionally
+# https://nopload.example. Run it by hand from the Actions tab, optionally
 # against another address.
 #
 # The header checks expect a host that applies out/_headers (Cloudflare Pages,

@@ -4,7 +4,7 @@
 // cross-origin isolated): its files and options wait in IndexedDB, which keeps
 // File objects as they are, and the reloaded workspace picks them up.
 
-const DB = "foliant";
+const DB = "nopload";
 const STORE = "resume";
 // Older than this, it isn't the reload we started: drop it.
 const FRESH_MS = 5 * 60_000;

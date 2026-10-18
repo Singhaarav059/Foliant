@@ -1,6 +1,6 @@
 {
-  "name": "Foliant",
-  "short_name": "Foliant",
+  "name": "Nopload",
+  "short_name": "Nopload",
   "description": "Every PDF tool, private by default",
   "start_url": "/",
   "display": "standalone",

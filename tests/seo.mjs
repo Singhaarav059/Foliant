@@ -219,7 +219,7 @@ await test("favicon.ico, PNG icons and the manifest", () => {
 });
 
 await test("a release build without NEXT_PUBLIC_SITE_URL stops", () => {
-  const env = { ...process.env, FOLIANT_RELEASE: "1", FOLIANT_STATIC: "", NEXT_PUBLIC_SITE_URL: "" };
+  const env = { ...process.env, NOPLOAD_RELEASE: "1", NOPLOAD_STATIC: "", NEXT_PUBLIC_SITE_URL: "" };
   const run = spawnSync(join(root, "node_modules/.bin/next"), ["build"], { cwd: root, env, encoding: "utf8", timeout: 300000 });
   ok(run.status !== 0, "the release build finished with placeholders");
   ok(/NEXT_PUBLIC_SITE_URL is not set/.test(run.stdout + run.stderr), `unexpected failure: ${(run.stdout + run.stderr).slice(-300)}`);

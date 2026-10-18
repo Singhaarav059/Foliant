@@ -406,8 +406,8 @@ async function assemble(
   }
   if (view) await closePdf(view);
   // Nothing from the original's metadata survives.
-  out.setProducer("Foliant");
-  out.setCreator("Foliant");
+  out.setProducer("Nopload");
+  out.setCreator("Nopload");
   if (title) out.setTitle(title);
   out.catalog.delete(name("Metadata"));
   // qpdf rewrites the file from what it still refers to, so nothing left over

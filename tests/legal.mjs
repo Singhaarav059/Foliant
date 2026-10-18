@@ -205,7 +205,7 @@ await test("every page offers a contact and an issues link", () => {
 
 await test("a release build without an operator stops", () => {
   const env = {
-    ...process.env, FOLIANT_RELEASE: "1", FOLIANT_STATIC: "", NEXT_PUBLIC_SITE_URL: "https://pdf.example.org",
+    ...process.env, NOPLOAD_RELEASE: "1", NOPLOAD_STATIC: "", NEXT_PUBLIC_SITE_URL: "https://pdf.example.org",
     NEXT_PUBLIC_OPERATOR_NAME: "", NEXT_PUBLIC_OPERATOR_COUNTRY: "", NEXT_PUBLIC_OPERATOR_CONTACT: "",
   };
   const run = spawnSync(join(root, "node_modules/.bin/next"), ["build"], { cwd: root, env, encoding: "utf8", timeout: 300000 });

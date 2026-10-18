@@ -45,7 +45,7 @@ for (const [k, v] of Object.entries(known)) {
 const work = mkdtempSync(join(tmpdir(), "robust-"));
 const corpus = join(work, "corpus"), out = join(work, "out"), build = join(work, "build");
 mkdirSync(build);
-const env = { ...process.env, FOLIANT_ROBUST_BUILD: build };
+const env = { ...process.env, NOPLOAD_ROBUST_BUILD: build };
 // Also on an early exit (gen.mjs failing); ROBUST_KEEP keeps everything.
 if (!process.env.ROBUST_KEEP) process.on("exit", () => rmSync(work, { recursive: true, force: true }));
 

@@ -45,7 +45,7 @@ export async function warm(id: ToolId, code: () => Promise<unknown>) {
   else if (!visited) await inFrame(location.pathname);
 }
 
-const WARMED = "foliant:warmed";
+const WARMED = "nopload:warmed";
 
 // Loads a page in a hidden frame and waits for its own warm() to finish.
 function inFrame(path: string) {

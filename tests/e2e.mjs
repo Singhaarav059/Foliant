@@ -282,8 +282,8 @@ for (const name of engines) {
     if (state !== "activated") throw new Error(state);
     // A new vendor version must mean a new worker and cache, or new pages
     // could run against an old pdf.js worker or qpdf.wasm.
-    if (!script.endsWith(`?v=${vendor}`) || cachesNow.join() !== `foliant-${vendor}`) throw new Error(`${script} ${cachesNow.join()}`);
-    return `activated, cache foliant-${vendor}`;
+    if (!script.endsWith(`?v=${vendor}`) || cachesNow.join() !== `nopload-${vendor}`) throw new Error(`${script} ${cachesNow.join()}`);
+    return `activated, cache nopload-${vendor}`;
   });
 
   // Firefox has no mobile emulation.

@@ -4,7 +4,7 @@
 // pdf.js uses in Node), toBlob, createImageBitmap, FileReader, location, and
 // fetch of /vendor paths, which are read from public/vendor on disk.
 //
-// run.mjs passes one build folder to every case in FOLIANT_ROBUST_BUILD, so
+// run.mjs passes one build folder to every case in NOPLOAD_ROBUST_BUILD, so
 // only the first process (the fixture generator) runs tsc.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -20,9 +20,9 @@ export const require = createRequire(join(ROOT, "package.json"));
 const vendorSrc = readFileSync(join(ROOT, "src/lib/vendor.ts"), "utf8");
 export const vendorDir = join(ROOT, "public", vendorSrc.match(/VENDOR = "([^"]+)"/)[1]) + "/";
 
-const OUT = process.env.FOLIANT_ROBUST_BUILD ?? mkdtempSync(join(tmpdir(), "robust-build-"));
+const OUT = process.env.NOPLOAD_ROBUST_BUILD ?? mkdtempSync(join(tmpdir(), "robust-build-"));
 // A build of its own (gen.mjs or oracles.mjs run by hand) goes with the process.
-if (!process.env.FOLIANT_ROBUST_BUILD) process.on("exit", () => rmSync(OUT, { recursive: true, force: true }));
+if (!process.env.NOPLOAD_ROBUST_BUILD) process.on("exit", () => rmSync(OUT, { recursive: true, force: true }));
 if (!existsSync(join(OUT, "hooks.mjs"))) {
   execFileSync(join(ROOT, "node_modules/.bin/tsc"), [
     "--outDir", OUT, "--module", "esnext", "--target", "es2022", "--moduleResolution", "bundler",

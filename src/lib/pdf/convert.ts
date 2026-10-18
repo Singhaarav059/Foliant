@@ -251,7 +251,7 @@ export async function pdfToExcel(file: File, o: { sheetPer: string }, progress?:
   const layouts = await documentLayout(doc, (i) => progress?.(i, doc.numPages));
   await closePdf(doc);
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Foliant";
+  wb.creator = "Nopload";
   const thin = { style: "thin" as const };
   const write = (ws: import("exceljs").Worksheet, layout: Layout) => {
     const widths: number[] = [];
@@ -515,8 +515,8 @@ function makePdfA(doc: PDFDocument, title: string) {
   const info = doc.context.lookup(doc.context.trailerInfo.Info);
   if (info instanceof PDFDict) info.delete(PDFName.of("Trapped"));
   doc.setTitle(title);
-  doc.setProducer("Foliant");
-  doc.setCreator("Foliant");
+  doc.setProducer("Nopload");
+  doc.setCreator("Nopload");
   doc.setCreationDate(now);
   doc.setModificationDate(now);
   const xmp = `<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>
@@ -535,8 +535,8 @@ function makePdfA(doc: PDFDocument, title: string) {
    <xmp:CreateDate>${iso}</xmp:CreateDate>
    <xmp:ModifyDate>${iso}</xmp:ModifyDate>
    <xmp:MetadataDate>${iso}</xmp:MetadataDate>
-   <xmp:CreatorTool>Foliant</xmp:CreatorTool>
-   <pdf:Producer>Foliant</pdf:Producer>
+   <xmp:CreatorTool>Nopload</xmp:CreatorTool>
+   <pdf:Producer>Nopload</pdf:Producer>
    <pdfaid:part>2</pdfaid:part>
    <pdfaid:conformance>B</pdfaid:conformance>
   </rdf:Description>

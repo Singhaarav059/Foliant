@@ -28,7 +28,7 @@ export async function pdfToWord(file: File, o: { wordMode: string }, progress?: 
   await closePdf(pdf);
   const { Document, Packer, LevelFormat, AlignmentType } = docx;
   const blob = await Packer.toBlob(new Document({
-    creator: "Foliant",
+    creator: "Nopload",
     numbering: {
       config: [{
         reference: "ordered",

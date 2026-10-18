@@ -3,17 +3,17 @@ import securityHeaders from "./security-headers.json";
 import pkg from "./package.json";
 import { releaseGaps } from "./src/lib/brand";
 
-// FOLIANT_STATIC=1 builds the free hosted version: plain files in ./out that
+// NOPLOAD_STATIC=1 builds the free hosted version: plain files in ./out that
 // any static host can serve. Everything runs in the browser, and files named
 // *.server.ts(x) (API routes, the locale proxy, account and contact pages)
 // are left out; *.static.tsx pages (the language picker at "/", per-language
 // 404s) are only built here.
-const STATIC = process.env.FOLIANT_STATIC === "1";
+const STATIC = process.env.NOPLOAD_STATIC === "1";
 
-// FOLIANT_RELEASE=1 marks a build that goes live: it stops while any site
+// NOPLOAD_RELEASE=1 marks a build that goes live: it stops while any site
 // setting in src/lib/brand.ts is still a placeholder. Other builds, CI's
 // included, run with the placeholders.
-if (process.env.FOLIANT_RELEASE === "1" && releaseGaps().length) {
+if (process.env.NOPLOAD_RELEASE === "1" && releaseGaps().length) {
   throw new Error(`Release build stopped. Set these first (see src/lib/brand.ts):\n  - ${releaseGaps().join("\n  - ")}`);
 }
 

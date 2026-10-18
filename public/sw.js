@@ -12,7 +12,7 @@
 // pdf.js worker…) aren't precached: a tool page fetches its own once it has
 // loaded (src/lib/offline.ts), and this worker keeps them.
 const VERSION = new URL(location.href).searchParams.get("v") ?? "dev";
-const CACHE = `foliant-${VERSION}`;
+const CACHE = `nopload-${VERSION}`;
 const BUILD = "dev";
 
 async function manifest() {

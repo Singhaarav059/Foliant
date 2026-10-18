@@ -1,4 +1,4 @@
-# Foliant
+# Nopload
 
 A free, open-source PDF toolkit that works in your browser. Most tools never upload your files: the work happens on your own device, and the site keeps working offline once installed.
 
@@ -42,7 +42,7 @@ Open http://localhost:3000. `npm install` also copies everything the browser loa
 ## Deploying the static build
 
 ```bash
-FOLIANT_RELEASE=1 npm run build:static
+NOPLOAD_RELEASE=1 npm run build:static
 ```
 
 This writes the site to `out/`, including a `_headers` file for security and caching headers, a `.nojekyll` file for GitHub Pages, `sitemap.xml`, `robots.txt` and a social card per tool in `out/og/`. The build fails if `out/` has more than 18,000 files or any file over 24 MiB, so it always fits Cloudflare Pages' free plan.
@@ -57,18 +57,18 @@ Before going live, set where the site lives and who runs it when building (in th
 | `NEXT_PUBLIC_OPERATOR_CONTACT` | An email address or an `https://` page. The privacy policy, terms, About page and footer link to it. |
 | `NEXT_PUBLIC_REPO_URL` | Optional. The source code, for the "Source code" and "Report a problem" (GitHub issues) links. Defaults to `repository` in `package.json`. |
 
-Until it is set, pages use the placeholder in `src/lib/brand.ts`. `FOLIANT_RELEASE=1` marks the build for the real deployment: it then stops if any of these settings is missing, so placeholders can't go live. Leave it out for local and CI builds, which run with the placeholders.
+Until it is set, pages use the placeholder in `src/lib/brand.ts`. `NOPLOAD_RELEASE=1` marks the build for the real deployment: it then stops if any of these settings is missing, so placeholders can't go live. Leave it out for local and CI builds, which run with the placeholders.
 
 The PNG and ICO icons in `public/` are drawn from `public/icon.svg` and `public/icon-maskable.svg`; run `node scripts/icons.mjs` after changing either.
 
-**Cloudflare Pages (recommended):** build command `FOLIANT_RELEASE=1 npm run build:static`, output directory `out`, with the settings above as the project's environment variables. It reads `_headers`, so pages are cross-origin isolated from the first visit (high-fidelity Office conversion works straight away), hashed assets are cached for a year, and missing pages get the right language's 404 page. The free plan has unlimited bandwidth.
+**Cloudflare Pages (recommended):** build command `NOPLOAD_RELEASE=1 npm run build:static`, output directory `out`, with the settings above as the project's environment variables. It reads `_headers`, so pages are cross-origin isolated from the first visit (high-fidelity Office conversion works straight away), hashed assets are cached for a year, and missing pages get the right language's 404 page. The free plan has unlimited bandwidth.
 
 Other hosts work with limits (upload `out/` from a release build, as above):
 
 - **GitHub Pages** ignores `_headers`: there's no long-term caching, and high-fidelity Office conversion needs a second page load (the service worker adds the isolation headers). Deploy with a GitHub Actions workflow (`actions/upload-pages-artifact`); `.nojekyll` keeps `_next/` if you push `out/` to a branch instead. Sites are limited to 1 GB and a soft 100 GB of traffic a month.
 - **Netlify** reads `_headers`, but its free plan is credit-based (300 credits a month at 20 per GB, about 15 GB of traffic) and pauses the site when they run out.
 
-The site must be served from the root of a domain (for example `foliant.example` or `username.github.io`), not from a sub-path.
+The site must be served from the root of a domain (for example `nopload.example` or `username.github.io`), not from a sub-path.
 
 ### Keeping an eye on the live site
 
@@ -79,11 +79,11 @@ Dependabot (`.github/dependabot.yml`) opens one pull request a month to update t
 ## Running the server build
 
 ```bash
-FOLIANT_RELEASE=1 npm run build
+NOPLOAD_RELEASE=1 npm run build
 npm start
 ```
 
-The site settings above apply here too, and `FOLIANT_RELEASE=1` checks them the same way.
+The site settings above apply here too, and `NOPLOAD_RELEASE=1` checks them the same way.
 
 | Variable | What it does |
 |---|---|
@@ -157,4 +157,4 @@ Building in a git worktree whose `node_modules` is a link into another checkout 
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE). The libraries Foliant uses keep their own licences: `scripts/vendor.mjs` collects their licence texts into `public/vendor/licenses/<hash>/`, and the site lists them at `/{lang}/licenses`, including where to get LibreOffice's source code (MPL-2.0).
+MIT. See [LICENSE](LICENSE). The libraries Nopload uses keep their own licences: `scripts/vendor.mjs` collects their licence texts into `public/vendor/licenses/<hash>/`, and the site lists them at `/{lang}/licenses`, including where to get LibreOffice's source code (MPL-2.0).

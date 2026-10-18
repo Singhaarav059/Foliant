@@ -60,7 +60,7 @@ export async function officeEnv(reloaded: boolean): Promise<OfficeEnv> {
 }
 
 // The 79 MB download is asked about once; after that it's just how the tool works.
-const CONSENT = "foliant.officeDownload";
+const CONSENT = "nopload.officeDownload";
 
 export function officeConsented() {
   try {

@@ -13,7 +13,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "build:static": "FOLIANT_STATIC=1 next build && node scripts/static-extras.mjs",
+    "build:static": "NOPLOAD_STATIC=1 next build && node scripts/static-extras.mjs",
     "start": "next start",
     "lint": "eslint",
     "postinstall": "node scripts/vendor.mjs",
