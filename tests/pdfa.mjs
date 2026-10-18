@@ -411,6 +411,23 @@ await test("resources named AF, EF or RF are not files: kept at every level", as
   }
 });
 
+await test("PDF/A-1b: a rendered page draws its annotations even when they weren't printable", async () => {
+  const { renderPage } = await load("common");
+  const d = await PDFDocument.create();
+  const ctx = d.context;
+  const pg = d.addPage([200, 200]);
+  const ap = ctx.register(ctx.stream("1 0 0 rg 0 0 100 100 re f", { Type: "XObject", Subtype: "Form", BBox: [0, 0, 100, 100] }));
+  // A Polygon (newer than PDF 1.4) without the Print flag: 1b renders the page.
+  const a = ctx.register(ctx.obj({ Type: "Annot", Subtype: "Polygon", Rect: [50, 50, 150, 150], Vertices: [50, 50, 150, 50, 100, 150], F: 0, AP: { N: ap } }));
+  pg.node.set(PDFName.of("Annots"), ctx.obj([a]));
+  const bytes = await d.save();
+  for (const lvl of ["2b", "1b"]) {
+    const pdf = await openPdf((await outputOf(bytes, lvl)).bytes);
+    const px = (await renderPage(await pdf.getPage(1), 1)).getContext("2d").getImageData(100, 100, 1, 1).data;
+    eq(px[0] > 200 && px[1] < 60 && px[2] < 60, true, `${lvl}: annotation drawn (centre pixel ${[...px].slice(0, 3)})`);
+  }
+});
+
 await test("render-options preflight: one file at a time, stops at the first that needs rendering, skips huge files", async () => {
   const { pdfaPreflight, PDFA_PREFLIGHT_MAX } = await load("pdfa");
   const reads = [];

@@ -459,13 +459,13 @@ function blobToDataUrl(blob: Blob) {
 // standard forbids. Only pages it can't fix are rendered as images, with their
 // text kept as an invisible searchable layer.
 export async function pdfToPdfa(file: File, o: { pdfaDpi: string; keepText: boolean; pdfaLevel?: string }, progress?: Progress): Promise<Output[]> {
-  const bytes = await bytesOf(file);
   const doc = await loadPdf(file, file.name);
   const { fixForPdfA, pdfaVersion, PDFA_LEVELS } = await import("./pdfa");
   const asked = PDFA_LEVELS.find((l) => l === o.pdfaLevel) ?? "2b";
   const { raster, level } = await fixForPdfA(doc, asked);
   if (raster.size) {
-    const src = await openPdf(bytes);
+    // Rendered as fixed: annotations the original hid or didn't print are drawn, as on the pages kept as vectors.
+    const src = await openPdf(await doc.save({ useObjectStreams: false }));
     const scale = Number(o.pdfaDpi) / 72;
     let done = 0;
     for (const i of [...raster].sort((a, b) => a - b)) {
