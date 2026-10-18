@@ -290,6 +290,9 @@ type Source = {
   pageAt: (index: number) => number | undefined;
   // The output page the file's own bookmark points at.
   first: number;
+  // Only some of its pages are kept, as by Extract: it brings no attached
+  // files, and a web link only under a bookmark of a kept page.
+  part?: boolean;
 };
 
 // `fileBookmarks`: one bookmark per source, its own bookmarks under it.
@@ -375,6 +378,7 @@ function carryAttachments(out: PDFDocument, sources: Source[]) {
   const files: [string, PDFObject][] = [];
   const names = new Set<string>();
   for (const s of sources) {
+    if (s.part) continue;
     const tree = s.doc.catalog.lookupMaybe(N("Names"), PDFDict)?.get(N("EmbeddedFiles"));
     for (const [key, value] of nameTree(s.doc, tree)) {
       const name = key.decodeText();
@@ -404,7 +408,9 @@ type OutlineItem = {
 };
 
 // A source's bookmarks, pointing at its pages' copies. One for a page that
-// was left out goes, unless bookmarks under it stay. Bookmarks nested deeper
+// was left out goes, unless bookmarks under it stay. One with another action
+// (a web link) stays when its nearest bookmark above with a page has that
+// page kept, or, in a whole document, has none. Bookmarks nested deeper
 // than MAX_OUTLINE_DEPTH are left out: reading and writing them recurses
 // once per level, and no reader's panel shows that many levels anyway.
 const MAX_OUTLINE_DEPTH = 256;
@@ -428,7 +434,8 @@ function outlineOf(s: Source): OutlineItem[] {
     return destOf(dests.get(key), depth + 1);
   };
   const seen = new Set<PDFDict>();
-  const walk = (first: PDFObject | undefined, depth = 0): OutlineItem[] => {
+  // `anchor`: whether the nearest bookmark above with a page has it kept.
+  const walk = (first: PDFObject | undefined, depth = 0, anchor?: boolean): OutlineItem[] => {
     const items: OutlineItem[] = [];
     if (depth >= MAX_OUTLINE_DEPTH) return items;
     for (let o = first && ctx.lookup(first); o instanceof PDFDict && !seen.has(o); o = ctx.lookup(o.get(N("Next")) ?? PDFNull)) {
@@ -437,9 +444,11 @@ function outlineOf(s: Source): OutlineItem[] {
       const goTo = action?.get(N("S")) === N("GoTo");
       const dest = destOf(o.get(N("Dest")) ?? (goTo ? action?.get(N("D")) : undefined));
       const target = dest?.get(0);
-      const page = target instanceof PDFRef && index.has(target) ? s.pageAt(index.get(target)!) : undefined;
-      const children = walk(o.get(N("First")), depth + 1);
-      const other = !goTo && action && !o.has(N("Dest")) ? s.take.object(action) : undefined;
+      const onPage = target instanceof PDFRef && index.has(target);
+      const page = onPage ? s.pageAt(index.get(target)!) : undefined;
+      const children = walk(o.get(N("First")), depth + 1, onPage ? page !== undefined : anchor);
+      const linked = anchor ?? !s.part;
+      const other = linked && !goTo && action && !o.has(N("Dest")) ? s.take.object(action) : undefined;
       if (page === undefined && !other && !children.length) continue;
       const count = o.lookupMaybe(N("Count"), PDFNumber)?.asNumber() ?? 0;
       items.push({
@@ -549,7 +558,9 @@ export async function split(
 // One entry per output page. `file` indexes the input list; `blank` inserts an empty page.
 export type PagePlan = { file: number; page: number; rotate: number; blank?: boolean }[];
 
-export async function buildFromPlan(files: File[], plan: PagePlan): Promise<Blob> {
+// `extract`: the output is a new document of the chosen pages, as split
+// makes, not the files with pages moved or removed.
+export async function buildFromPlan(files: File[], plan: PagePlan, opts: { extract?: boolean } = {}): Promise<Blob> {
   // One at a time: each opening runs qpdf over a copy of the file.
   const docs: PDFDocument[] = [];
   for (const f of files) docs.push(await loadPdf(f, f.name));
@@ -570,7 +581,13 @@ export async function buildFromPlan(files: File[], plan: PagePlan): Promise<Blob
     copied.setRotation(degrees((((base + item.rotate) % 360) + 360) % 360));
     out.addPage(copied);
   }
-  carryOver(out, docs.map((doc, fi) => ({ doc, take: takers[fi], title: baseName(files[fi].name), first: 0, pageAt: (p) => at.get(`${fi}:${p}`) })), false);
+  // A file none of whose pages were kept brings nothing: what it carries
+  // was removed with its pages.
+  const kept = docs.flatMap((doc, fi): Source[] =>
+    plan.some((p) => p.file === fi && !p.blank)
+      ? [{ doc, take: takers[fi], title: baseName(files[fi].name), first: 0, pageAt: (p) => at.get(`${fi}:${p}`), part: !!opts.extract }]
+      : []);
+  carryOver(out, kept, false);
   return save(out);
 }
 

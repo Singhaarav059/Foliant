@@ -277,7 +277,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
         if (tool.id === "extract") {
           const chosen = pages.filter((p) => selected.has(p.key));
           if (options.separate) return org.extractSeparate(files[0], chosen.map((p) => p.page));
-          return [{ name: `${stem}-extracted.pdf`, blob: await org.buildFromPlan(files, chosen) }];
+          return [{ name: `${stem}-extracted.pdf`, blob: await org.buildFromPlan(files, chosen, { extract: true }) }];
         }
         const plan = tool.id === "remove" ? pages.filter((p) => !selected.has(p.key)) : pages.map((p) => ({ ...p, rotate: (p.rotate + turn) % 360 }));
         const suffix = tool.id === "remove" ? "trimmed" : tool.id === "rotate" ? "rotated" : "organised";

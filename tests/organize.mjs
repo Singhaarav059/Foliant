@@ -423,6 +423,7 @@ async function extras(blob) {
   const outline = await pdf.getOutline();
   const walk = async (items) => Promise.all((items ?? []).map(async (it) => ({
     title: it.title,
+    url: it.url ?? null,
     page: it.dest ? await pdf.getPageIndex((typeof it.dest === "string" ? await pdf.getDestination(it.dest) : it.dest)[0]).catch(() => null) : null,
     items: await walk(it.items),
   })));
@@ -479,6 +480,50 @@ await test("organize with several files keeps fields, attachments and bookmarks 
   eq(tree.map((t) => `${t.title}@${t.page}`).join(), "Chapter 1@2,Chapter 3@0", "bookmarks");
   eq(fields.length >= 5, true, `fields ${JSON.stringify(fields)}`);
   eq(attachments.length, 2, "attachments");
+});
+
+// Chapters 1-3, each on its page with a web link under it, a web link of
+// its own at the top level, and an attached file.
+async function linked() {
+  const doc = await PDFDocument.create();
+  const ctx = doc.context;
+  const pages = [0, 1, 2].map(() => doc.addPage([300, 300]));
+  await doc.attach(new TextEncoder().encode("a,b\n1,2\n"), "notes.csv", { mimeType: "text/csv" });
+  const root = ctx.nextRef();
+  const uri = (title, parent, url) => ctx.obj({ Title: PDFHexString.fromText(title), Parent: parent, A: { S: "URI", URI: PDFString.of(url) } });
+  const tops = [0, 1, 2, 3].map(() => ctx.nextRef());
+  tops.forEach((ref, i) => {
+    const near = { Parent: root, ...(i ? { Prev: tops[i - 1] } : {}), ...(i < 3 ? { Next: tops[i + 1] } : {}) };
+    if (i === 3) {
+      ctx.assign(ref, ctx.obj({ ...near, Title: PDFHexString.fromText("Site"), A: { S: "URI", URI: PDFString.of("https://example.com/site") } }));
+      return;
+    }
+    const kid = ctx.register(uri(`Link ${i + 1}`, ref, `https://example.com/${i + 1}`));
+    ctx.assign(ref, ctx.obj({ ...near, Title: PDFHexString.fromText(`Chapter ${i + 1}`), Dest: [pages[i].ref, PDFName.of("Fit")], First: kid, Last: kid, Count: PDFNumber.of(1) }));
+  });
+  ctx.assign(root, ctx.obj({ Type: "Outlines", First: tops[0], Last: tops[3], Count: PDFNumber.of(7) }));
+  doc.catalog.set(PDFName.of("Outlines"), root);
+  return doc.save();
+}
+const shape = (tree) => tree.map((t) => `${t.title}${t.items.length ? `[${shape(t.items)}]` : ""}`).join();
+await test("organize leaves out what a file whose pages were all removed carries", async () => {
+  const blob = await buildFromPlan([fxFile("base.pdf"), fxFile("attachments.pdf", "secret.pdf"), file(await linked(), "links.pdf")], [{ file: 0, page: 0, rotate: 0 }]);
+  const { tree, attachments, pages } = await extras(blob);
+  eq(pages, 1, "pages");
+  eq(attachments.length, 0, `attachments ${JSON.stringify(attachments)}`);
+  eq(shape(tree), "Chapter 1", "bookmarks");
+});
+await test("remove keeps the file's attachments and links, but not the links under a removed chapter", async () => {
+  const blob = await buildFromPlan([file(await linked(), "links.pdf")], [{ file: 0, page: 0, rotate: 0 }, { file: 0, page: 2, rotate: 0 }]);
+  const { tree, attachments } = await extras(blob);
+  eq(attachments.join(), "notes.csv", "attachments");
+  eq(shape(tree), "Chapter 1[Link 1],Chapter 3[Link 3],Site", "bookmarks");
+});
+await test("extract, like split, carries no attachments and only the links under a kept chapter", async () => {
+  const blob = await buildFromPlan([file(await linked(), "links.pdf")], [{ file: 0, page: 1, rotate: 0 }], { extract: true });
+  const { tree, attachments } = await extras(blob);
+  eq(attachments.length, 0, `attachments ${JSON.stringify(attachments)}`);
+  eq(shape(tree), "Chapter 2[Link 2]", "bookmarks");
 });
 
 // A Type 3 font with no /Resources of its own draws its glyphs with the
