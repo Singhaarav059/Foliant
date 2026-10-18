@@ -185,4 +185,60 @@ await test("borderless table becomes a Word table between paragraphs", async () 
   eq(xml.includes('w:ascii="Times New Roman"'), true, "font family");
 });
 
+// A filled form: the field values are drawn by the fields' appearance streams,
+// in their own coordinates, and belong where the fields are shown.
+async function form() {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const H = 842;
+  const page = doc.addPage([595, H]);
+  page.drawText("Name:", { x: 72, y: H - 80, size: 12, font });
+  page.drawText("City:", { x: 72, y: H - 130, size: 12, font });
+  const f = doc.getForm();
+  const name = f.createTextField("name");
+  name.setText("Ada Lovelace");
+  name.addToPage(page, { x: 150, y: H - 88, width: 200, height: 20, font });
+  const city = f.createTextField("city");
+  city.setText("London");
+  city.addToPage(page, { x: 150, y: H - 138, width: 200, height: 20, font });
+  // A stamp whose appearance is turned by its Matrix: it reads up the page,
+  // starting near the bottom-right corner of its Rect.
+  const ap = doc.context.stream("BT /F1 10 Tf 2 5 Td (APPROVED) Tj ET", {
+    Type: "XObject", Subtype: "Form", BBox: [0, 0, 100, 20], Matrix: [0, 1, -1, 0, 0, 0],
+    Resources: { Font: { F1: font.ref } },
+  });
+  const stamp = doc.context.obj({
+    Type: "Annot", Subtype: "Stamp", Rect: [400, 400, 420, 500], F: 4, AP: { N: doc.context.register(ap) },
+  });
+  page.node.set(PDFName.of("Annots"), doc.context.obj([...page.node.Annots().asArray(), doc.context.register(stamp)]));
+  return doc.save();
+}
+const formBytes = await form();
+
+await test("filled field values sit where the fields are shown", async () => {
+  const { pageText } = await load("text");
+  const pdf = await openPdf(formBytes.slice());
+  const { lines } = await pageText(await pdf.getPage(1));
+  const at = (s) => lines.find((l) => l.text.includes(s));
+  for (const [label, value] of [["Name:", "Ada Lovelace"], ["City:", "London"]]) {
+    const l = at(value);
+    eq(Boolean(l), true, `${value} found`);
+    eq(l.text.includes(label), true, `${value} on the ${label} line (got "${l.text}" at y=${l.y.toFixed(1)})`);
+    const x = l.runs.find((r) => r.text.includes(value)).x;
+    eq(x > 150 && x < 160, true, `${value} starts inside its field (x=${x.toFixed(1)})`);
+  }
+  // Glyph origin (2, 5) → Matrix (-5, 2) → onto the Rect (415, 402), y down 440.
+  const stamp = lines.flatMap((l) => l.runs).find((r) => r.text === "APPROVED");
+  eq(Boolean(stamp), true, "stamp found");
+  eq(stamp.turn?.angle, 270, "stamp reads up the page");
+  eq([Math.round(stamp.turn.x), Math.round(stamp.turn.y)].join(","), "415,440", "stamp starts in its Rect");
+});
+
+await test("Markdown keeps field values next to their labels", async () => {
+  const [md] = await pdfToMarkdown(new File([formBytes], "f.pdf"), { pageBreaks: false });
+  const text = await md.blob.text();
+  eq(/Name:\s+Ada Lovelace/.test(text), true, `name line in:\n${text}`);
+  eq(/City:\s+London/.test(text), true, "city line");
+});
+
 process.exit(results.failed ? 1 : 0);

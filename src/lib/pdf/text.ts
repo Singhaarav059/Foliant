@@ -111,7 +111,8 @@ async function placedGlyphs(page: PDFPageProxy): Promise<Placed[]> {
   const list = await page.getOperatorList();
   const out: Placed[] = [];
   type GS = { ctm: M; font: FontObj | null; size: number; cs: number; ws: number; hs: number; lead: number; rise: number; fill: string };
-  let gs: GS = { ctm: [1, 0, 0, 1, 0, 0], font: null, size: 0, cs: 0, ws: 0, hs: 1, lead: 0, rise: 0, fill: "#000000" };
+  const fresh = (ctm: M): GS => ({ ctm, font: null, size: 0, cs: 0, ws: 0, hs: 1, lead: 0, rise: 0, fill: "#000000" });
+  let gs = fresh([1, 0, 0, 1, 0, 0]);
   const stack: GS[] = [];
   let tm: M = [1, 0, 0, 1, 0, 0];
   let tlm: M = [1, 0, 0, 1, 0, 0];
@@ -158,6 +159,15 @@ async function placedGlyphs(page: PDFPageProxy): Promise<Placed[]> {
         if (a[0] && typeof a[0] === "object") gs.ctm = mul(asMatrix([a[0]]), gs.ctm);
         break;
       case OPS.paintFormXObjectEnd: gs = stack.pop() ?? gs; break;
+      // An annotation's appearance (a filled field value, a stamp) is drawn in
+      // its own space: pdf.js passes the matrix that maps its BBox, through its
+      // Matrix, onto the annotation's Rect (args: id, rect, transform, matrix).
+      // The appearance starts from a default graphics state, as on a canvas.
+      case OPS.beginAnnotation:
+        stack.push({ ...gs });
+        gs = fresh(mul(asMatrix([a[3]]), mul(asMatrix([a[2]]), gs.ctm)));
+        break;
+      case OPS.endAnnotation: gs = stack.pop() ?? gs; break;
       case OPS.beginText: tm = [1, 0, 0, 1, 0, 0]; tlm = [1, 0, 0, 1, 0, 0]; break;
       case OPS.endText: out.push(null); break;
       case OPS.setFont: {
