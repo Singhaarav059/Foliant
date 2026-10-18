@@ -252,7 +252,7 @@ await test("outputs open in pdf.js with working links", async () => {
 });
 
 // ── Loading (P1-03): every tool opens a file the way readers do.
-const fx = corpus(["enc-aes256-owner.pdf", "enc-rc4-40-owner.pdf", "enc-aes256-user.pdf", "dup-ids.pdf", "odd-boxes.pdf", "zero-pages.pdf", "cyclic-tree.pdf", "base.pdf"]);
+const fx = corpus(["enc-aes256-owner.pdf", "enc-rc4-40-owner.pdf", "enc-aes256-user.pdf", "dup-ids.pdf", "odd-boxes.pdf", "zero-pages.pdf", "cyclic-tree.pdf", "base.pdf", "acroform-unicode.pdf", "attachments.pdf", "xfa.pdf"]);
 const { compress } = await load("optimize");
 const { pdfToPdfa, pdfToExcel } = await load("convert");
 const { redact } = await load("security");
@@ -348,6 +348,72 @@ await test("PDF to Excel, one sheet per document, takes any file name", async ()
     const [out] = await pdfToExcel(fxFile("base.pdf", name), { sheetPer: "document" });
     eq(out.blob.size > 0 && /\.xlsx$/.test(out.name), true, `${name}: an xlsx`);
   }
+});
+
+// ── Merge keeps what a document carries beyond its pages (P1-04).
+async function extras(blob) {
+  const pdf = await openPdf(new Uint8Array(await blob.arrayBuffer()));
+  const fields = await pdf.getFieldObjects();
+  const attachments = await pdf.getAttachments();
+  const outline = await pdf.getOutline();
+  const walk = async (items) => Promise.all((items ?? []).map(async (it) => ({
+    title: it.title,
+    page: it.dest ? await pdf.getPageIndex((typeof it.dest === "string" ? await pdf.getDestination(it.dest) : it.dest)[0]).catch(() => null) : null,
+    items: await walk(it.items),
+  })));
+  const tree = await walk(outline);
+  const pages = pdf.numPages;
+  await pdf.loadingTask.destroy();
+  // pdf.js gives a Map or a plain object, depending on the version.
+  const keys = (m) => (!m ? [] : m instanceof Map ? [...m.keys()] : Object.keys(m));
+  return { fields: keys(fields), attachments: keys(attachments), tree, pages };
+}
+await test("merge keeps form fields, each copy a field of its own", async () => {
+  const before = await extras(new Blob([fx["acroform-unicode.pdf"]]));
+  if (before.fields.length < 5) throw new Error(`the fixture has ${before.fields.length} fields`);
+  const [out] = await merge([fxFile("acroform-unicode.pdf"), fxFile("acroform-unicode.pdf", "again.pdf")], { bookmarks: true });
+  const after = await extras(out.blob);
+  eq(after.fields.length >= 5, true, `fields ${JSON.stringify(after.fields)}`);
+  eq(after.fields.length, before.fields.length * 2, "fields (the second copy's renamed)");
+  // pdf-lib (a second reader) finds both copies' fields too.
+  const fieldsIn = async (bytes) => (await PDFDocument.load(bytes)).getForm().getFields().length;
+  eq(await fieldsIn(new Uint8Array(await out.blob.arrayBuffer())), 2 * await fieldsIn(fx["acroform-unicode.pdf"]), "pdf-lib fields");
+});
+await test("merge keeps an XFA form's fields (the XFA packet can't be combined)", async () => {
+  const [out] = await merge([fxFile("xfa.pdf"), fxFile("base.pdf")], { bookmarks: false });
+  const after = await extras(out.blob);
+  eq(after.fields.length >= 3, true, `fields ${JSON.stringify(after.fields)}`);
+});
+await test("merge keeps attached files", async () => {
+  const [out] = await merge([fxFile("attachments.pdf"), fxFile("base.pdf")], { bookmarks: false });
+  eq((await extras(out.blob)).attachments.length, 2, "attachments");
+  const [twice] = await merge([fxFile("attachments.pdf"), fxFile("attachments.pdf", "again.pdf")], { bookmarks: false });
+  eq((await extras(twice.blob)).attachments.length, 4, "attachments of both copies, renamed where they clash");
+});
+await test("merge nests each file's bookmarks under the file's own", async () => {
+  const [out] = await merge([fxFile("base.pdf"), fxFile("base.pdf", "second.pdf")], { bookmarks: true });
+  const { tree } = await extras(out.blob);
+  eq(tree.map((t) => t.title).join(), "base,second", "file bookmarks");
+  eq(tree[0].items.map((t) => t.title).join(), "Chapter 1,Chapter 2,Chapter 3", "first file's bookmarks");
+  eq(tree[0].items.map((t) => t.page).join(), "0,1,2", "first file's targets");
+  eq(tree[1].items.map((t) => t.page).join(), "3,4,5", "second file's targets");
+  eq(tree[1].page, 3, "second file bookmark target");
+});
+await test("merge without file bookmarks still keeps each file's own", async () => {
+  const [out] = await merge([fxFile("base.pdf"), fxFile("base.pdf", "second.pdf")], { bookmarks: false });
+  const { tree } = await extras(out.blob);
+  eq(tree.map((t) => `${t.title}@${t.page}`).join(), "Chapter 1@0,Chapter 2@1,Chapter 3@2,Chapter 1@3,Chapter 2@4,Chapter 3@5", "bookmarks");
+});
+await test("organize with several files keeps fields, attachments and bookmarks of the pages kept", async () => {
+  const blob = await buildFromPlan([fxFile("base.pdf"), fxFile("acroform-unicode.pdf"), fxFile("attachments.pdf")], [
+    { file: 0, page: 2, rotate: 0 }, { file: 1, page: 0, rotate: 0 }, { file: 0, page: 0, rotate: 0 }, { file: 2, page: 0, rotate: 0 },
+  ]);
+  const { tree, fields, attachments, pages } = await extras(blob);
+  eq(pages, 4, "pages");
+  // Chapter 2's page was left out, so its bookmark goes too.
+  eq(tree.map((t) => `${t.title}@${t.page}`).join(), "Chapter 1@2,Chapter 3@0", "bookmarks");
+  eq(fields.length >= 5, true, `fields ${JSON.stringify(fields)}`);
+  eq(attachments.length, 2, "attachments");
 });
 
 process.exit(results.failed ? 1 : 0);

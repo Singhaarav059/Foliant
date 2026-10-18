@@ -1,7 +1,8 @@
 "use client";
 
 import {
-  PDFDocument, PDFPage, PDFPageLeaf, PDFDict, PDFStream, PDFRef, PDFNull, degrees, PDFName, PDFArray, PDFHexString, PDFNumber, type PDFObject,
+  PDFDocument, PDFPage, PDFPageLeaf, PDFDict, PDFStream, PDFRef, PDFNull, degrees, PDFName, PDFArray, PDFHexString, PDFNumber, PDFString,
+  type PDFObject,
 } from "pdf-lib";
 import { baseName, bytesOf, parseRanges, pdfBlob, type Output, type Progress } from "./common";
 import { PdfError } from "./errors";
@@ -162,7 +163,7 @@ export function pageCopier(src: PDFDocument, dest: PDFDocument, keep: Iterable<n
     return out;
   };
 
-  return (index: number): PDFPage => {
+  const take = (index: number): PDFPage => {
     const original = pages[index];
     const leaf = original.node.clone(src.context) as PDFPageLeaf;
     // Inherited size, resources and rotation move onto the page itself.
@@ -189,54 +190,237 @@ export function pageCopier(src: PDFDocument, dest: PDFDocument, keep: Iterable<n
     ctx.assign(ref, node);
     return PDFPage.of(node, ref, dest);
   };
+  // Any other object, by the same rules (a link to a page left out is cut),
+  // and the copy an object already has.
+  return Object.assign(take, { object: copy, copied: (ref: PDFRef) => done.get(ref) });
 }
 
 export async function merge(files: File[], opts: { bookmarks?: boolean }, progress?: Progress): Promise<Output[]> {
   const out = await PDFDocument.create();
-  const starts: { title: string; page: number }[] = [];
+  const sources: Source[] = [];
   let decrypted = false;
   for (let i = 0; i < files.length; i++) {
     const opened = await openForEdit(await bytesOf(files[i]), files[i].name);
     const src = opened.doc;
     decrypted ||= opened.decrypted;
-    starts.push({ title: baseName(files[i].name), page: out.getPageCount() });
+    const start = out.getPageCount();
     const take = pageCopier(src, out, src.getPageIndices());
     for (const p of src.getPageIndices()) out.addPage(take(p));
+    sources.push({ doc: src, take, title: baseName(files[i].name), first: start, pageAt: (p) => start + p });
     progress?.(i + 1, files.length);
   }
-  if (opts.bookmarks) addOutline(out, starts);
+  carryOver(out, sources, !!opts.bookmarks);
   return noted([{ name: `${baseName(files[0].name)}-merged.pdf`, blob: await save(out) }], decrypted);
 }
 
-// A flat outline: one bookmark per entry, pointing at its first page.
-export function addOutline(doc: PDFDocument, entries: { title: string; page: number }[]) {
-  if (!entries.length) return;
-  const ctx = doc.context;
-  const outlineRef = ctx.nextRef();
-  const refs = entries.map(() => ctx.nextRef());
-  const pages = doc.getPages();
-  entries.forEach((e, i) => {
-    const dest = PDFArray.withContext(ctx);
-    dest.push(pages[Math.min(e.page, pages.length - 1)].ref);
-    dest.push(PDFName.of("XYZ"));
-    dest.push(ctx.obj(null));
-    dest.push(ctx.obj(null));
-    dest.push(ctx.obj(null));
-    const item: Record<string, unknown> = {
-      Title: PDFHexString.fromText(e.title),
-      Parent: outlineRef,
-      Dest: dest,
-    };
-    if (i > 0) item.Prev = refs[i - 1];
-    if (i < refs.length - 1) item.Next = refs[i + 1];
-    ctx.assign(refs[i], ctx.obj(item as never));
+// ── What a document carries beyond its pages: form fields, attached files
+// and bookmarks. Pages are copied first; each source then brings these
+// along, pointing at its pages' copies.
+type Source = {
+  doc: PDFDocument;
+  take: ReturnType<typeof pageCopier>;
+  title: string;
+  // The output page of a source page (where it first appears), if it was kept.
+  pageAt: (index: number) => number | undefined;
+  // The output page the file's own bookmark points at.
+  first: number;
+};
+
+// `fileBookmarks`: one bookmark per source, its own bookmarks under it.
+function carryOver(out: PDFDocument, sources: Source[], fileBookmarks: boolean) {
+  carryForm(out, sources);
+  carryAttachments(out, sources);
+  const items = sources.flatMap((s): OutlineItem[] => {
+    const own = outlineOf(s);
+    return fileBookmarks ? [{ title: s.title, page: s.first, view: [], children: own, open: false }] : own;
   });
-  ctx.assign(
-    outlineRef,
-    ctx.obj({ Type: "Outlines", First: refs[0], Last: refs[refs.length - 1], Count: PDFNumber.of(refs.length) } as never),
-  );
-  doc.catalog.set(PDFName.of("Outlines"), outlineRef);
-  doc.catalog.set(PDFName.of("PageMode"), PDFName.of("UseOutlines"));
+  writeOutline(out, items);
+}
+
+const textOf = (o: PDFObject | undefined) => (o instanceof PDFString || o instanceof PDFHexString ? o.decodeText() : undefined);
+
+// One form of every source's fields that still have a widget on a kept page.
+// A top-level name that's taken already gets a number ("total_2"), so the
+// fields of a file merged with itself stay apart instead of sharing values.
+// XFA can't be combined; the AcroForm fields every reader fills stay.
+function carryForm(out: PDFDocument, sources: Source[]) {
+  const ctx = out.context;
+  const fields: PDFRef[] = [];
+  const names = new Set<string>();
+  const fonts = new Map<PDFName, PDFObject>();
+  let da: PDFObject | undefined;
+  let needAppearances = false;
+  for (const s of sources) {
+    const form = s.doc.catalog.lookupMaybe(N("AcroForm"), PDFDict);
+    if (!form) continue;
+    for (const f of form.lookupMaybe(N("Fields"), PDFArray)?.asArray() ?? []) {
+      const copy = f instanceof PDFRef ? s.take.copied(f) : undefined;
+      const dict = copy instanceof PDFRef ? ctx.lookup(copy) : undefined;
+      if (!(copy instanceof PDFRef) || !(dict instanceof PDFDict)) continue;
+      const name = textOf(dict.lookup(N("T")));
+      if (name !== undefined) {
+        let unique = name;
+        for (let k = 2; names.has(unique); k++) unique = `${name}_${k}`;
+        if (unique !== name) dict.set(N("T"), PDFHexString.fromText(unique));
+        names.add(unique);
+      }
+      fields.push(copy);
+    }
+    da ??= form.get(N("DA"));
+    needAppearances ||= form.get(N("NeedAppearances")) === ctx.obj(true);
+    const dr = form.lookupMaybe(N("DR"), PDFDict)?.lookupMaybe(N("Font"), PDFDict);
+    for (const [key, value] of dr?.entries() ?? []) if (!fonts.has(key)) fonts.set(key, s.take.object(value));
+  }
+  if (!fields.length) return;
+  const acro = ctx.obj({}) as PDFDict;
+  acro.set(N("Fields"), ctx.obj(fields));
+  if (da) acro.set(N("DA"), da.clone(ctx));
+  if (fonts.size) {
+    const font = ctx.obj({}) as PDFDict;
+    for (const [key, value] of fonts) font.set(key, value);
+    acro.set(N("DR"), ctx.obj({ Font: font }));
+  }
+  if (needAppearances) acro.set(N("NeedAppearances"), ctx.obj(true));
+  out.catalog.set(N("AcroForm"), ctx.register(acro));
+}
+
+// The entries of a name tree (attached files, named destinations).
+function nameTree(doc: PDFDocument, root: PDFObject | undefined) {
+  const entries: [PDFString | PDFHexString, PDFObject][] = [];
+  const seen = new Set<PDFDict>();
+  const visit = (o: PDFObject | undefined) => {
+    const node = o && doc.context.lookup(o);
+    if (!(node instanceof PDFDict) || seen.has(node)) return;
+    seen.add(node);
+    const names = node.lookupMaybe(N("Names"), PDFArray)?.asArray() ?? [];
+    for (let i = 0; i + 1 < names.length; i += 2) {
+      const key = doc.context.lookup(names[i]);
+      if (key instanceof PDFString || key instanceof PDFHexString) entries.push([key, names[i + 1]]);
+    }
+    for (const kid of node.lookupMaybe(N("Kids"), PDFArray)?.asArray() ?? []) visit(kid);
+  };
+  visit(root);
+  return entries;
+}
+
+// Every source's attached files; a name that's taken gets a number ("data (2).csv").
+function carryAttachments(out: PDFDocument, sources: Source[]) {
+  const ctx = out.context;
+  const files: [string, PDFObject][] = [];
+  const names = new Set<string>();
+  for (const s of sources) {
+    const tree = s.doc.catalog.lookupMaybe(N("Names"), PDFDict)?.get(N("EmbeddedFiles"));
+    for (const [key, value] of nameTree(s.doc, tree)) {
+      const name = key.decodeText();
+      const dot = name.lastIndexOf(".");
+      const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
+      let unique = name;
+      for (let k = 2; names.has(unique); k++) unique = `${stem} (${k})${ext}`;
+      names.add(unique);
+      files.push([unique, s.take.object(value)]);
+    }
+  }
+  if (!files.length) return;
+  files.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  const list = files.flatMap(([name, value]) => [PDFHexString.fromText(name), value]);
+  out.catalog.set(N("Names"), ctx.obj({ EmbeddedFiles: ctx.register(ctx.obj({ Names: list })) }));
+}
+
+type OutlineItem = {
+  title: string;
+  // An output page, and how to show it (the rest of the destination array).
+  page?: number;
+  view: PDFObject[];
+  // Another action (a web link), when there's no page.
+  action?: PDFObject;
+  children: OutlineItem[];
+  open: boolean;
+};
+
+// A source's bookmarks, pointing at its pages' copies. One for a page that
+// was left out goes, unless bookmarks under it stay.
+function outlineOf(s: Source): OutlineItem[] {
+  const { doc } = s;
+  const ctx = doc.context;
+  const index = new Map(doc.getPages().map((p, i) => [p.ref, i] as const));
+  const names = doc.catalog.lookupMaybe(N("Names"), PDFDict);
+  let dests: Map<string, PDFObject> | undefined;
+  // A destination: an array, or a name to look up (old style in /Dests,
+  // new style in the Dests name tree), either possibly wrapped in { D }.
+  const destOf = (o: PDFObject | undefined, depth = 0): PDFArray | undefined => {
+    const d = o && ctx.lookup(o);
+    if (depth > 3 || !d) return undefined;
+    if (d instanceof PDFArray) return d;
+    if (d instanceof PDFDict) return destOf(d.get(N("D")), depth + 1);
+    if (d instanceof PDFName) return destOf(doc.catalog.lookupMaybe(N("Dests"), PDFDict)?.get(d), depth + 1);
+    const key = textOf(d);
+    if (key === undefined) return undefined;
+    dests ??= new Map(nameTree(doc, names?.get(N("Dests"))).map(([k, v]) => [k.decodeText(), v] as const));
+    return destOf(dests.get(key), depth + 1);
+  };
+  const seen = new Set<PDFDict>();
+  const walk = (first: PDFObject | undefined): OutlineItem[] => {
+    const items: OutlineItem[] = [];
+    for (let o = first && ctx.lookup(first); o instanceof PDFDict && !seen.has(o); o = ctx.lookup(o.get(N("Next")) ?? PDFNull)) {
+      seen.add(o);
+      const action = o.lookupMaybe(N("A"), PDFDict);
+      const goTo = action?.get(N("S")) === N("GoTo");
+      const dest = destOf(o.get(N("Dest")) ?? (goTo ? action?.get(N("D")) : undefined));
+      const target = dest?.get(0);
+      const page = target instanceof PDFRef && index.has(target) ? s.pageAt(index.get(target)!) : undefined;
+      const children = walk(o.get(N("First")));
+      const other = !goTo && action && !o.has(N("Dest")) ? s.take.object(action) : undefined;
+      if (page === undefined && !other && !children.length) continue;
+      const count = o.lookupMaybe(N("Count"), PDFNumber)?.asNumber() ?? 0;
+      items.push({
+        title: textOf(o.lookup(N("Title"))) ?? "",
+        page,
+        view: page === undefined ? [] : (dest?.asArray().slice(1) ?? []).map((v) => s.take.object(v)),
+        action: page === undefined ? other : undefined,
+        children,
+        open: count > 0,
+      });
+    }
+    return items;
+  };
+  return walk(doc.catalog.lookupMaybe(N("Outlines"), PDFDict)?.get(N("First")));
+}
+
+// Writes bookmarks as the document's outline. A closed one's count is negative.
+function writeOutline(doc: PDFDocument, items: OutlineItem[]) {
+  if (!items.length) return;
+  const ctx = doc.context;
+  const pages = doc.getPages();
+  const root = ctx.nextRef();
+  const write = (list: OutlineItem[], parent: PDFRef) => {
+    const refs = list.map(() => ctx.nextRef());
+    let visible = 0;
+    list.forEach((it, i) => {
+      const item = ctx.obj({}) as PDFDict;
+      item.set(N("Title"), PDFHexString.fromText(it.title));
+      item.set(N("Parent"), parent);
+      if (it.page !== undefined) {
+        const view = it.view.length ? it.view : [N("XYZ"), PDFNull, PDFNull, PDFNull];
+        item.set(N("Dest"), ctx.obj([pages[Math.min(it.page, pages.length - 1)].ref, ...view]));
+      } else if (it.action) item.set(N("A"), it.action);
+      if (i > 0) item.set(N("Prev"), refs[i - 1]);
+      if (i < refs.length - 1) item.set(N("Next"), refs[i + 1]);
+      visible++;
+      if (it.children.length) {
+        const sub = write(it.children, refs[i]);
+        item.set(N("First"), sub.first);
+        item.set(N("Last"), sub.last);
+        item.set(N("Count"), PDFNumber.of(it.open ? sub.visible : -sub.visible));
+        if (it.open) visible += sub.visible;
+      }
+      ctx.assign(refs[i], item);
+    });
+    return { first: refs[0], last: refs[refs.length - 1], visible };
+  };
+  const top = write(items, root);
+  ctx.assign(root, ctx.obj({ Type: "Outlines", First: top.first, Last: top.last, Count: PDFNumber.of(top.visible) } as never));
+  doc.catalog.set(N("Outlines"), root);
+  doc.catalog.set(N("PageMode"), N("UseOutlines"));
 }
 
 async function subset(src: PDFDocument, indices: number[]) {
@@ -299,6 +483,9 @@ export async function buildFromPlan(files: File[], plan: PagePlan): Promise<Blob
   const docs = await Promise.all(files.map((f) => loadPdf(f, f.name)));
   const out = await PDFDocument.create();
   const takers = docs.map((doc, fi) => pageCopier(doc, out, plan.filter((p) => p.file === fi && !p.blank).map((p) => p.page)));
+  // Where each source page first lands, for bookmarks.
+  const at = new Map<string, number>();
+  plan.forEach((item, i) => !item.blank && !at.has(`${item.file}:${item.page}`) && at.set(`${item.file}:${item.page}`, i));
   for (const item of plan) {
     if (item.blank) {
       const ref = docs[item.file]?.getPage(Math.max(0, item.page));
@@ -311,6 +498,7 @@ export async function buildFromPlan(files: File[], plan: PagePlan): Promise<Blob
     copied.setRotation(degrees((((base + item.rotate) % 360) + 360) % 360));
     out.addPage(copied);
   }
+  carryOver(out, docs.map((doc, fi) => ({ doc, take: takers[fi], title: baseName(files[fi].name), first: 0, pageAt: (p) => at.get(`${fi}:${p}`) })), false);
   return save(out);
 }
 
