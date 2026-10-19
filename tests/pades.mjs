@@ -4,7 +4,7 @@
 // an independent verifier, `openssl cms -verify`, over the byte range, and
 // the whole file by poppler's pdfsig when it's installed (PDFSIG sets its path).
 //
-//   node tests/pades.mjs
+//   node tests/pades.mjs          (OPENSSL sets the openssl binary)
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -24,21 +24,27 @@ const test = check(results);
 const dir = mkdtempSync(join(tmpdir(), "pades-"));
 process.on("exit", () => rmSync(dir, { recursive: true, force: true }));
 const pw = randomBytes(12).toString("hex");
+const OPENSSL = process.env.OPENSSL ?? "openssl";
 const env = { ...process.env, NOPLOAD_P12: pw };
 const at = (f) => join(dir, f);
 const openssl = (...args) => {
   try {
-    return execFileSync("openssl", args, { cwd: dir, env, stdio: ["ignore", "pipe", "pipe"] });
+    return execFileSync(OPENSSL, args, { cwd: dir, env, stdio: ["ignore", "pipe", "pipe"] });
   } catch (e) {
     throw new Error(`openssl ${args[0]}: ${String(e.stderr).trim()}`);
   }
 };
-const ok = (...args) => spawnSync("openssl", args, { cwd: dir, env, encoding: "utf8" });
+const ok = (...args) => spawnSync(OPENSSL, args, { cwd: dir, env, encoding: "utf8" });
 
 // ── Test certificates
 const subj = (cn) => `/CN=${cn}/O=Nopload Tests`;
 openssl("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", "rsa.key", "-out", "rsa.pem", "-subj", subj("Nopload Test Signer"), "-days", "30");
-openssl("pkcs12", "-export", "-inkey", "rsa.key", "-in", "rsa.pem", "-out", "rsa.p12", "-passout", "env:NOPLOAD_P12");
+// Legacy 3DES with a SHA-1 MAC, as macOS and Windows export, spelled out so
+// OpenSSL 3 (AES by default) writes the same kind of file as LibreSSL.
+const legacy = ["-keypbe", "PBE-SHA1-3DES", "-certpbe", "PBE-SHA1-3DES", "-macalg", "sha1"];
+openssl("pkcs12", "-export", ...legacy, "-inkey", "rsa.key", "-in", "rsa.pem", "-out", "rsa.p12", "-passout", "env:NOPLOAD_P12");
+// AES-256 with a SHA-256 MAC, OpenSSL 3's default.
+openssl("pkcs12", "-export", "-keypbe", "AES-256-CBC", "-certpbe", "AES-256-CBC", "-macalg", "sha256", "-inkey", "rsa.key", "-in", "rsa.pem", "-out", "aes-openssl.p12", "-passout", "env:NOPLOAD_P12");
 openssl("ecparam", "-name", "prime256v1", "-genkey", "-noout", "-out", "ec.key");
 openssl("req", "-new", "-x509", "-key", "ec.key", "-out", "ec.pem", "-subj", subj("Nopload EC Signer"), "-days", "30");
 openssl("pkcs12", "-export", "-inkey", "ec.key", "-in", "ec.pem", "-out", "ec.p12", "-passout", "env:NOPLOAD_P12");
@@ -107,9 +113,8 @@ await test("a legacy (3DES) .p12 opens, with a key that can't be exported", asyn
   eq(rsa.chain.length, 1, "certificates");
 });
 
-await test("an AES-256 .p12 opens", async () => {
-  const c = await openCertificate(p12("aes.p12"), pw);
-  eq(c.info.name, "Nopload Test Signer", "certificate name");
+await test("AES-256 .p12 files open (OpenSSL 3's default, and node-forge's)", async () => {
+  for (const f of ["aes-openssl.p12", "aes.p12"]) eq((await openCertificate(p12(f), pw)).info.name, "Nopload Test Signer", f);
 });
 
 await test("a wrong password, a file without a key and a file that isn't a .p12 are refused", async () => {

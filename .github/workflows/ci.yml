@@ -121,6 +121,9 @@ jobs:
       # Playwright's Chromium for the suites that render or print in Chrome.
       - name: Chromium
         run: npx playwright-core install --with-deps chromium
+      # poppler's pdfsig, an independent check of the signatures tests/pades.mjs makes.
+      - name: pdfsig
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends poppler-utils
       # veraPDF, the reference PDF/A validator, from its official image. The
       # image runs as its own user, which can't read the tests' private temp
       # directories, so it runs as root here.
@@ -148,6 +151,11 @@ jobs:
         run: npm run test:pageboard
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:protect
+      # PDFSIG makes a missing pdfsig a failure here rather than a skip.
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:pades
+        env:
+          PDFSIG: /usr/bin/pdfsig
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:layout
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
