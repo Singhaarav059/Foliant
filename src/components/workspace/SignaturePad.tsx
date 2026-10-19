@@ -36,6 +36,7 @@ function loadScriptFonts() {
 function trimmed(canvas: HTMLCanvasElement) {
   const ctx = canvas.getContext("2d")!;
   const { width, height } = canvas;
+  if (!width || !height) return null;
   const data = ctx.getImageData(0, 0, width, height).data;
   let x0 = width, y0 = height, x1 = 0, y1 = 0;
   for (let y = 0; y < height; y++)
@@ -82,6 +83,14 @@ export function SignaturePad({ kind, onDone, onClose }: { kind: "signature" | "i
     }
   });
 
+  // Opened before the canvas is sized below: effects run in order, and a
+  // closed <dialog> lays nothing out, so the canvas would measure 0 wide.
+  useEffect(() => {
+    const d = dialog.current;
+    if (d && !d.open) d.showModal();
+    return () => d?.close();
+  }, []);
+
   useEffect(() => {
     const c = canvas.current;
     if (!c || tab !== "draw") return;
@@ -93,12 +102,6 @@ export function SignaturePad({ kind, onDone, onClose }: { kind: "signature" | "i
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
   }, [tab]);
-
-  useEffect(() => {
-    const d = dialog.current;
-    if (d && !d.open) d.showModal();
-    return () => d?.close();
-  }, []);
 
   useEffect(() => {
     if (kind !== "stamp") void loadScriptFonts();
