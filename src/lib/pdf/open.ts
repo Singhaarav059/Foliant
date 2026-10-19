@@ -25,6 +25,19 @@ export type Opened = {
   decrypted: boolean;
 };
 
+// pdf-lib decodes a name's #xx escapes only in uppercase hex, and qpdf writes
+// them in lowercase: /text#2fcsv came back as "text#2fcsv", which pdf-lib
+// then saved as /text#232fcsv, another name. Hex digits in either case mean
+// the same byte (ISO 32000 7.3.5), so names are read that way.
+const NAME_OF = Symbol.for("nopload.pdfName.of");
+type NameOf = typeof PDFName.of & { [NAME_OF]?: true };
+if (!(PDFName.of as NameOf)[NAME_OF]) {
+  const of = PDFName.of;
+  const caseless: NameOf = (name: string) => of(name.includes("#") ? name.replace(/#([\da-f]{2})/gi, (_, hex: string) => `#${hex.toUpperCase()}`) : name);
+  caseless[NAME_OF] = true;
+  PDFName.of = caseless;
+}
+
 const isEncrypted = (e: unknown) => /is encrypted/i.test(String((e as { message?: unknown })?.message ?? ""));
 
 // qpdf rewrites the whole file, which for a few hundred megabytes takes

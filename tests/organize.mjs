@@ -385,6 +385,24 @@ await test("big plain files open without qpdf; encrypted or duplicate-numbered o
     open_.directOpen.minBytes = keep;
   }
 });
+// qpdf writes a name's escapes in lowercase (/text#2fcsv), which pdf-lib
+// only decodes in uppercase: "text/csv" came back as "text#2fcsv" and was
+// saved as /text#232fcsv, a different name (an attachment's MIME type, a
+// font name with a space).
+await test("names with escapes survive the qpdf pass", async () => {
+  const { openForEdit } = await load("open");
+  const doc = await PDFDocument.create();
+  doc.addPage();
+  const ref = doc.context.register(doc.context.stream(new Uint8Array([1]), { Subtype: "text/csv", Name: "Font Name" }));
+  doc.catalog.set(PDFName.of("Probe"), ref);
+  const { doc: opened, bytes } = await openForEdit(await doc.save());
+  eq(/\/text#2fcsv/.test(new TextDecoder("latin1").decode(bytes)), true, "qpdf wrote a lowercase escape");
+  const probe = opened.catalog.lookup(PDFName.of("Probe"), PDFRawStream).dict;
+  eq(probe.get(PDFName.of("Subtype")) === PDFName.of("text/csv"), true, "MIME type read as text/csv");
+  eq(probe.get(PDFName.of("Name")) === PDFName.of("Font Name"), true, "name with a space");
+  const again = await PDFDocument.load(await opened.save());
+  eq(String(again.catalog.lookup(PDFName.of("Probe"), PDFRawStream).dict.get(PDFName.of("Subtype"))), "/text#2Fcsv", "saved");
+});
 await test("rotating pages with /Rotate 45 turns them from where readers show them", async () => {
   const [out] = await rotateAll(fxFile("odd-boxes.pdf"), 90);
   const pdf = await openPdf(new Uint8Array(await out.blob.arrayBuffer()));
