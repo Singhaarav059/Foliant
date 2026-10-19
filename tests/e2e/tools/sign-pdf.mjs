@@ -10,13 +10,13 @@ const spec = {
       set: async (h) => {
         const { page } = h;
         await h.icon("signature", "main aside").click();
-        const c = page.locator("[role=dialog] canvas");
+        const c = page.locator("dialog[open] canvas");
         const b = await c.boundingBox();
         await page.mouse.move(b.x + 20, b.y + b.height / 2);
         await page.mouse.down();
         for (let k = 0; k < 20; k++) await page.mouse.move(b.x + 20 + k * 12, b.y + b.height / 2 + Math.sin(k) * 20);
         await page.mouse.up();
-        await page.locator("[role=dialog] button.btn-primary").click();
+        await page.locator("dialog[open] button.btn-primary").click();
         await h.clickStage(0.6, 0.3);
       },
       check: (r) => must(r.type === "pdf" && r.pages === 3 && r.xobjects[0] > 0, `${r.type} ${r.pages}p, page 1 images ${r.xobjects?.[0]}`),

@@ -12,7 +12,7 @@ const spec = {
   files: ["page.html"],
   variants: {
     defaults: { check },
-    "letter landscape": { set: async (h) => { await h.radio("pageSize", 1); await h.radio("orientation", 1); }, check },
+    "letter landscape": { set: async (h) => { await h.select("pageSize", "letter"); await h.radio("orientation", 1); }, check },
   },
 };
 export default spec;

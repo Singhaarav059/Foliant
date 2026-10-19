@@ -1,5 +1,5 @@
-// Excel to PDF: Automatic (LibreOffice on a desktop) writes a PDF; Standard lays the
-// file out in a sandboxed print preview where the file's own scripts never run.
+// Excel to PDF: Automatic (LibreOffice on a desktop) writes a PDF; Standard draws the
+// file as a PDF in the browser, with no print dialog and no LibreOffice download.
 import { must } from "./lib.mjs";
 
 const TEXT = /Hosting/;
@@ -17,9 +17,8 @@ const spec = {
     standard: {
       set: (h) => h.radio("fidelity", 1),
       check: (r) => {
-        must(r.kind === "print", `${r.kind}, expected the print preview`);
+        must(r.type === "pdf" && r.pages >= 1, r.kind === "error" ? `error: ${r.text}` : `${r.kind} ${r.type}, expected a PDF`);
         must(TEXT.test(r.text), `text: ${r.text.slice(0, 80)}`);
-        must(!r.scriptRan, "a script in the file ran");
       },
     },
   },
