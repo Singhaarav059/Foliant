@@ -29,6 +29,7 @@ const MESSAGES: Record<ErrorCode, [key: string, fix?: Fix]> = {
   no_text: ["err.noText", "ocr"],
   no_images: ["err.noImages"],
   bad_ranges: ["err.badRanges"],
+  bad_sheets: ["err.badSheets"],
   empty_document: ["err.emptyDocument"],
   missing_image: ["err.missingImage"],
   download_failed: ["err.download"],
