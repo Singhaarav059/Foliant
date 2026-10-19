@@ -15,6 +15,11 @@ concurrency:
 # Dependabot (.github/dependabot.yml) proposes action updates.
 # Steps run through scripts/ci-report.mjs repeat the end of their output as an
 # error annotation on failure: annotations are public, the logs need a sign-in.
+# CI vendors only the light AI model (23 MB); the 270 and 570 MB models are
+# tested by hand with AI_LARGE=1 (tests/e2e/ai.mjs).
+env:
+  NOPLOAD_AI_MODELS: light
+
 jobs:
   checks:
     name: Typecheck, lint, translations, builds
@@ -84,6 +89,9 @@ jobs:
       - name: Summarize
         if: success() || failure()
         run: npm run test:e2e:summarize -- ${{ matrix.browser }}
+      - name: On-device AI (chat with citations, light model, offline)
+        if: success() || failure()
+        run: npm run test:e2e:ai -- ${{ matrix.browser }}
       - name: Rotate
         if: success() || failure()
         run: npm run test:e2e:rotate -- ${{ matrix.browser }}
@@ -142,6 +150,8 @@ jobs:
         run: npm run test:compare
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:summarize
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:ai
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:organize
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}

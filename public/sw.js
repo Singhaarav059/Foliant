@@ -67,7 +67,8 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
-    await Promise.all((await caches.keys()).filter((k) => k !== CACHE).map((k) => caches.delete(k)));
+    // AI models the visitor downloaded (src/lib/ai/store.ts) stay across deploys.
+    await Promise.all((await caches.keys()).filter((k) => k !== CACHE && k !== "nopload-models").map((k) => caches.delete(k)));
     // After a deploy: drop build files this build doesn't have, and fetch
     // the pages kept from before again, since they point at those files.
     const m = await manifest();
@@ -110,6 +111,8 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET" || url.origin !== location.origin || url.pathname.startsWith("/api/")) return;
   // OCR language files are large and tesseract.js keeps its own IndexedDB copy.
   if (url.pathname.startsWith("/vendor/") && url.pathname.includes("/tessdata/")) return;
+  // AI model weights (hundreds of MB) are kept in their own cache by src/lib/ai/store.ts.
+  if (url.pathname.startsWith("/vendor/models/")) return;
 
   const assets = isBuildFile(url.pathname) || url.pathname.startsWith("/vendor/") || url.pathname.endsWith(".svg");
   if (assets) {

@@ -35,10 +35,12 @@ export const LEGAL: Record<"privacy" | "terms" | "cookies", LegalDoc> = {
               "Every tool runs entirely in your browser. Your files are never sent to us or to anyone else.",
               "Office and HTML files are laid out in your browser and saved through its own print dialog.",
               "High-fidelity Office conversion and high-accuracy OCR download their engines (LibreOffice, and PaddleOCR with ONNX Runtime) from this same site the first time you use them. They run on your device too, so your files still stay there.",
+              "The AI tools (Chat with PDF, Summarize, Translate) download a model from this same site only when you choose one, and keep it on your device for next time. Models run on your device, as does your browser's built-in AI, which they use when it's already there. Your files and questions stay on your device.",
             ]
           : [
               "Tools marked “Runs on your device” process files entirely in your browser. Those files are never sent to us.",
               "High-accuracy OCR downloads its engine (PaddleOCR with ONNX Runtime) from this same site the first time you use it. It runs on your device too, so your files still stay there.",
+              "The AI tools (Chat with PDF, Summarize, Translate) download a model from this same site only when you choose one, and keep it on your device for next time. Models run on your device, as does your browser's built-in AI, which they use when it's already there. Your files and questions stay on your device.",
               "Office conversions and web page conversion send the file to our server over HTTPS. We process it in memory or a temporary folder and delete it as soon as the result is returned. We don't keep copies or look at the contents.",
             ],
       },
