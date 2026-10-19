@@ -1,0 +1,9 @@
+libheif 1.23.2 (notice from README.md at that tag)
+
+Copyright (c) 2017-2020 Struktur AG
+Copyright (c) 2017-2026 Dirk Farin
+
+libheif is distributed under the terms of the GNU Lesser General Public
+License, version 3. Its licence texts, the GNU LGPL-3.0 and the GNU GPL-3.0
+it builds on, are above, from the package's libheif-wasm/LICENSE (the same
+file as COPYING at that tag).

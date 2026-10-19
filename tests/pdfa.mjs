@@ -447,13 +447,14 @@ await test("PDF/A-1b: a shading pattern whose graphics state fades renders the p
 });
 
 await test("render options show in a workflow step, where no preflight runs", async () => {
-  // Node strips tools.ts's types itself; its imports (mode.ts, plain JavaScript, and the locale list) need extensions.
+  // Node strips tools.ts's types itself; its imports (mode.ts, plain JavaScript, the locale and OCR language lists) need extensions.
   const dir = mkdtempSync(join(tmpdir(), "tools-"));
   writeFileSync(join(dir, "mode.mjs"), readFileSync(join(root, "src/lib/mode.ts")));
   writeFileSync(join(dir, "locales.mjs"), stripTypeScriptTypes(readFileSync(join(root, "src/lib/i18n/locales.ts"), "utf8")));
+  writeFileSync(join(dir, "ocr-langs.mjs"), stripTypeScriptTypes(readFileSync(join(root, "src/lib/ocr-langs.ts"), "utf8")));
   writeFileSync(
     join(dir, "tools.ts"),
-    readFileSync(join(root, "src/lib/tools.ts"), "utf8").replace('from "./mode"', 'from "./mode.mjs"').replace('from "./i18n/locales"', 'from "./locales.mjs"'),
+    readFileSync(join(root, "src/lib/tools.ts"), "utf8").replace('from "./mode"', 'from "./mode.mjs"').replace('from "./i18n/locales"', 'from "./locales.mjs"').replace('from "./ocr-langs"', 'from "./ocr-langs.mjs"'),
   );
   const { TOOLS, defaultOptions, optionVisible } = await import(pathToFileURL(join(dir, "tools.ts")).href);
   const tool = TOOLS.find((t) => t.id === "pdfToPdfa");

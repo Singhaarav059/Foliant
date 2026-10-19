@@ -2,8 +2,9 @@
 // graphics and images. PDF → PowerPoint renders this copy as the slide
 // background and lays editable text boxes on top, so text isn't doubled.
 
-import { PDFDocument, PDFRawStream, PDFName, PDFArray, PDFRef, PDFDict, decodePDFRawStream, PDFStream } from "pdf-lib";
+import { PDFRawStream, PDFName, PDFArray, PDFRef, PDFDict, decodePDFRawStream, PDFStream } from "pdf-lib";
 import { zlibSync } from "fflate";
+import { openForEdit } from "./open";
 
 const isWs = (c: number) => c === 0x20 || c === 0x0a || c === 0x0d || c === 0x09 || c === 0x0c || c === 0x00;
 const isDelim = (c: number) => isWs(c) || c === 0x28 || c === 0x29 || c === 0x3c || c === 0x3e || c === 0x5b || c === 0x5d || c === 0x2f || c === 0x7b || c === 0x7d || c === 0x25;
@@ -86,7 +87,7 @@ function streamBytes(s: PDFStream): Uint8Array | null {
 }
 
 export async function withoutText(bytes: Uint8Array): Promise<Uint8Array> {
-  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+  const { doc } = await openForEdit(bytes);
   const ctx = doc.context;
   const targets = new Set<PDFRef>();
   for (const page of doc.getPages()) {
@@ -108,5 +109,5 @@ export async function withoutText(bytes: Uint8Array): Promise<Uint8Array> {
     dict.delete(PDFName.of("DecodeParms"));
     ctx.assign(ref, PDFRawStream.of(dict, stripped));
   }
-  return doc.save();
+  return doc.save({ addDefaultPage: false });
 }

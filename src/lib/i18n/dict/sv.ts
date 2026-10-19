@@ -532,7 +532,6 @@ const d: { [K in DictKey]?: string } = {
   "feat.f2t": "Riktig maskning",
   "feat.f2b": "Maskade sidor byggs om så att den dolda texten verkligen försvinner och inte bara täcks av en svart ruta.",
   "feat.f3t": "Sökbara skanningar på alla språk",
-  "feat.f3b": "OCR lägger till ett osynligt textlager på 26 språk, bland annat kinesiska, arabiska och hindi.",
   "feat.f4t": "Arbetsflöden",
   "feat.f4b": "Spara en kedja av verktyg och kör den på nya filer i ett steg.",
   "feat.f5t": "Fortsätt där du slutade",

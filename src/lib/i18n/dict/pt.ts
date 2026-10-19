@@ -532,7 +532,6 @@ const d: { [K in DictKey]?: string } = {
   "feat.f2t": "Tarja de verdade",
   "feat.f2b": "As páginas tarjadas são reconstruídas para que o texto oculto desapareça, e não fique apenas coberto por uma caixa preta.",
   "feat.f3t": "Digitalizações pesquisáveis em qualquer idioma",
-  "feat.f3b": "O OCR adiciona uma camada de texto invisível em 26 idiomas, incluindo chinês, árabe e hindi.",
   "feat.f4t": "Fluxos de trabalho",
   "feat.f4b": "Salve uma sequência de ferramentas e execute-a em arquivos novos em uma única etapa.",
   "feat.f5t": "Continue de onde parou",

@@ -78,17 +78,31 @@ files.push(
   [join(pkgDir("pdfmarkdown-ppocrv5-models"), "recognition", "ppocrv5_dict.txt"), "paddle/dict.txt"],
   [join(pkgDir("pdfmarkdown-ppocrv5-models"), "LICENSE"), "paddle/LICENSE"],
 );
+// HEIC/HEIF photos where the browser can't decode them (src/lib/pdf/images.ts).
+// libheif and the libde265 HEVC decoder it compiles in are LGPL-3.0, so they
+// stay separate files, loaded only for a HEIC and replaceable with any build
+// of the same interface, never bundled into the page code. worker.js is ours.
+files.push(
+  [join(pkgDir("libheif-js"), "libheif-wasm", "libheif.js"), "heif/libheif.js"],
+  [join(pkgDir("libheif-js"), "libheif-wasm", "libheif.wasm"), "heif/libheif.wasm"],
+  [join(process.cwd(), "scripts", "heif-worker.js"), "heif/worker.js"],
+);
 // Tesseract picks one of these by the browser's SIMD support. OCR runs the
 // LSTM engine only, so the legacy-engine builds aren't needed.
 for (const f of ["tesseract-core-lstm.wasm.js", "tesseract-core-simd-lstm.wasm.js", "tesseract-core-relaxedsimd-lstm.wasm.js"]) {
   files.push([join(pkgDir("tesseract.js-core"), f), `tesseract/${f}`]);
 }
 // OCR languages: the gzipped "best_int" LSTM models, the same files the
-// tesseract.js CDN serves by default. Every @tesseract.js-data/* dependency
-// is picked up, so adding a language is one npm install plus OCR_LANGS.
+// tesseract.js CDN serves by default, one file each (0.3-6 MB), fetched only
+// for the languages a user picks. Every @tesseract.js-data/* dependency is
+// picked up, so adding a language is one npm install plus OCR_LANGS. Some of
+// those packages hold only a legacy-engine model, which the LSTM-only core
+// can't run: they must not be installed.
 const scope = join(dirname(pkgDir("@tesseract.js-data/eng")));
 for (const lang of readdirSync(scope)) {
-  files.push([join(scope, lang, "4.0.0_best_int", `${lang}.traineddata.gz`), `tessdata/${lang}.traineddata.gz`]);
+  const model = join(scope, lang, "4.0.0_best_int", `${lang}.traineddata.gz`);
+  if (!existsSync(model)) throw new Error(`vendor: @tesseract.js-data/${lang} has no LSTM model; uninstall it`);
+  files.push([model, `tessdata/${lang}.traineddata.gz`]);
 }
 for (const [from, to] of files) {
   mkdirSync(dirname(join(out, to)), { recursive: true });
@@ -306,6 +320,13 @@ const licOut = join(licRoot, "staging");
   const loCommit = loAt < 0 ? null : /^buildid=([0-9a-f]{40})/.exec(loData.toString("latin1", loAt, loAt + 48))?.[1];
   if (!loCommit) console.warn("vendor: no LibreOffice build id in soffice.data, so its source link names no commit");
 
+  // The libheif and libde265 versions in libheif.wasm, which records both as
+  // plain strings. Update these with libheif-js; a mismatch stops the build.
+  const HEIF_VERSIONS = { libheif: "1.23.2", libde265: "1.0.15" };
+  const heifWasm = readFileSync(join(pkgDir("libheif-js"), "libheif-wasm", "libheif.wasm"));
+  for (const [name, v] of Object.entries(HEIF_VERSIONS))
+    if (!heifWasm.includes(`\0${v}\0`)) throw new Error(`vendor: libheif.wasm doesn't contain ${name} ${v}; update HEIF_VERSIONS`);
+
   // Everything served from /vendor, by component, with the projects each one
   // compiles in: [name, licence, source, texts in scripts/licenses/ that the
   // package itself doesn't ship].
@@ -340,6 +361,17 @@ const licOut = join(licRoot, "staging");
     {
       name: "Transformers.js", file: "transformers.txt", packages: [["@huggingface/transformers"], ["onnxruntime-web", [], aiOrt]],
       includes: [["ONNX Runtime", "MIT", "https://github.com/microsoft/onnxruntime"]],
+    },
+    // LGPL-3.0: the source of the exact versions compiled in, their copyright
+    // notices, and (§4(b)) the GNU GPL-3.0 text as well as the LGPL's.
+    // libheif-wasm/LICENSE is libheif's own COPYING (LGPL-3.0, GPL-3.0, MIT).
+    // Update the NOTICE files and libde265-COPYING.txt with HEIF_VERSIONS.
+    {
+      name: "libheif", file: "libheif.txt", packages: [["libheif-js", ["libheif-wasm/LICENSE"]]],
+      includes: [
+        ["libheif", "LGPL-3.0", `https://github.com/strukturag/libheif/tree/v${HEIF_VERSIONS.libheif}`, ["libheif-NOTICE.txt"]],
+        ["libde265", "LGPL-3.0", `https://github.com/strukturag/libde265/tree/v${HEIF_VERSIONS.libde265}`, ["libde265-NOTICE.txt", "libde265-COPYING.txt"]],
+      ],
     },
     { name: "Noto Sans", file: "noto.txt", packages: fonts(Object.keys(fontGroups).map((g) => fontGroups[g][0])) },
     { name: "Arimo, Tinos, Cousine, Carlito, Caladea", file: "pdfa-fonts.txt", packages: fonts(["arimo", "tinos", "cousine", "carlito", "caladea"]) },

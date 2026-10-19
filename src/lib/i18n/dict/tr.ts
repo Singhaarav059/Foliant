@@ -532,7 +532,6 @@ const d: { [K in DictKey]?: string } = {
   "feat.f2t": "Gerçek karartma",
   "feat.f2b": "Karartılan sayfalar yeniden oluşturulur; gizlenen metin siyah bir kutuyla örtülmekle kalmaz, gerçekten yok olur.",
   "feat.f3t": "Her dilde aranabilir taramalar",
-  "feat.f3b": "OCR, Çince, Arapça ve Hintçe dahil 26 dilde görünmez bir metin katmanı ekler.",
   "feat.f4t": "İş akışları",
   "feat.f4b": "Bir araç zincirini kaydedin ve yeni dosyalarda tek adımda çalıştırın.",
   "feat.f5t": "Kaldığınız yerden devam edin",

@@ -58,4 +58,59 @@ ${urls.join("\n")}
 `;
 }
 
-export const robotsTxt = () => `User-agent: *\nAllow: /\n\nSitemap: ${SITE_URL}/sitemap.xml\n`;
+// What a tool page says about its tool, already in the page's language.
+export type ToolContent = {
+  name: string;
+  description: string;
+  howTo: string;
+  steps: string[];
+  faq: { q: string; a: string }[];
+};
+
+// Structured data for a tool page: the tool as a free web application, how
+// to use it, its questions and answers (only those shown on the page), and
+// where it sits in the site. Read by search engines, never executed.
+export function toolJsonLd(o: { lang: Locale; slug: string; home: string; content: ToolContent }) {
+  const url = `${SITE_URL}/${o.lang}/${o.slug}`;
+  const { name, description, howTo, steps, faq } = o.content;
+  const graph: Record<string, unknown>[] = [
+    {
+      "@type": "SoftwareApplication",
+      "@id": `${url}#app`,
+      name,
+      description,
+      url,
+      applicationCategory: "UtilitiesApplication",
+      operatingSystem: "Any",
+      browserRequirements: "Requires a current web browser with JavaScript enabled",
+      isAccessibleForFree: true,
+      inLanguage: o.lang,
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+      publisher: { "@type": "Organization", name: BRAND.name, url: SITE_URL },
+    },
+    {
+      "@type": "HowTo",
+      name: howTo,
+      inLanguage: o.lang,
+      step: steps.map((text, i) => ({ "@type": "HowToStep", position: i + 1, text })),
+    },
+    ...(faq.length
+      ? [{
+          "@type": "FAQPage",
+          inLanguage: o.lang,
+          mainEntity: faq.map(({ q, a }) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } })),
+        }]
+      : []),
+    {
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        { "@type": "ListItem", position: 1, name: o.home, item: `${SITE_URL}/${o.lang}` },
+        { "@type": "ListItem", position: 2, name, item: url },
+      ],
+    },
+  ];
+  // "<" escaped so no string in it can close the script element.
+  return JSON.stringify({ "@context": "https://schema.org", "@graph": graph }).replace(/</g, "\\u003c");
+}
+
+export const robotsTxt =() => `User-agent: *\nAllow: /\n\nSitemap: ${SITE_URL}/sitemap.xml\n`;

@@ -532,7 +532,6 @@ const d: { [K in DictKey]?: string } = {
   "feat.f2t": "Censura de debò",
   "feat.f2b": "Les pàgines censurades es reconstrueixen perquè el text ocult desaparegui de veritat, i no quedi només tapat amb un requadre negre.",
   "feat.f3t": "Escanejos cercables en qualsevol llengua",
-  "feat.f3b": "L’OCR afegeix una capa de text invisible en 26 llengües, com ara el xinès, l’àrab i l’hindi.",
   "feat.f4t": "Fluxos de treball",
   "feat.f4b": "Desa una cadena d’eines i executa-la sobre fitxers nous d’un sol cop.",
   "feat.f5t": "Continua on ho havies deixat",

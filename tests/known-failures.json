@@ -1,0 +1,3 @@
+{
+  "docx-features: a continuous break marked on the next section only (as Word saves it)": "src/lib/office/docx.ts breakSections reads the continuous type from the section that ends, but in OOXML a sectPr's w:type says how its own section starts, so Word's continuous breaks become page breaks"
+}

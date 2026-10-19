@@ -1,9 +1,12 @@
 "use client";
 
-import { PDFDict, PDFDocument, PDFName, PDFRawStream, PDFNumber, PDFHexString, PDFString, decodePDFRawStream } from "pdf-lib";
 import type { PDFPageProxy } from "pdfjs-dist";
 import {
-  baseName, bytesOf, canvasToBlob, normaliseImage, closePdf, openPdf, pdfBlob, pdfjs, renderPage, loadImage,
+  PDFDict, PDFDocument, PDFName, PDFRawStream, PDFNumber, PDFHexString, PDFString, decodePDFRawStream,
+  concatTransformationMatrix, drawObject, popGraphicsState, pushGraphicsState,
+} from "pdf-lib";
+import {
+  baseName, bytesOf, canvasToBlob, closePdf, openPdf, pdfBlob, pdfjs, renderPage,
   type Output, type Progress,
 } from "./common";
 import { pageText, blocks, bodySizeOf, spans, dropChars, lineChars, type Line, type Run, type Span } from "./text";
@@ -12,40 +15,71 @@ import { documentLayout, figuresOf, type Figure, type PageLayout } from "./layou
 import { addInvisibleText } from "./textlayer";
 import { srgbProfile } from "./icc";
 import { loadPdf } from "./organize";
-import { PdfError } from "./errors";
+import { openForEdit } from "./open";
+import { forFile, PdfError } from "./errors";
+import { loadImage, pdfImageMatrix, pdfImages } from "./images";
 import { prepareDocx } from "./word";
 
-const SIZES = { a4: [595.28, 841.89], letter: [612, 792] } as const;
-const MARGINS = { none: 0, small: 20, large: 50 } as const;
+// Page sizes in millimetres, portrait.
+const SIZES = { a3: [297, 420], a4: [210, 297], a5: [148, 210], letter: [215.9, 279.4], legal: [215.9, 355.6] } as const;
+const MM = 72 / 25.4;
+// The largest page PDF readers accept (Acrobat's limit), in points.
+const MAX_PAGE = 14400;
+// The smallest, in points (ISO 32000 Annex C); some readers clamp or refuse smaller.
+const MIN_PAGE = 3;
 
 // ── Images → PDF
+// `pageSize` "fit" makes each page the image's own size (no margin);
+// "custom" uses `width` × `height`. `margin` and those are in millimetres.
 export async function imagesToPdf(
   files: Blob[],
   names: string[],
-  o: { orientation: string; pageSize: string; margin: string; separate: boolean },
+  o: { orientation: string; pageSize: string; margin: number; width?: number; height?: number; separate: boolean },
   progress?: Progress,
 ): Promise<Output[]> {
   const make = async (subset: number[]) => {
     const doc = await PDFDocument.create();
     for (const i of subset) {
-      const img = await normaliseImage(files[i]);
-      const embedded = img.kind === "png" ? await doc.embedPng(img.bytes) : await doc.embedJpg(img.bytes);
-      const margin = MARGINS[o.margin as keyof typeof MARGINS] ?? 0;
-      let pw: number, ph: number;
-      if (o.pageSize === "fit") {
-        // Images at 96 DPI, as browsers show them.
-        pw = img.width * 0.75 + margin * 2;
-        ph = img.height * 0.75 + margin * 2;
-      } else {
-        const [w, h] = SIZES[o.pageSize as keyof typeof SIZES] ?? SIZES.a4;
-        const landscape = o.orientation === "landscape" || (o.orientation === "auto" && img.width > img.height);
-        [pw, ph] = landscape ? [h, w] : [w, h];
-      }
-      const page = doc.addPage([pw, ph]);
-      const scale = Math.min((pw - margin * 2) / img.width, (ph - margin * 2) / img.height);
-      const w = img.width * scale;
-      const h = img.height * scale;
-      page.drawImage(embedded, { x: (pw - w) / 2, y: (ph - h) / 2, width: w, height: h });
+      await forFile(files[i], async () => {
+        for await (const img of pdfImages(files[i])) {
+          const embedded = img.kind === "png" ? await doc.embedPng(img.bytes) : await doc.embedJpg(img.bytes);
+          let pw: number, ph: number;
+          if (o.pageSize === "fit") {
+            [pw, ph] = img.points;
+            // A tiny image (an icon, a 1-pixel line) is scaled up to a page readers accept.
+            const small = Math.min(pw, ph) / MIN_PAGE;
+            if (small < 1) [pw, ph] = [pw / small, ph / small];
+          } else if (o.pageSize === "custom") {
+            // Exactly as entered: the orientation choice doesn't apply.
+            [pw, ph] = [o.width || SIZES.a4[0], o.height || SIZES.a4[1]].map((v) => Math.min(Math.max(v, 10), MAX_PAGE / MM) * MM);
+          } else {
+            const [w, h] = (SIZES[o.pageSize as keyof typeof SIZES] ?? SIZES.a4).map((v) => v * MM);
+            const landscape = o.orientation === "landscape" || (o.orientation === "auto" && img.width > img.height);
+            [pw, ph] = landscape ? [h, w] : [w, h];
+          }
+          const margin = o.pageSize === "fit" ? 0 : Math.max(0, Math.min((o.margin || 0) * MM, Math.min(pw, ph) / 2 - 1));
+          // A huge image at 96 DPI would make a page readers refuse.
+          const big = Math.max(pw, ph) / MAX_PAGE;
+          if (big > 1) [pw, ph] = [pw / big, ph / big];
+          // Only an image over 4800 times longer than wide gets here: its page
+          // is widened, and the image keeps its shape in the middle.
+          [pw, ph] = [Math.max(pw, MIN_PAGE), Math.max(ph, MIN_PAGE)];
+          const page = doc.addPage([pw, ph]);
+          const scale = Math.min((pw - margin * 2) / img.width, (ph - margin * 2) / img.height);
+          const w = img.width * scale;
+          const h = img.height * scale;
+          const x = (pw - w) / 2;
+          const y = (ph - h) / 2;
+          if (img.orientation === 1) {
+            page.drawImage(embedded, { x, y, width: w, height: h });
+          } else {
+            // Turned in the PDF, so the JPEG is kept byte for byte.
+            const [sw, sh] = img.orientation >= 5 ? [img.height, img.width] : [img.width, img.height];
+            const name = page.node.newXObject("Image", embedded.ref);
+            page.pushOperators(pushGraphicsState(), concatTransformationMatrix(...pdfImageMatrix(img.orientation, sw, sh, x, y, w, h)), drawObject(name), popGraphicsState());
+          }
+        }
+      });
       progress?.(i + 1, files.length);
     }
     return pdfBlob(await doc.save({ useObjectStreams: true }));
@@ -137,7 +171,7 @@ export async function pdfToImages(file: File, o: { dpi: string; format: string }
 
 // Pulls embedded images out as they are stored: JPEGs byte for byte, others re-encoded as PNG.
 export async function extractImages(file: File): Promise<Output[]> {
-  const doc = await PDFDocument.load(await bytesOf(file), { updateMetadata: false });
+  const { doc } = await openForEdit(await bytesOf(file), file.name);
   const out: Output[] = [];
   let n = 0;
   for (const [, obj] of doc.context.enumerateIndirectObjects()) {
@@ -245,6 +279,14 @@ function asNumber(text: string): number | null {
 }
 
 // ── PDF → Excel
+// A file name as a sheet name Excel accepts: none of * ? : \ / [ ], no
+// apostrophe at either end, at most 31 characters, and not "History",
+// which Excel keeps for itself.
+export function sheetName(stem: string) {
+  const name = stem.replace(/[*?:\\/[\]]/g, " ").replace(/\s+/g, " ").trim().slice(0, 31).replace(/^'+|'+$/g, "").trim();
+  return !name ? "Sheet1" : name.toLowerCase() === "history" ? `${name} 1` : name;
+}
+
 export async function pdfToExcel(file: File, o: { sheetPer: string }, progress?: Progress): Promise<Output[]> {
   const ExcelJS = (await import("exceljs")).default;
   const doc = await openPdf(await file.arrayBuffer());
@@ -293,7 +335,7 @@ export async function pdfToExcel(file: File, o: { sheetPer: string }, progress?:
     widths.forEach((w, k) => (ws.getColumn(k + 1).width = w));
   };
   if (o.sheetPer === "document") {
-    const ws = wb.addWorksheet(baseName(file.name).slice(0, 31) || "Sheet1");
+    const ws = wb.addWorksheet(sheetName(baseName(file.name)));
     layouts.forEach((l, i) => {
       write(ws, l);
       if (i < layouts.length - 1) ws.addRow([]);

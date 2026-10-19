@@ -1,21 +1,16 @@
 "use client";
 
-import { useId, useRef } from "react";
-import { ImagePlus, X } from "lucide-react";
+import { useId, useRef, useState } from "react";
+import { Eye, EyeOff, ImagePlus, Sparkles, X } from "lucide-react";
+import { passwordStrength, suggestPassword } from "@/lib/pdf/password";
 import { useI18n } from "../I18n";
 import { optionVisible, type OptionDef } from "@/lib/tools";
 import { LOCALES } from "@/lib/i18n/locales";
-
-const OCR_NAMES: Record<string, string> = {
-  eng: "English", spa: "Español", fra: "Français", deu: "Deutsch", ita: "Italiano", por: "Português", jpn: "日本語",
-  rus: "Русский", kor: "한국어", chi_sim: "中文 (简体)", chi_tra: "中文 (繁體)", ara: "العربية", bul: "Български",
-  cat: "Català", nld: "Nederlands", ell: "Ελληνικά", hin: "हिन्दी", ind: "Bahasa Indonesia", msa: "Bahasa Melayu",
-  pol: "Polski", swe: "Svenska", tha: "ภาษาไทย", tur: "Türkçe", ukr: "Українська", vie: "Tiếng Việt", swa: "Kiswahili",
-};
+import { LangPicker } from "./LangPicker";
 
 export function Options({
-  defs, values, onChange,
-}: { defs: OptionDef[]; values: Record<string, unknown>; onChange: (key: string, value: unknown) => void }) {
+  defs, values, onChange, restore = false,
+}: { defs: OptionDef[]; values: Record<string, unknown>; onChange: (key: string, value: unknown) => void; restore?: boolean }) {
   const { t, tOr } = useI18n();
   const uid = useId();
   const visible = defs.filter((d) => optionVisible(d, values));
@@ -41,12 +36,12 @@ export function Options({
         }
         return (
           <div key={d.key}>
-            <label htmlFor={id} className="mb-1.5 flex items-baseline justify-between text-[13px] font-medium text-ink-2">
+            <label id={`${id}-label`} htmlFor={id} className="mb-1.5 flex items-baseline justify-between text-[13px] font-medium text-ink-2">
               {label}
               {d.type === "range" && <span className="tabular font-normal text-muted">{String(value)}{d.unit}</span>}
             </label>
             {d.type === "select" && (
-              d.choices.length <= 3 && d.choices.every((c) => (t(`choice.${d.key}.${c}`)).length < 60) && !["ocrLang", "dpi", "pdfaDpi", "redactDpi", "rotation", "screenWidth"].includes(d.key) ? (
+              d.choices.length <= 3 && d.choices.every((c) => (t(`choice.${d.key}.${c}`)).length < 60) && !["dpi", "pdfaDpi", "redactDpi", "rotation", "screenWidth"].includes(d.key) ? (
                 <div role="radiogroup" className="grid gap-1.5">
                   {d.choices.map((c) => {
                     const on = value === c;
@@ -69,13 +64,22 @@ export function Options({
                 <select id={id} className="field" value={String(value)} onChange={(e) => onChange(d.key, e.target.value)}>
                   {d.choices.map((c) => (
                     <option key={c} value={c}>
-                      {d.key === "ocrLang" ? OCR_NAMES[c] ?? c : d.key === "summaryLang" && c !== "same" ? LOCALES.find((l) => l.code === c)?.name ?? c : d.key === "rotation" || d.key === "angle" ? `${c}°` : tOr(`choice.${d.key}.${c}`, c)}
+                      {d.key === "summaryLang" && c !== "same" ? LOCALES.find((l) => l.code === c)?.name ?? c : d.key === "rotation" || d.key === "angle" ? `${c}°` : tOr(`choice.${d.key}.${c}`, c)}
                     </option>
                   ))}
                 </select>
               )
             )}
-            {(d.type === "text" || d.type === "password") && (
+            {d.type === "multi" && (
+              <LangPicker id={id} choices={d.choices} max={d.max} value={String(value ?? d.default)} fallback={d.default} restore={restore} onChange={(v) => onChange(d.key, v)} />
+            )}
+            {d.type === "password" && d.strength && (
+              <PasswordOption id={id} value={String(value ?? "")} onChange={(v, suggested) => {
+                onChange(d.key, v);
+                if (suggested && d.confirm) onChange(d.confirm, v);
+              }} />
+            )}
+            {(d.type === "text" || (d.type === "password" && !d.strength)) && (
               <input
                 id={id}
                 type={d.type}
@@ -169,6 +173,64 @@ function ImageOption({ value, onChange }: { value?: File; onChange: (f: File | u
           <X size={16} />
         </button>
       )}
+    </div>
+  );
+}
+
+// A new password: shown or hidden, rated as it's typed, or suggested (and
+// then shown, so it can be copied).
+function PasswordOption({ id, value, onChange }: { id: string; value: string; onChange: (v: string, suggested: boolean) => void }) {
+  const { t } = useI18n();
+  const [shown, setShown] = useState(false);
+  const [suggested, setSuggested] = useState<string | null>(null);
+  const level = passwordStrength(value);
+  return (
+    <div>
+      <div className="relative">
+        <input
+          id={id}
+          type={shown ? "text" : "password"}
+          className="field pe-11"
+          value={value}
+          autoComplete="new-password"
+          spellCheck={false}
+          aria-describedby={`${id}-strength`}
+          onChange={(e) => {
+            setSuggested(null);
+            onChange(e.target.value, false);
+          }}
+        />
+        <button
+          type="button"
+          className="icon-btn absolute end-1 top-1/2 -translate-y-1/2"
+          aria-label={shown ? t("pw.hide") : t("pw.show")}
+          aria-pressed={shown}
+          onClick={() => setShown((s) => !s)}
+        >
+          {shown ? <EyeOff size={16} /> : <Eye size={16} />}
+        </button>
+      </div>
+      <div id={`${id}-strength`} className="mt-2 flex h-4 items-center gap-2" aria-live="polite">
+        <span className="flex w-24 shrink-0 gap-1" aria-hidden="true">
+          {[1, 2, 3, 4].map((n) => (
+            <span key={n} className={`h-1 flex-1 rounded-full ${n <= level ? (level <= 1 ? "bg-danger" : level === 2 ? "bg-accent" : "bg-success") : "bg-line-strong"}`} />
+          ))}
+        </span>
+        {value && <span className="text-[12px] text-muted">{t("pw.strength", { level: t(`pw.level.${level}`) })}</span>}
+      </div>
+      <button
+        type="button"
+        className="btn btn-quiet btn-sm mt-2"
+        onClick={() => {
+          const pw = suggestPassword();
+          setSuggested(pw);
+          setShown(true);
+          onChange(pw, true);
+        }}
+      >
+        <Sparkles size={14} /> {t("pw.suggest")}
+      </button>
+      {suggested && suggested === value && <p className="mt-2 text-[13px] text-muted">{t("pw.suggested")}</p>}
     </div>
   );
 }

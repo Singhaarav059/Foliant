@@ -41,6 +41,8 @@ jobs:
         run: npm run build:static
       - name: Search and sharing (sitemap, canonical, hreflang, cards, icons)
         run: npm run test:seo
+      - name: Tool page content and structured data
+        run: npm run test:content
       - name: Licences, operator and contact
         run: npm run test:legal
 
@@ -110,9 +112,46 @@ jobs:
       - name: Sign and editor
         if: success() || failure()
         run: npm run test:e2e:sign -- ${{ matrix.browser }}
+      - name: Images to PDF
+        if: success() || failure()
+        run: npm run test:e2e:images -- ${{ matrix.browser }}
+      - name: OCR languages
+        if: success() || failure()
+        run: npm run test:e2e:ocr-langs -- ${{ matrix.browser }}
       - name: Office to PDF with LibreOffice, first visit
         if: matrix.browser == 'chromium'
         run: npm run test:e2e-office
+      - name: Office to PDF with High fidelity chosen, returning visit
+        if: matrix.browser == 'chromium' && (success() || failure())
+        run: npm run test:e2e:office-high
+
+  # Every tool in tools.ts, with its defaults and with one option changed, in
+  # English, Arabic (right to left) and Japanese (tests/e2e/tools).
+  tools:
+    name: Every tool (${{ matrix.lang }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        lang: [en, ar, ja]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run build:static
+      - name: Install chromium
+        run: npx playwright-core install --with-deps chromium
+      - name: Serve the static build
+        run: |
+          nohup npm run serve:static > server.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:3202/en > /dev/null && exit 0; sleep 1; done
+          echo "Server did not start" && exit 1
+      - name: Run every tool
+        run: npm run test:e2e:tools -- --lang ${{ matrix.lang }}
 
   pdf:
     name: PDF engine tests
@@ -147,6 +186,8 @@ jobs:
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:errors
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:image-bytes
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:compare
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:summarize
@@ -167,11 +208,21 @@ jobs:
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:ppt
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:word-structure
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:docx-features
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:compress
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:ocr
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:ocr-langs
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:auto-ocr
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:redact
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:stamps
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:office
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
@@ -180,6 +231,8 @@ jobs:
         run: npm run test:office-run
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: node scripts/ci-report.mjs "test:libreoffice" npm run test:libreoffice
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:libreoffice-parts
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: node scripts/ci-report.mjs "test:ocr-accuracy" npm run test:ocr-accuracy
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}

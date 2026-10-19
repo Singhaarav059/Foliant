@@ -1,8 +1,8 @@
 // Raw image pixels for Compress: PNG predictors, resampling, palettes.
 // Plain arrays, no canvas, so it runs anywhere and gives the same bytes everywhere.
 
-// Packed 8-bit samples, one or three channels, no alpha.
-export type Pixels = { w: number; h: number; ch: 1 | 3; data: Uint8Array };
+// Packed 8-bit samples: grey, RGB or CMYK, no alpha.
+export type Pixels = { w: number; h: number; ch: 1 | 3 | 4; data: Uint8Array };
 
 export function fromRGBA(rgba: { width: number; height: number; data: Uint8ClampedArray | Uint8Array }, ch: 1 | 3): Pixels {
   const { width: w, height: h, data } = rgba;
@@ -17,7 +17,7 @@ export function fromRGBA(rgba: { width: number; height: number; data: Uint8Clamp
   return { w, h, ch, data: out };
 }
 
-export function toRGBA(p: Pixels) {
+export function toRGBA(p: Pixels & { ch: 1 | 3 }) {
   const data = new Uint8ClampedArray(p.w * p.h * 4);
   for (let i = 0, q = 0; i < p.w * p.h; i++, q += p.ch) {
     data[i * 4] = p.data[q];
@@ -116,9 +116,71 @@ export function resample(p: Pixels, nw: number, nh: number): Pixels {
   return { w: nw, h: nh, ch, data: out };
 }
 
+// ── Sample formats: packed bits, 16-bit, palettes, inverted /Decode, CMYK.
+
+// Rows of `comps` samples at 1, 2, 4, 8 or 16 bits (each row starts on a byte)
+// as 8-bit samples. 16-bit keeps the high byte; 1-, 2- and 4-bit samples
+// are scaled to 0–255 unless `raw` (palette indices stay indices).
+export function unpack(src: Uint8Array, w: number, h: number, comps: number, bpc: number, raw = false): Uint8Array | null {
+  const rowBytes = Math.ceil((w * comps * bpc) / 8);
+  if (src.length < rowBytes * h) return null;
+  const n = w * comps;
+  const out = new Uint8Array(n * h);
+  if (bpc === 8) {
+    for (let y = 0; y < h; y++) out.set(src.subarray(y * rowBytes, y * rowBytes + n), y * n);
+  } else if (bpc === 16) {
+    for (let y = 0; y < h; y++) for (let i = 0; i < n; i++) out[y * n + i] = src[y * rowBytes + i * 2];
+  } else if (bpc === 1 || bpc === 2 || bpc === 4) {
+    const max = (1 << bpc) - 1;
+    const scale = raw ? 1 : 255 / max;
+    for (let y = 0; y < h; y++)
+      for (let i = 0; i < n; i++) {
+        const bit = i * bpc;
+        out[y * n + i] = ((src[y * rowBytes + (bit >> 3)] >> (8 - bpc - (bit & 7))) & max) * scale;
+      }
+  } else return null;
+  return out;
+}
+
+// Palette indices to colours; out-of-range indices clamp to the last entry, as viewers do.
+export function expandPalette(idx: Uint8Array, w: number, h: number, lookup: Uint8Array, ch: 1 | 3 | 4): Pixels {
+  const last = Math.max(0, Math.floor(lookup.length / ch) - 1);
+  const data = new Uint8Array(w * h * ch);
+  for (let i = 0; i < w * h; i++) {
+    const k = Math.min(idx[i], last) * ch;
+    for (let c = 0; c < ch; c++) data[i * ch + c] = lookup[k + c] ?? 0;
+  }
+  return { w, h, ch, data };
+}
+
+// /Decode [1 0 ...]: samples stored inverted (Adobe's CMYK JPEGs, some scans).
+export function invert(p: Pixels): Pixels {
+  const data = new Uint8Array(p.data.length);
+  for (let i = 0; i < data.length; i++) data[i] = 255 - p.data[i];
+  return { ...p, data };
+}
+
+// DeviceCMYK to sRGB with the polynomial fit to US Web Coated (SWOP) that
+// pdf.js uses for DeviceCMYK (Apache-2.0, src/core/colorspace.js), so the
+// result matches what the app's own preview showed.
+export function cmykToRgb(p: Pixels): Pixels {
+  const n = p.w * p.h;
+  const out = new Uint8Array(n * 3);
+  const s = p.data;
+  const clamp = (v: number) => (v < 0 ? 0 : v > 255 ? 255 : Math.round(v));
+  for (let i = 0; i < n; i++) {
+    const c = s[i * 4] / 255, m = s[i * 4 + 1] / 255, y = s[i * 4 + 2] / 255, k = s[i * 4 + 3] / 255;
+    out[i * 3] = clamp(255 + c * (-4.387332384609988 * c + 54.48615194189176 * m + 18.82290502165302 * y + 212.25662451639585 * k + -285.2331026137004) + m * (1.7149763477362134 * m - 5.6096736904047315 * y + -17.873870861415444 * k - 5.497006427196366) + y * (-2.5217340131683033 * y - 21.248923337353073 * k + 17.5119270841813) + k * (-21.86122147463605 * k - 189.48180835922747));
+    out[i * 3 + 1] = clamp(255 + c * (8.841041422036149 * c + 60.118027045597366 * m + 6.871425592049007 * y + 31.159100130055922 * k + -79.2970844816548) + m * (-15.310361306967817 * m + 17.575251261109482 * y + 131.35250912493976 * k - 190.9453302588951) + y * (4.444339102852739 * y + 9.8632861493405 * k - 24.86741582555878) + k * (-20.737325471181034 * k - 187.80453709719578));
+    out[i * 3 + 2] = clamp(255 + c * (0.8842522430003296 * c + 8.078677503112928 * m + 30.89978309703729 * y - 0.23883238689178934 * k + -14.183576799673286) + m * (10.49593273432072 * m + 63.02378494754052 * y + 50.606957656360734 * k - 112.23884253719248) + y * (0.03296041114873217 * y + 115.60384449646641 * k + -193.58209356861505) + k * (-22.33816807309886 * k - 180.12613974708367));
+  }
+  return { w: p.w, h: p.h, ch: 3, data: out };
+}
+
 // RGB images whose channels never differ by more than a step are grey.
 export function asGray(p: Pixels): Pixels | null {
   if (p.ch === 1) return p;
+  if (p.ch !== 3) return null;
   const out = new Uint8Array(p.w * p.h);
   for (let i = 0, q = 0; i < out.length; i++, q += 3) {
     const r = p.data[q], g = p.data[q + 1], b = p.data[q + 2];
@@ -131,6 +193,7 @@ export function asGray(p: Pixels): Pixels | null {
 // Images with few colours (charts, screenshots, logos) as palette indices,
 // packed at 1, 2, 4 or 8 bits. Lossless.
 export function palette(p: Pixels, max = 256): { colors: Uint8Array; bits: 1 | 2 | 4 | 8; data: Uint8Array } | null {
+  if (p.ch === 4) return null;
   const index = new Map<number, number>();
   const n = p.w * p.h;
   const idx = new Uint8Array(n);

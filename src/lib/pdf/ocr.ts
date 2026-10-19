@@ -4,12 +4,15 @@
 // (ocrprep.ts), and read by a pool of Tesseract workers in parallel; the words
 // go back onto the original page as invisible text, rotated to match the scan.
 
-import { PDFDocument, degrees } from "pdf-lib";
+import { degrees } from "pdf-lib";
+import { openForEdit, shownRotation } from "./open";
 import type { PageViewport } from "pdfjs-dist";
-import { baseName, bytesOf, closePdf, openPdf, pdfBlob, renderPage, type Output, type Progress } from "./common";
+import { baseName, bytesOf, closePdf, openPdf, pdfBlob, pdfjs, renderPage, type Output, type Progress } from "./common";
 import { VENDOR, VENDOR_VERSION } from "../vendor";
 import { addInvisibleText, type Word } from "./textlayer";
 import { PADDLE_LANGS, paddlePage } from "./paddle";
+import { OCR_LANGS } from "../tools";
+import { ocrLangs } from "../ocr-langs";
 import { deskew, estimateSkew, flattenBackground, grayOf, grayPng, looksSideways, median3, noiseLevel, rotate90, unmapper, type Gray, type Unmap } from "./ocrprep";
 
 // Noise level (grey levels, Immerkær) above which a page gets a median filter.
@@ -114,38 +117,174 @@ export function toWord(text: string, corners: [number, number][], viewport: Page
   return { text, x: ax, y: ay, width: Math.hypot(bx - ax, by - ay), height: Math.hypot(cx - ax, cy - ay), angle: Math.atan2(by - ay, bx - ax) };
 }
 
-export async function ocr(file: File, o: { ocrLang: string; dpi: string; ocrEngine?: string }, progress?: Progress): Promise<Output[]> {
-  const bytes = await bytesOf(file);
-  const src = await openPdf(bytes);
-  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
-  const pages = doc.getPages();
-  const scale = Number(o.dpi) / 72;
+type OcrOptions = { ocrLang: string; dpi: string; ocrEngine?: string };
 
-  // Pages that already carry real text don't need OCR.
+export async function ocr(file: File, o: OcrOptions, progress?: Progress): Promise<Output[]> {
+  const r = await textLayer(await bytesOf(file), file.name, o, false, progress);
+  return [{ name: `${baseName(file.name)}-ocr.pdf`, blob: pdfBlob(r.bytes), note: r.note }];
+}
+
+// For PDF to Word, Excel, PowerPoint and Markdown: scanned pages get the OCR
+// tool's invisible text layer first, so the conversion finds their words.
+// Only pages that are pictures of text are read: little or no text (as in
+// ocr()) and a picture covering at least half the page, so a cover page with
+// a logo and a title isn't. A PDF without such pages comes back as it was,
+// and Tesseract isn't loaded. `note` says how the reading went.
+export async function autoOcr(file: File, o: { ocrLang: string }, progress?: Progress): Promise<{ file: File; pages: number; note?: string }> {
+  const r = await textLayer(await bytesOf(file), file.name, { ocrLang: o.ocrLang, dpi: "200" }, true, progress);
+  if (!r.pages) return { file, pages: 0 };
+  return { file: new File([r.bytes as BlobPart], file.name, { type: "application/pdf" }), pages: r.pages, note: r.note ?? "ocrUsed" };
+}
+
+const IMAGE_OPS = ["paintImageXObject", "paintInlineImageXObject", "paintImageXObjectRepeat", "paintInlineImageXObjectGroup", "paintImageMaskXObject"] as const;
+// Share of the page a picture must cover for the page to count as a scan.
+const SCAN_COVER = 0.5;
+
+type Matrix = [number, number, number, number, number, number];
+const mul = (m: Matrix, n: Matrix): Matrix => [
+  m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1],
+  m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3],
+  m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5],
+];
+// pdf.js hands some matrices over as typed arrays (a form XObject's /Matrix is a Float32Array).
+const asMatrix = (v: unknown): Matrix | null =>
+  (Array.isArray(v) || ArrayBuffer.isView(v)) && (v as ArrayLike<unknown>).length === 6 && Array.from(v as ArrayLike<unknown>).every((x) => typeof x === "number")
+    ? (Array.from(v as ArrayLike<number>) as Matrix)
+    : null;
+
+// Cells per side of the grid the page's picture coverage is measured on.
+const COVER_GRID = 64;
+
+// The share of the page pictures cover together, so a scan stored as strips
+// or tiles counts like one stored whole: pictures are drawn into the unit
+// square under the current transform, which save, restore, transform and
+// form XObjects change.
+function imageCover(ops: { fnArray: number[]; argsArray: unknown[][] }, OPS: Record<string, number>, view: number[], images: Set<number>) {
+  const [vx0, vy0, vx1, vy1] = view;
+  const [px0, px1, py0, py1] = [Math.min(vx0, vx1), Math.max(vx0, vx1), Math.min(vy0, vy1), Math.max(vy0, vy1)];
+  const cw = (px1 - px0) / COVER_GRID || 1, ch = (py1 - py0) / COVER_GRID || 1;
+  const covered = new Uint8Array(COVER_GRID * COVER_GRID);
+  let ctm: Matrix = [1, 0, 0, 1, 0, 0];
+  const stack: Matrix[] = [];
+  ops.fnArray.forEach((fn, i) => {
+    const args = ops.argsArray[i];
+    if (fn === OPS.save) stack.push(ctm);
+    else if (fn === OPS.restore) ctm = stack.pop() ?? ctm;
+    else if (fn === OPS.transform) {
+      const m = asMatrix(args);
+      if (m) ctm = mul(ctm, m);
+    } else if (fn === OPS.paintFormXObjectBegin) {
+      stack.push(ctm);
+      const m = asMatrix(args?.[0]);
+      if (m) ctm = mul(ctm, m);
+    } else if (fn === OPS.paintFormXObjectEnd) ctm = stack.pop() ?? ctm;
+    else if (images.has(fn)) {
+      const xs = [ctm[4], ctm[0] + ctm[4], ctm[2] + ctm[4], ctm[0] + ctm[2] + ctm[4]];
+      const ys = [ctm[5], ctm[1] + ctm[5], ctm[3] + ctm[5], ctm[1] + ctm[3] + ctm[5]];
+      // Mark the grid cells whose centres the picture's bounds hold.
+      const gx0 = Math.max(0, Math.ceil((Math.min(...xs) - px0) / cw - 0.5));
+      const gx1 = Math.min(COVER_GRID - 1, Math.floor((Math.max(...xs) - px0) / cw - 0.5));
+      const gy0 = Math.max(0, Math.ceil((Math.min(...ys) - py0) / ch - 0.5));
+      const gy1 = Math.min(COVER_GRID - 1, Math.floor((Math.max(...ys) - py0) / ch - 0.5));
+      for (let y = gy0; y <= gy1; y++) covered.fill(1, y * COVER_GRID + gx0, y * COVER_GRID + gx1 + 1);
+    }
+  });
+  return covered.reduce((s, c) => s + c, 0) / covered.length;
+}
+
+type Rect = { x0: number; y0: number; x1: number; y1: number };
+const rectOf = (pts: [number, number][]): Rect => ({
+  x0: Math.min(...pts.map((p) => p[0])), y0: Math.min(...pts.map((p) => p[1])),
+  x1: Math.max(...pts.map((p) => p[0])), y1: Math.max(...pts.map((p) => p[1])),
+});
+
+// Where a page's existing text sits, in PDF points.
+function textRect(t: number[], width: number, height: number): Rect {
+  const run = Math.hypot(t[0], t[1]) || 1;
+  const rise = Math.hypot(t[2], t[3]) || 1;
+  const h = height || rise;
+  const [ux, uy, vx, vy] = [t[0] / run, t[1] / run, t[2] / rise, t[3] / rise];
+  return rectOf([[t[4], t[5]], [t[4] + ux * width, t[5] + uy * width], [t[4] + vx * h, t[5] + vy * h], [t[4] + ux * width + vx * h, t[5] + uy * width + vy * h]]);
+}
+function wordRect(w: Word): Rect {
+  const [c, s] = [Math.cos(w.angle), Math.sin(w.angle)];
+  return rectOf([[w.x, w.y], [w.x + c * w.width, w.y + s * w.width], [w.x - s * w.height, w.y + c * w.height], [w.x + c * w.width - s * w.height, w.y + s * w.width + c * w.height]]);
+}
+// A word OCR read off text the page already has (half or more of it lies on that text).
+function alreadyThere(w: Word, text: Rect[]) {
+  const r = wordRect(w);
+  const area = (r.x1 - r.x0) * (r.y1 - r.y0);
+  if (area <= 0) return false;
+  return text.some((t) => {
+    const ix = Math.min(r.x1, t.x1) - Math.max(r.x0, t.x0);
+    const iy = Math.min(r.y1, t.y1) - Math.max(r.y0, t.y0);
+    return ix > 0 && iy > 0 && ix * iy >= area / 2;
+  });
+}
+
+// The OCR tool opens the file as readers see it (openForEdit: decrypted when
+// only an owner password locks it, duplicate objects resolved as the
+// cross-reference table says), so the text goes onto the pages that were
+// read. A conversion first checks for scans in the file as given, and only
+// opens it for writing when it has some, so a PDF without scans skips qpdf.
+async function textLayer(bytes: Uint8Array, name: string, o: OcrOptions, scansOnly: boolean, progress?: Progress) {
+  let opened = scansOnly ? null : await openForEdit(bytes, name);
+  const src = await openPdf(opened?.bytes ?? bytes);
+  const { OPS } = await pdfjs();
+  const images = new Set<number>(IMAGE_OPS.map((k) => OPS[k]));
+
+  // Pages that already carry real text don't need OCR. The little text a
+  // page to read may have is kept, and OCR doesn't write it a second time.
   const todo: number[] = [];
+  const existingText = new Map<number, Rect[]>();
   for (let i = 1; i <= src.numPages; i++) {
     const page = await src.getPage(i);
     const existing = await page.getTextContent();
     const chars = existing.items.reduce((s, it) => s + ("str" in it ? it.str.trim().length : 0), 0);
-    if (chars <= 40) todo.push(i);
+    // The operator list decodes the page's pictures; cleanup lets them go again.
+    const scan = chars <= 40 && (!scansOnly || imageCover(await page.getOperatorList(), OPS as Record<string, number>, page.view, images) >= SCAN_COVER);
+    page.cleanup();
+    if (!scan) continue;
+    todo.push(i);
+    existingText.set(i, existing.items.flatMap((it) => ("str" in it && it.str.trim() ? [textRect(it.transform, it.width, it.height)] : [])));
   }
+  if (scansOnly && !todo.length) {
+    await closePdf(src);
+    return { bytes, pages: 0 };
+  }
+  try {
+    opened ??= await openForEdit(bytes, name);
+  } catch (e) {
+    await closePdf(src);
+    throw e;
+  }
+  const doc = opened.doc;
+  const pages = doc.getPages();
+  const scale = Number(o.dpi) / 72;
 
   // One worker per two cores, up to four: each holds its own copy of the language model.
   const cores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
-  // High accuracy (PaddleOCR) reads one page at a time; it only covers some languages.
-  const accurate = o.ocrEngine === "accurate" && PADDLE_LANGS.includes(o.ocrLang);
+  // One or more languages, "eng+hin", as Tesseract takes them.
+  const lang = ocrLangs(o.ocrLang, OCR_LANGS).join("+");
+  // High accuracy (PaddleOCR) reads one page at a time; it only covers some languages, one at a time.
+  const accurate = o.ocrEngine === "accurate" && PADDLE_LANGS.includes(lang);
   const count = accurate ? 1 : Math.max(1, Math.min(4, Math.floor(cores / 2), todo.length));
   let recognised = 0;
   let doubtfulPages = 0;
   let done = src.numPages - todo.length;
   progress?.(done, src.numPages);
-  const ocrEngine = !todo.length ? null : accurate ? { recognise: paddlePage as Recognise, stop: async () => {} } : await engine.create(o.ocrLang, count);
+  const ocrEngine = !todo.length ? null : accurate ? { recognise: paddlePage as Recognise, stop: async () => {} } : await engine.create(lang, count);
   try {
     // Render the next page while the workers read the last ones, holding at most count + 1 pages.
     let next = 0;
     await Promise.all(Array.from({ length: count + 1 }, async () => {
       while (next < todo.length) {
         const i = todo[next++];
+        // pdf.js and pdf-lib read the same pages; should they not, a page pdf-lib lacks is skipped.
+        if (!pages[i - 1]) {
+          progress?.(++done, src.numPages);
+          continue;
+        }
         const page = await src.getPage(i);
         const viewport = page.getViewport({ scale });
         const canvas = await renderPage(page, scale);
@@ -155,9 +294,10 @@ export async function ocr(file: File, o: { ocrLang: string; dpi: string; ocrEngi
         const { words, turns, confidence, doubtful } = await readPage(ocrEngine!.recognise, image);
         if (words.length) recognised++;
         if (doubtful) doubtfulPages++;
-        addInvisibleText(doc, pages[i - 1], words.map((w) => toWord(w.text, w.corners, viewport)));
+        const text = existingText.get(i) ?? [];
+        addInvisibleText(doc, pages[i - 1], words.map((w) => toWord(w.text, w.corners, viewport)).filter((w) => !alreadyThere(w, text)));
         // Scanned sideways or upside down: turn the page so it displays (and reads) upright.
-        if (turns && confidence >= 60) pages[i - 1].setRotation(degrees((pages[i - 1].getRotation().angle + turns * 90) % 360));
+        if (turns && confidence >= 60) pages[i - 1].setRotation(degrees((shownRotation(pages[i - 1]) + turns * 90) % 360));
         progress?.(++done, src.numPages);
       }
     }));
@@ -166,5 +306,5 @@ export async function ocr(file: File, o: { ocrLang: string; dpi: string; ocrEngi
     await closePdf(src);
   }
   const note = recognised === 0 ? "ocrNone" : doubtfulPages ? "ocrDoubtful" : undefined;
-  return [{ name: `${baseName(file.name)}-ocr.pdf`, blob: pdfBlob(await doc.save({ useObjectStreams: true })), note }];
+  return { bytes: await doc.save({ useObjectStreams: true, addDefaultPage: false }), pages: todo.length, note };
 }

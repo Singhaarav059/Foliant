@@ -532,7 +532,6 @@ const d: { [K in DictKey]?: string } = {
   "feat.f2t": "Censura de verdad",
   "feat.f2b": "Las páginas censuradas se reconstruyen para que el texto oculto desaparezca, no solo quede tapado con un recuadro negro.",
   "feat.f3t": "Escaneos con texto buscable en cualquier idioma",
-  "feat.f3b": "El OCR añade una capa de texto invisible en 26 idiomas, incluidos chino, árabe e hindi.",
   "feat.f4t": "Flujos de trabajo",
   "feat.f4b": "Guarda una cadena de herramientas y ejecútala sobre archivos nuevos en un solo paso.",
   "feat.f5t": "Sigue donde lo dejaste",

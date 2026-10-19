@@ -20,7 +20,7 @@ import { PasteHtml } from "./PasteHtml";
 import { clearHandoff, peekHandoff } from "@/lib/handoff";
 import { fileExt, type Output, type Progress } from "@/lib/pdf/common";
 import { fileError } from "@/lib/pdf/errors";
-import { passwordTooLong } from "@/lib/pdf/password";
+import { markUnrestricted, PERMISSIONS, protectProblem } from "@/lib/pdf/password";
 import { pageCount } from "@/lib/pdf/thumbs";
 import { defaultOptions, LIGHT_OFFICE, LIMITS, toolById, type ToolId } from "@/lib/tools";
 
@@ -202,7 +202,8 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
     setProgress({ value: 0 });
     setStage("busy");
     try {
-      const out = await job((done, total) => ticket === run.current && setProgress((p) => ({ ...p, value: total ? Math.min(1, done / total) : 0 })));
+      const made = await job((done, total) => ticket === run.current && setProgress((p) => ({ ...p, value: total ? Math.min(1, done / total) : 0 })));
+      const out = tool.id === "protect" || tool.id === "unlock" ? made : await markUnrestricted(files, made);
       if (ticket !== run.current) return;
       if (!out.length) throw new Error(t("res.error"));
       setOutputs(out);
@@ -215,10 +216,15 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
 
   const validate = (): string | null => {
     if (tool.id === "protect") {
-      if (!String(options.password ?? "")) return t("ws.passwordEmpty");
-      if (options.password !== options.confirmPassword) return t("ws.passwordMismatch");
-      const max = passwordTooLong(String(options.password));
-      if (max !== null) return t("ws.passwordTooLong", { max });
+      const problem = protectProblem({
+        ...Object.fromEntries(PERMISSIONS.map((k) => [k, options[k] !== false])),
+        openPassword: options.openPassword !== false, password: String(options.password ?? ""), confirmPassword: String(options.confirmPassword ?? ""), ownerPassword: String(options.ownerPassword ?? ""),
+      });
+      if (problem?.code === "passwordEmpty") return t("ws.passwordEmpty");
+      if (problem?.code === "noRestriction") return t("ws.noRestriction");
+      if (problem?.code === "passwordMismatch") return t("ws.passwordMismatch");
+      if (problem?.code === "ownerSameAsOpen") return t("ws.ownerSameAsOpen");
+      if (problem?.code === "passwordTooLong") return t("ws.passwordTooLong", { max: problem.max });
     }
     if (tool.minFiles && files.length < tool.minFiles) return t("ws.needMore", { n: tool.minFiles });
     if (tool.id === "extract" && selected.size === 0) return t("ws.pickPages");
@@ -296,7 +302,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
         if (tool.id === "extract") {
           const chosen = pages.filter((p) => selected.has(p.key));
           if (options.separate) return org.extractSeparate(files[0], chosen.map((p) => p.page));
-          return [{ name: `${stem}-extracted.pdf`, blob: await org.buildFromPlan(files, chosen) }];
+          return [{ name: `${stem}-extracted.pdf`, blob: await org.buildFromPlan(files, chosen, { extract: true }) }];
         }
         // Rotate: one PDF back for each file in.
         if (tool.id === "rotate" && files.length > 1) {
@@ -448,7 +454,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
         {dropHint}
         {errorBox}
         {tool.options.length > 0 && (
-          <div className="mb-4 max-w-[420px]"><Options defs={tool.options} values={options} onChange={(k, v) => setOptions((o) => ({ ...o, [k]: v }))} /></div>
+          <div className="mb-4 max-w-[420px]"><Options restore defs={tool.options} values={options} onChange={(k, v) => setOptions((o) => ({ ...o, [k]: v }))} /></div>
         )}
         <Editor key={items[0].id} toolId={tool.id} file={files[0]} options={options} actionLabel={t(`tool.${tool.id}.action`)} onRun={execute}
           onError={(e) => void drop(items[0].id, files[0], e)} />
@@ -482,7 +488,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
         <div className="min-w-0">{board}</div>
         <aside className="card h-max p-5 lg:sticky lg:top-[88px]">
           <p className="mb-5 text-[14px] font-medium">{t("ws.options")}</p>
-          <Options defs={tool.options} values={options} onChange={(k, v) => setOptions((o) => ({ ...o, [k]: v }))} />
+          <Options restore defs={tool.options} values={options} onChange={(k, v) => setOptions((o) => ({ ...o, [k]: v }))} />
           {tool.ai && <AiModels models={tool.ai} value={String(options.aiModel ?? "")} onChange={(v) => setOptions((o) => ({ ...o, aiModel: v }))} />}
           <button className="btn btn-primary btn-lg mt-6 hidden w-full lg:inline-flex" onClick={start}>
             {t(`tool.${tool.id}.action`)} <ArrowRight size={18} className="rtl:rotate-180" />

@@ -532,7 +532,6 @@ const d: { [K in DictKey]?: string } = {
   "feat.f2t": "Sunting keluar yang sebenar",
   "feat.f2b": "Halaman yang disunting keluar dibina semula supaya teks tersembunyi benar-benar hilang, bukan sekadar ditutup dengan kotak hitam.",
   "feat.f3t": "Imbasan boleh dicari dalam sebarang bahasa",
-  "feat.f3b": "OCR menambah lapisan teks halimunan dalam 26 bahasa, termasuk Cina, Arab dan Hindi.",
   "feat.f4t": "Aliran kerja",
   "feat.f4b": "Simpan rangkaian alat dan jalankan pada fail baharu dalam satu langkah.",
   "feat.f5t": "Sambung dari tempat anda berhenti",
