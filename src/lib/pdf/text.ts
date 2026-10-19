@@ -8,13 +8,14 @@ import type { TextItem } from "pdfjs-dist/types/src/display/api";
 
 // `xs` (when known) holds each character's left edge plus the run's right edge, for exact boxes.
 // `font` is a family name ("Times New Roman"), `color` a hex fill ("#cc1a1a"), `link` a URL.
+// `hidden` marks text drawn invisibly (render mode 3 or 7), as an OCR layer over a scan is.
 // `turn` marks text that doesn't run left to right (a label up the margin, a
 // page turned upside down): its direction in degrees clockwise, where its
 // baseline starts, and each character's distance from there along it plus the
 // end, like `xs`. x, y, w and h are then the box around it, and `xs` is unset.
 export type Run = {
   text: string; x: number; y: number; w: number; h: number; size: number; bold: boolean; italic: boolean;
-  xs?: number[]; font?: string; color?: string; link?: string;
+  xs?: number[]; font?: string; color?: string; link?: string; hidden?: boolean;
   turn?: { angle: number; x: number; y: number; at: number[] };
 };
 export type Line = { runs: Run[]; text: string; x: number; y: number; w: number; size: number; bold: boolean };
@@ -102,7 +103,7 @@ export function fontFamily(font: FontObj): string | undefined {
 // ends a text object; runs never continue across one.
 type Placed = {
   ch: string; space: boolean; px: number; py: number; ex: number; ey: number; dx: number; dy: number;
-  size: number; bold: boolean; italic: boolean; font?: string; color: string;
+  size: number; bold: boolean; italic: boolean; font?: string; color: string; hidden: boolean;
 } | null;
 type View = ReturnType<PDFPageProxy["getViewport"]>;
 
@@ -110,8 +111,8 @@ async function placedGlyphs(page: PDFPageProxy): Promise<Placed[]> {
   const { OPS } = await import("pdfjs-dist");
   const list = await page.getOperatorList();
   const out: Placed[] = [];
-  type GS = { ctm: M; font: FontObj | null; size: number; cs: number; ws: number; hs: number; lead: number; rise: number; fill: string };
-  let gs: GS = { ctm: [1, 0, 0, 1, 0, 0], font: null, size: 0, cs: 0, ws: 0, hs: 1, lead: 0, rise: 0, fill: "#000000" };
+  type GS = { ctm: M; font: FontObj | null; size: number; cs: number; ws: number; hs: number; lead: number; rise: number; fill: string; mode: number };
+  let gs: GS = { ctm: [1, 0, 0, 1, 0, 0], font: null, size: 0, cs: 0, ws: 0, hs: 1, lead: 0, rise: 0, fill: "#000000", mode: 0 };
   const stack: GS[] = [];
   let tm: M = [1, 0, 0, 1, 0, 0];
   let tlm: M = [1, 0, 0, 1, 0, 0];
@@ -125,6 +126,7 @@ async function placedGlyphs(page: PDFPageProxy): Promise<Placed[]> {
     const italic = Boolean(font.italic) || /italic|oblique/.test(name);
     const family = fontFamily(font);
     const color = gs.fill;
+    const hidden = gs.mode === 3 || gs.mode === 7;
     let x = 0;
     for (const g of glyphs) {
       if (g === null) continue;
@@ -140,7 +142,7 @@ async function placedGlyphs(page: PDFPageProxy): Promise<Placed[]> {
       const ch = (g.unicode ?? "").normalize("NFKC");
       x += adv;
       if (size < 1) continue;
-      out.push({ ch, space: !ch.trim(), px, py, ex, ey, dx: trm[0], dy: trm[1], size, bold, italic, font: family, color });
+      out.push({ ch, space: !ch.trim(), px, py, ex, ey, dx: trm[0], dy: trm[1], size, bold, italic, font: family, color, hidden });
     }
     tm = mul([1, 0, 0, 1, x, 0], tm);
   };
@@ -173,6 +175,7 @@ async function placedGlyphs(page: PDFPageProxy): Promise<Placed[]> {
       case OPS.setHScale: gs.hs = (a[0] as number) / 100; break;
       case OPS.setLeading: gs.lead = a[0] as number; break;
       case OPS.setTextRise: gs.rise = a[0] as number; break;
+      case OPS.setTextRenderingMode: gs.mode = Number(a[0]); break;
       case OPS.setTextMatrix: tm = tlm = asMatrix(a); break;
       case OPS.moveText: tm = tlm = mul([1, 0, 0, 1, a[0] as number, a[1] as number], tlm); break;
       case OPS.setLeadingMoveText:
@@ -245,7 +248,7 @@ function glyphRuns(glyphs: Placed[], view: View): Run[] {
   const runs: Run[] = [];
   type Cur = {
     text: string; x: number; endX: number; baseY: number; size: number; xs: number[]; angle: number; c: number; s: number;
-    bold: boolean; italic: boolean; font?: string; color: string;
+    bold: boolean; italic: boolean; font?: string; color: string; hidden: boolean;
   };
   let cur: Cur | null = null;
 
@@ -253,7 +256,7 @@ function glyphRuns(glyphs: Placed[], view: View): Run[] {
     if (!r || !r.text.trim()) return;
     const text = r.text.replace(/\s+$/, "");
     const xs = [...r.xs.slice(0, text.length), r.endX];
-    const style = { size: r.size, bold: r.bold, italic: r.italic, font: r.font, color: r.color };
+    const style = { size: r.size, bold: r.bold, italic: r.italic, font: r.font, color: r.color, ...(r.hidden ? { hidden: true } : {}) };
     if (!r.angle) {
       runs.push({ text, x: r.x, y: r.baseY - r.size, w: r.endX - r.x, h: r.size, xs, ...style });
       return;
@@ -300,11 +303,11 @@ function glyphRuns(glyphs: Placed[], view: View): Run[] {
     const right = Math.max(u0, u1);
     const gap = cur ? left - cur.endX : 0;
     const sameLine = cur && same && Math.abs(v - cur.baseY) < size * 0.35 && Math.abs(size - cur.size) < size * 0.25;
-    const restyled = cur && (cur.bold !== g.bold || cur.italic !== g.italic || cur.color !== g.color || cur.font !== g.font);
+    const restyled = cur && (cur.bold !== g.bold || cur.italic !== g.italic || cur.color !== g.color || cur.font !== g.font || cur.hidden !== g.hidden);
     if (!cur || !sameLine || gap > size * 1.0 || gap < -size * 0.5 || restyled) {
       // groupLines puts the space back between restyled runs from the gap.
       flush(cur);
-      cur = { text: "", x: left, endX: left, baseY: v, size, xs: [], angle: frame, c, s, bold: g.bold, italic: g.italic, font: g.font, color: g.color };
+      cur = { text: "", x: left, endX: left, baseY: v, size, xs: [], angle: frame, c, s, bold: g.bold, italic: g.italic, font: g.font, color: g.color, hidden: g.hidden };
     } else if (gap > size * 0.22 && !cur.text.endsWith(" ")) {
       cur.text += " ";
       cur.xs.push(cur.endX);

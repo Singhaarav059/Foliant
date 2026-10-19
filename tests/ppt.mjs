@@ -5,7 +5,7 @@
 //   node tests/ppt.mjs
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { PDFDocument, PDFName, StandardFonts, rgb, grayscale, cmyk } from "pdf-lib";
+import { PDFDocument, PDFName, StandardFonts, TextRenderingMode, rgb, grayscale, cmyk, setTextRenderingMode } from "pdf-lib";
 import JSZip from "jszip";
 import { load, openPdf, check, eq, nodeCanvas, root } from "./lib/load.mjs";
 
@@ -200,6 +200,35 @@ await test("a picture wholly off the page gives no picture; no negative sizes", 
   const x = await z.file("ppt/slides/slide1.xml").async("string");
   eq(/<a:ext c[xy]="-/.test(x), false, "negative extent in the XML");
   eq((x.match(/<p:pic>/g) ?? []).length, 1, "pictures");
+});
+
+// A scanned deck after auto-OCR: the scan is the slide's picture and its
+// words an invisible text layer. Those words stay invisible on the slide
+// (selectable, searchable, editable), rather than drawn a second time over the
+// scan; text drawn visibly on the page, such as a later stamp, stays visible.
+await test("a scan's invisible OCR text stays invisible; visible text stays visible", async () => {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const img = await doc.embedPng(png(230, 230, 220));
+  const page = doc.addPage([W, H]);
+  page.drawImage(img, { x: 0, y: 0, width: W, height: H });
+  page.pushOperators(setTextRenderingMode(TextRenderingMode.Invisible));
+  page.drawText("Quarterly revenue grew", { x: 40, y: 300, size: SIZE, font });
+  page.drawText("Invoice total due", { x: 40, y: 260, size: SIZE, font });
+  page.pushOperators(setTextRenderingMode(TextRenderingMode.Fill));
+  page.drawText("APPROVED", { x: 500, y: 40, size: SIZE, font, color: rgb(0.8, 0.1, 0.1) });
+  const b = new Uint8Array(await doc.save());
+  const [o] = await pdfToPpt(new File([b], "scan.pdf"), { pptText: true });
+  const z = await JSZip.loadAsync(await o.blob.arrayBuffer());
+  const x = await z.file("ppt/slides/slide1.xml").async("string");
+  const run = (text) => [...x.matchAll(/<a:r>([\s\S]*?)<\/a:r>/g)].map((m) => m[1]).find((r) => r.includes(`<a:t>${text}`));
+  for (const text of ["Quarterly revenue grew", "Invoice total due"]) {
+    eq(Boolean(run(text)), true, `"${text}" on the slide`);
+    eq(/<a:alpha val="0"\/>/.test(run(text) ?? ""), true, `"${text}" invisible`);
+  }
+  eq(Boolean(run("APPROVED")), true, "stamp on the slide");
+  eq(/<a:alpha /.test(run("APPROVED") ?? ""), false, "stamp visible");
+  eq(/<p:bg>[\s\S]*?r:embed=/.test(x), true, "the scan is the background");
 });
 
 // Enough of an XML checker for slide parts: tags nest, attribute values are

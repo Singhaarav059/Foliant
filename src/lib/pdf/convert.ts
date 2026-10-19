@@ -496,7 +496,7 @@ export async function pdfToPpt(file: File, o: { pptText: boolean }, progress?: P
           slide.addText(
             seg.pieces.map((p) => ({
               text: p.text,
-              options: { color: p.color, bold: p.bold, italic: p.italic, fontFace: p.font, fontSize: Math.max(4, p.size * scale) },
+              options: { color: p.color, bold: p.bold, italic: p.italic, fontFace: p.font, fontSize: Math.max(4, p.size * scale), ...(p.hidden ? { transparency: 100 } : {}) },
             })),
             {
               x: inch(seg.x * sx), y: inch(l.y * sy), w: inch(Math.max(seg.w, l.size) * sx * 1.04), h: inch(l.size * 1.3 * sy),
@@ -622,7 +622,8 @@ async function imageData(canvas: HTMLCanvasElement, type: "png" | "jpg") {
 // A line's text boxes: runs far apart (table columns, a label and its value)
 // get boxes of their own, so they stay where they were. Each box's text is in
 // pieces with the style and colour of the runs they came from.
-type Piece = { text: string; color: string; bold: boolean; italic: boolean; font: string; size: number };
+// A hidden piece (an OCR layer over a scan) stays invisible on the slide.
+type Piece = { text: string; color: string; bold: boolean; italic: boolean; font: string; size: number; hidden: boolean };
 function lineSegments(l: Line): { x: number; w: number; pieces: Piece[] }[] {
   const groups: Run[][] = [];
   let lastEnd = -Infinity;
@@ -646,7 +647,7 @@ function lineSegments(l: Line): { x: number; w: number; pieces: Piece[] }[] {
         owner = r;
       } else {
         owner = r;
-        pieces.push({ text: text[k], color: hex(r.color), bold: r.bold, italic: r.italic, font: face(r.font), size: r.size });
+        pieces.push({ text: text[k], color: hex(r.color), bold: r.bold, italic: r.italic, font: face(r.font), size: r.size, hidden: !!r.hidden });
       }
     }
     const last = runs[runs.length - 1];
@@ -659,7 +660,7 @@ const hex = (c?: string) => (c && /^#[0-9a-f]{6}$/i.test(c) ? c.slice(1).toUpper
 // would need escaping are left out.
 const face = (f?: string) => (f ?? "").replace(/[&<>"']/g, "").trim() || "Arial";
 const sameLook = (p: Piece, r: Run) =>
-  p.color === hex(r.color) && p.bold === r.bold && p.italic === r.italic && p.font === face(r.font) && Math.abs(p.size - r.size) < 0.6;
+  p.color === hex(r.color) && p.bold === r.bold && p.italic === r.italic && p.font === face(r.font) && Math.abs(p.size - r.size) < 0.6 && p.hidden === !!r.hidden;
 
 // ── PDF → PDF/A (1b, 2b, 2u, 3b, 3u)
 // Pages stay as they are (real text, vector graphics); pdfa.ts fixes what the
