@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { Search, Server, X } from "lucide-react";
 import { ToolIcon } from "./ToolIcon";
 import { useI18n } from "./I18n";
-import { CATEGORIES, TOOLS } from "@/lib/tools";
+import { CATEGORIES, TOOLS, descKey } from "@/lib/tools";
 
 // The tools as an index: one numbered section per category, hairline rows.
 export function ToolGrid() {
@@ -20,7 +20,7 @@ export function ToolGrid() {
       tools: TOOLS.filter((tool) => {
         if (tool.category !== c.id) return false;
         if (!needle) return true;
-        return `${t(`tool.${tool.id}.name`)} ${t(`tool.${tool.id}.desc`)} ${tool.slug} ${tool.accept.join(" ")}`
+        return `${t(`tool.${tool.id}.name`)} ${t(descKey(tool))} ${tool.slug} ${tool.accept.join(" ")}`
           .toLowerCase()
           .includes(needle);
       }),
@@ -84,7 +84,7 @@ export function ToolGrid() {
                           <Server size={12} className="text-muted" aria-label={t("home.serverBadge")} />
                         )}
                       </span>
-                      <span className="mt-0.5 block text-pretty text-[14px] leading-snug text-muted">{t(`tool.${tool.id}.desc`)}</span>
+                      <span className="mt-0.5 block text-pretty text-[14px] leading-snug text-muted">{t(descKey(tool))}</span>
                     </span>
                   </Link>
                 </li>

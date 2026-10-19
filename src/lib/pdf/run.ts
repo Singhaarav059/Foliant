@@ -102,11 +102,15 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
     }
     case "pdfToPdfa": {
       const { pdfToPdfa } = await import("./convert");
-      return each(files, progress, (f, p) => pdfToPdfa(f, { pdfaDpi: s(o.pdfaDpi), keepText: b(o.keepText) }, p));
+      return each(files, progress, (f, p) => pdfToPdfa(f, { pdfaDpi: s(o.pdfaDpi), keepText: b(o.keepText), pdfaLevel: s(o.pdfaLevel) }, p));
     }
     case "pdfToMarkdown": {
       const { pdfToMarkdown } = await import("./convert");
       return each(files, progress, (f, p) => withOcr(f, o, p, (g, q) => pdfToMarkdown(g, { pageBreaks: b(o.pageBreaks) }, q)));
+    }
+    case "summarize": {
+      const { summarizePdf } = await import("@/lib/ai/summarize");
+      return each(files, progress, (f, p) => summarizePdf(f, { summaryLength: s(o.summaryLength), summaryLang: s(o.summaryLang) }, p));
     }
     case "pageNumbers": {
       const { pageNumbers } = await import("./edit");
@@ -180,7 +184,7 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
     case "htmlToPdf": {
       if (STATIC) {
         const { printable } = await import("@/lib/office/print");
-        return [await printable(files[0], { pageSize: s(o.pageSize), orientation: s(o.orientation) })];
+        return [await printable(files[0], { pageSize: s(o.pageSize), orientation: s(o.orientation), margin: s(o.margin), screenWidth: s(o.screenWidth) })];
       }
       const form = new FormData();
       if (files[0]) form.append("file", files[0]);
@@ -224,6 +228,8 @@ export async function prepare(id: ToolId): Promise<unknown> {
       return Promise.all([(await import("./convert")).prepare("excel"), import("./ocr")]);
     case "pdfToPpt":
       return Promise.all([(await import("./convert")).prepare("ppt"), import("./ocr")]);
+    case "summarize":
+      return (await import("@/lib/ai/summarize")).prepare();
     case "pageNumbers":
     case "watermark":
       return import("./edit");

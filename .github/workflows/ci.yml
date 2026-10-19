@@ -13,6 +13,8 @@ concurrency:
 # Everything is pinned (runner image, actions by commit, Node by .node-version,
 # veraPDF by digest) so the same commit builds the same way years from now.
 # Dependabot (.github/dependabot.yml) proposes action updates.
+# Steps run through scripts/ci-report.mjs repeat the end of their output as an
+# error annotation on failure: annotations are public, the logs need a sign-in.
 jobs:
   checks:
     name: Typecheck, lint, translations, builds
@@ -68,22 +70,28 @@ jobs:
         run: node scripts/live-check.mjs http://localhost:3202
       - name: Run tests
         if: ${{ !cancelled() }}
-        run: npm run test:e2e -- ${{ matrix.browser }}
+        run: node scripts/ci-report.mjs "End-to-end (${{ matrix.browser }})" npm run test:e2e -- ${{ matrix.browser }}
       - name: Error messages
         if: success() || failure()
         run: npm run test:e2e:errors -- ${{ matrix.browser }}
       - name: File intake
         if: success() || failure()
-        run: npm run test:e2e:intake -- ${{ matrix.browser }}
+        run: node scripts/ci-report.mjs "File intake (${{ matrix.browser }})" npm run test:e2e:intake -- ${{ matrix.browser }}
       - name: Offline
         if: success() || failure()
         run: npm run test:e2e:offline -- ${{ matrix.browser }}
       - name: Compare
         if: success() || failure()
         run: npm run test:e2e:compare -- ${{ matrix.browser }}
+      - name: Summarize
+        if: success() || failure()
+        run: npm run test:e2e:summarize -- ${{ matrix.browser }}
       - name: Rotate
         if: success() || failure()
         run: npm run test:e2e:rotate -- ${{ matrix.browser }}
+      - name: Page board
+        if: success() || failure()
+        run: npm run test:e2e:pageboard -- ${{ matrix.browser }}
       - name: Protect
         if: success() || failure()
         run: npm run test:e2e:protect -- ${{ matrix.browser }}
@@ -93,6 +101,15 @@ jobs:
       - name: OCR languages
         if: success() || failure()
         run: npm run test:e2e:ocr-langs -- ${{ matrix.browser }}
+      - name: Office to PDF on a phone, no print dialog
+        if: success() || failure()
+        run: npm run test:e2e:office-phone -- ${{ matrix.browser }}
+      - name: HTML to PDF (zip, paste, no remote requests)
+        if: success() || failure()
+        run: npm run test:e2e:html -- ${{ matrix.browser }}
+      - name: Sign and editor
+        if: success() || failure()
+        run: npm run test:e2e:sign -- ${{ matrix.browser }}
       - name: Office to PDF with LibreOffice, first visit
         if: matrix.browser == 'chromium'
         run: npm run test:e2e-office
@@ -157,13 +174,19 @@ jobs:
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:tables
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:html-site
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:errors
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:image-bytes
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:compare
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:summarize
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:organize
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:pageboard
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:protect
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
@@ -176,6 +199,8 @@ jobs:
         run: npm run test:word-structure
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:docx-features
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:ppt
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:compress
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
@@ -195,11 +220,11 @@ jobs:
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:office-run
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: npm run test:libreoffice
+        run: node scripts/ci-report.mjs "test:libreoffice" npm run test:libreoffice
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:libreoffice-parts
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: npm run test:ocr-accuracy
+        run: node scripts/ci-report.mjs "test:ocr-accuracy" npm run test:ocr-accuracy
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:pdfa
         env:
@@ -219,5 +244,5 @@ jobs:
       # Fails on a failure tests/robustness/known-failures.json doesn't list,
       # on a listed case that fails another way than listed (a hang, a crash,
       # a new problem), and on a listed one that now passes (prune it with
-      # --known --prune).
-      - run: npm run test:robust -- --known
+      # --known --prune). known-failures.linux.json holds what differs on these runners.
+      - run: node scripts/ci-report.mjs "test:robust" npm run test:robust -- --known

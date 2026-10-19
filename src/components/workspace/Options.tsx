@@ -6,6 +6,7 @@ import { passwordStrength, suggestPassword } from "@/lib/pdf/password";
 import { useI18n } from "../I18n";
 import { optionVisible, type OptionDef } from "@/lib/tools";
 import { LangPicker } from "./LangPicker";
+import { LOCALES } from "@/lib/i18n/locales";
 
 export function Options({
   defs, values, onChange, restore = false,
@@ -63,7 +64,7 @@ export function Options({
                 <select id={id} className="field" value={String(value)} onChange={(e) => onChange(d.key, e.target.value)}>
                   {d.choices.map((c) => (
                     <option key={c} value={c}>
-                      {d.key === "rotation" || d.key === "angle" ? `${c}°` : tOr(`choice.${d.key}.${c}`, c)}
+                      {d.key === "summaryLang" && c !== "same" ? LOCALES.find((l) => l.code === c)?.name ?? c : d.key === "rotation" || d.key === "angle" ? `${c}°` : tOr(`choice.${d.key}.${c}`, c)}
                     </option>
                   ))}
                 </select>

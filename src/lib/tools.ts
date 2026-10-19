@@ -3,6 +3,7 @@
 
 import { STATIC } from "./mode";
 import { MAX_OCR_LANGS } from "./ocr-langs";
+import { LOCALE_CODES } from "./i18n/locales";
 
 export type CategoryId =
   | "organize"
@@ -45,13 +46,14 @@ export type OptionDef =
   | { key: string; type: "image"; when?: Cond };
 
 // Show an option only when another option has one of these values.
-export type Cond = { key: string; is: (string | boolean)[] };
+// unset: also met while nothing has set the key (a value no option holds, like pdfaRaster).
+export type Cond = { key: string; is: (string | boolean)[]; unset?: boolean };
 
 export type ToolId =
   | "merge" | "split" | "extract" | "remove" | "organize" | "scan"
   | "compress" | "repair" | "ocr"
   | "jpgToPdf" | "wordToPdf" | "pptToPdf" | "excelToPdf" | "htmlToPdf"
-  | "pdfToJpg" | "pdfToWord" | "pdfToPpt" | "pdfToExcel" | "pdfToPdfa" | "pdfToMarkdown"
+  | "pdfToJpg" | "pdfToWord" | "pdfToPpt" | "pdfToExcel" | "pdfToPdfa" | "pdfToMarkdown" | "summarize"
   | "rotate" | "pageNumbers" | "watermark" | "crop" | "edit" | "forms"
   | "unlock" | "protect" | "sign" | "redact" | "compare";
 
@@ -69,6 +71,8 @@ export type Tool = {
   // Can be a step in a saved workflow (no interactive canvas, PDF in → PDF out).
   chainable?: boolean;
   isNew?: boolean;
+  // The dictionary key of its description, when not tool.<id>.desc (see descKey).
+  desc?: string;
 };
 
 const PDF = ["pdf"];
@@ -227,8 +231,11 @@ const ALL: Tool[] = [
     id: "pdfToPdfa", slug: "pdf-to-pdfa", category: "convertFrom", icon: "Archive", mode: "files",
     runtime: "browser", accept: PDF, multiple: true, chainable: true,
     options: [
-      { key: "pdfaDpi", type: "select", choices: ["150", "200", "300"], default: "200" },
-      { key: "keepText", type: "toggle", default: true },
+      { key: "pdfaLevel", type: "select", choices: ["1b", "2b", "2u", "3b", "3u"], default: "2b" },
+      // pdfaRaster isn't an option: the workspace sets it once it knows whether some page must become an image.
+      // Workflow steps never set it, and show both.
+      { key: "pdfaDpi", type: "select", choices: ["150", "200", "300"], default: "200", when: { key: "pdfaRaster", is: [true], unset: true } },
+      { key: "keepText", type: "toggle", default: true, when: { key: "pdfaRaster", is: [true], unset: true } },
     ],
   },
   {
@@ -236,10 +243,19 @@ const ALL: Tool[] = [
     runtime: "browser", accept: PDF, multiple: true, isNew: true,
     options: [{ key: "pageBreaks", type: "toggle", default: false }, ...AUTO_OCR],
   },
+  {
+    // src/lib/ai/summarize.ts: the browser's built-in AI when already on the device, else extractive.
+    id: "summarize", slug: "summarize-pdf", category: "convertFrom", icon: "TextQuote", mode: "files",
+    runtime: "browser", accept: PDF, multiple: true, isNew: true,
+    options: [
+      { key: "summaryLength", type: "select", choices: ["short", "medium", "long"], default: "medium" },
+      { key: "summaryLang", type: "select", choices: ["same", ...LOCALE_CODES], default: "same" },
+    ],
+  },
   // ── Edit
   {
     id: "rotate", slug: "rotate-pdf", category: "edit", icon: "RotateCw", mode: "pages",
-    runtime: "browser", accept: PDF, multiple: false, chainable: true,
+    runtime: "browser", accept: PDF, multiple: true, chainable: true,
     // 0 leaves the turning to the per-page arrows.
     options: [{ key: "angle", type: "select", choices: ["0", "90", "180", "270"], default: "90" }],
   },
@@ -343,9 +359,9 @@ const ALL: Tool[] = [
 
 // Without a server, Office files go through LibreOffice in the browser
 // (src/lib/office/libreoffice.ts), which writes a real PDF and reads every
-// format; Standard lays them out in the browser and saves them through its
-// print dialog. Automatic uses LibreOffice where the device can take it
-// (src/lib/office/route.ts). HTML files always print.
+// format; Standard lays them out in the browser and draws the PDF there
+// (src/lib/office/topdf.ts). Automatic uses LibreOffice where the device can
+// take it (src/lib/office/route.ts). HTML files always print.
 const FIDELITY: OptionDef = { key: "fidelity", type: "select", choices: ["auto", "standard", "high"], default: "auto" };
 export const LIGHT_OFFICE = ["docx", "pptx", "xlsx", "csv"];
 const IN_BROWSER: Partial<Record<ToolId, Partial<Tool>>> = {
@@ -356,11 +372,16 @@ const IN_BROWSER: Partial<Record<ToolId, Partial<Tool>>> = {
     // LibreOffice follows each sheet's own page setup, so orientation is for standard only.
     options: [FIDELITY, { key: "orientation", type: "select", choices: ["auto", "portrait", "landscape"], default: "auto", when: { key: "fidelity", is: ["standard"] } }],
   },
+  // An HTML file, a zipped page or pasted HTML; a URL would need a server.
   htmlToPdf: {
     mode: "files",
+    desc: "tool.htmlToPdf.descStatic",
+    accept: ["html", "htm", "zip"],
     options: [
-      { key: "pageSize", type: "select", choices: ["a4", "letter"], default: "a4" },
+      { key: "pageSize", type: "select", choices: ["a4", "letter", "a3", "a5"], default: "a4" },
       { key: "orientation", type: "select", choices: ["portrait", "landscape"], default: "portrait" },
+      { key: "margin", type: "select", choices: ["none", "small", "large"], default: "small" },
+      { key: "screenWidth", type: "select", choices: ["page", "1440", "1024", "390"], default: "page" },
     ],
   },
 };
@@ -368,6 +389,9 @@ const IN_BROWSER: Partial<Record<ToolId, Partial<Tool>>> = {
 export const TOOLS: Tool[] = STATIC
   ? ALL.map((t) => (t.runtime === "server" ? { ...t, ...IN_BROWSER[t.id], runtime: "browser" } : t))
   : ALL;
+
+// A build can describe a tool differently (the static HTML to PDF takes no URL).
+export const descKey = (tool: Tool) => tool.desc ?? `tool.${tool.id}.desc`;
 
 export const toolBySlug = (slug: string) => TOOLS.find((t) => t.slug === slug);
 export const toolById = (id: ToolId) => TOOLS.find((t) => t.id === id)!;
@@ -379,7 +403,9 @@ export function defaultOptions(tool: Tool): Record<string, unknown> {
 }
 
 export function optionVisible(o: OptionDef, values: Record<string, unknown>) {
-  return !o.when || o.when.is.includes(values[o.when.key] as string | boolean);
+  if (!o.when) return true;
+  const v = values[o.when.key];
+  return (v === undefined && !!o.when.unset) || o.when.is.includes(v as string | boolean);
 }
 
 // Per task. On-device tools are bounded mainly by the device's memory.

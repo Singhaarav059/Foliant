@@ -127,11 +127,13 @@ for (const name of engines) {
     return "noindex, no canonical or translations";
   });
 
-  await test("home lists 31 tools", async () => {
+  // Every tool declared in src/lib/tools.ts.
+  const toolCount = (readFileSync(join(fixtures, "../../src/lib/tools.ts"), "utf8").match(/^\s+id: "\w+", slug: "/gm) ?? []).length;
+  await test(`home lists ${toolCount} tools`, async () => {
     await open("/en");
     const n = await page.locator("main a[data-tool]").count();
     const over = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
-    if (n !== 31 || over > 0) throw new Error(`${n} tools, ${over}px overflow`);
+    if (n !== toolCount || over > 0) throw new Error(`${n} tools, ${over}px overflow`);
     return `${n} tools`;
   });
 
@@ -243,15 +245,17 @@ for (const name of engines) {
   });
 
   for (const [slug, file, needle] of [["word-to-pdf", "brief.docx", "Project brief"], ["powerpoint-to-pdf", "plan.pptx", "Launch plan"], ["excel-to-pdf", "budget.xlsx", "Hosting"]]) {
-    await test(`${file} print preview`, async () => {
+    await test(`${file} Standard: a PDF file, no print dialog`, async () => {
       await open(`/en/${slug}`);
       await pick([file]);
-      // Automatic makes a real PDF with LibreOffice (tests/e2e-office.mjs); Standard prints.
+      // Automatic makes a real PDF with LibreOffice (tests/e2e-office.mjs); Standard draws one in the page.
       await page.getByRole("radio", { name: /^Standard/ }).click();
-      await page.getByRole("button", { name: "Convert to PDF", exact: true }).click();
-      await page.frameLocator("iframe").getByText(needle).first().waitFor({ timeout: 30000 });
-      if ((await page.evaluate(() => typeof document.querySelector("iframe")?.contentWindow?.print)) !== "function") throw new Error("print() not reachable");
-      return "preview, print() reachable";
+      const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+      const doc = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(await run("Convert to PDF"))) }).promise;
+      let text = "";
+      for (let i = 1; i <= doc.numPages; i++) text += (await (await doc.getPage(i)).getTextContent()).items.map((x) => x.str).join("");
+      if (!text.includes(needle)) throw new Error(`text was "${text.slice(0, 60)}"`);
+      return `${doc.numPages} pages, "${needle}" found`;
     });
   }
 

@@ -102,14 +102,17 @@ async function paginate(root: HTMLElement) {
   }
 }
 
-export async function docxPreviewHtml(input: Uint8Array): Promise<string> {
+// Renders the document off screen in this document and hands the laid-out
+// pages (one section.docx per printed page) to `withPages`. `faces`: @font-face
+// rules for fonts the document names (faces.ts).
+export async function renderDocx<T>(input: Uint8Array, withPages: (body: HTMLElement, sections: HTMLElement[], styles: HTMLElement) => Promise<T>, faces = ""): Promise<T> {
   const { renderAsync } = await import("docx-preview");
   const data = await prepare(input);
-  // Rendered off screen in this document, then serialised: images and fonts
-  // are inlined as data URLs so the HTML stands on its own in the print frame.
   const body = document.createElement("div");
   const styles = document.createElement("div");
-  body.style.cssText = "position:fixed;left:-100000px;top:0;";
+  // Nothing inherited from this site's styles: text without a font of its own
+  // gets Word's defaults (BASE), here and in the printed page.
+  body.style.cssText = `all:initial;display:block;position:fixed;left:-100000px;top:0;${BASE}`;
   // The styles have to be live too, or pages measure wrong while paginating.
   document.body.append(styles, body);
   try {
@@ -127,6 +130,13 @@ export async function docxPreviewHtml(input: Uint8Array): Promise<string> {
       renderComments: false,
       renderChanges: false,
     });
+    // Office fonts most devices lack (Calibri, Cambria…) lay out in their
+    // metric-compatible stand-ins, so lines and pages break as in Word.
+    // First, so fonts embedded in the document still win.
+    const fonts = document.createElement("style");
+    fonts.textContent = faces;
+    styles.prepend(fonts);
+    void body.offsetHeight; // lay out, so the fonts it uses start loading
 
     await paginate(body);
 
@@ -137,7 +147,20 @@ export async function docxPreviewHtml(input: Uint8Array): Promise<string> {
       for (let n = walker.nextNode(); n; n = walker.nextNode())
         if (n.nodeValue?.includes("\u2063")) n.nodeValue = n.nodeValue.split(PAGE).join(String(i + 1)).split(PAGES).join(String(sections.length));
     });
+    return await withPages(body, sections, styles);
+  } finally {
+    body.remove();
+    styles.remove();
+  }
+}
 
+// What Word uses when a document names no font or size.
+const BASE = 'font-family:"Times New Roman";font-size:10pt;color:#000;';
+
+export async function docxPreviewHtml(input: Uint8Array, faces = ""): Promise<string> {
+  // Serialised: images and fonts are inlined as data URLs so the HTML stands
+  // on its own in the print frame.
+  return renderDocx(input, async (body, _sections, styles) => {
     // One named @page per page size, so landscape sections print landscape.
     const sizes = new Map<string, string>();
     for (const section of body.querySelectorAll<HTMLElement>("section.docx")) {
@@ -149,14 +172,11 @@ export async function docxPreviewHtml(input: Uint8Array): Promise<string> {
     return `<!doctype html><html><head><meta charset="utf-8">${styles.innerHTML}<style>
       ${pages}
       @page { margin: 0; }
-      html, body { margin: 0; padding: 0; background: #fff; }
+      html, body { margin: 0; padding: 0; background: #fff; ${BASE} }
       /* Each section is one or more printed pages; drop the on-screen page look. */
       section.docx { margin: 0 !important; box-shadow: none !important; break-after: page; }
       section.docx:last-of-type { break-after: auto; }
       * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     </style></head><body>${body.innerHTML}</body></html>`;
-  } finally {
-    body.remove();
-    styles.remove();
-  }
+  }, faces);
 }

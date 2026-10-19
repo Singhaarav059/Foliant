@@ -2,7 +2,7 @@ import { ImageResponse } from "next/og";
 import { BRAND, SITE_URL } from "@/lib/brand";
 import en, { type DictKey } from "@/lib/i18n/dict/en";
 import { OG_SIZE } from "@/lib/seo";
-import { TOOLS } from "@/lib/tools";
+import { TOOLS, descKey } from "@/lib/tools";
 
 // Social cards (og:image, twitter:image), drawn at build time: one per tool
 // and "home" for every other page. Every language shares them, so the text
@@ -16,7 +16,7 @@ export async function GET(_req: Request, { params }: RouteContext<"/og/[image]">
   const tool = TOOLS.find((t) => `${t.slug}.png` === image);
   if (!tool && image !== "home.png") return new Response("Not found", { status: 404 });
   const title = tool ? en[`tool.${tool.id}.name` as DictKey] : en["home.title"];
-  const body = tool ? en[`tool.${tool.id}.desc` as DictKey] : en["home.subtitle"];
+  const body = tool ? en[descKey(tool) as DictKey] : en["home.subtitle"];
   const note = !tool ? BRAND.tagline : tool.runtime === "browser" ? en["home.privateBadge"] : en["home.serverBadge"];
 
   return new ImageResponse(

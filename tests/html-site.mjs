@@ -1,0 +1,210 @@
+// HTML to PDF in the static build, before the print dialog: a zipped site
+// becomes one self-contained page, remote URLs are taken out so the page
+// can't reach other hosts, and the page size, margins and screen width land
+// in the page's CSS.
+//
+// blockRemote parses the page with the browser's own parser, so those checks
+// run in Chromium (CHROME_PATH for an installed Chrome).
+//
+//   node tests/html-site.mjs
+import { execFileSync } from "node:child_process";
+import { cpSync, mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { zipSync, strToU8 } from "fflate";
+import pw from "playwright-core";
+import { root, check, eq } from "./lib/load.mjs";
+
+const results = { failed: 0 };
+const test = check(results);
+const out = mkdtempSync(join(tmpdir(), "html-site-"));
+execFileSync(join(root, "node_modules/.bin/tsc"), ["--outDir", out, "--module", "esnext", "--target", "es2022", "--moduleResolution", "bundler", "--skipLibCheck", "--noCheck", "--lib", "es2022,dom", "src/lib/office/html.ts"], { cwd: root, stdio: "inherit" });
+const { siteFromZip, htmlPage } = await import(pathToFileURL(join(out, "html.js")).href);
+
+const browser = await pw.chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {});
+const page = await browser.newPage();
+await page.setContent("<!doctype html><title>t</title>");
+await page.addScriptTag({ type: "module", content: `${readFileSync(join(out, "html.js"), "utf8")}\nwindow.blockRemote = blockRemote;` });
+await page.waitForFunction(() => typeof window.blockRemote === "function");
+// The result, and where the CSP ends up when a browser parses it.
+const blockRemote = (html) => page.evaluate((html) => {
+  const out = window.blockRemote(html);
+  const doc = new DOMParser().parseFromString(out.html, "text/html");
+  const csp = doc.querySelector('meta[http-equiv="Content-Security-Policy"]');
+  // Loading attributes still pointing at example.com, as the browser reads them.
+  const left = [...doc.querySelectorAll("*")].flatMap((el) => [...el.attributes]
+    .filter((a) => /^(src|srcset|poster|data|background|href|xlink:href)$/i.test(a.name) && el.localName !== "a" && /example\.com/i.test(a.value))
+    .map((a) => `${el.localName} ${a.name}=${a.value}`));
+  return { ...out, left, cspIn: csp?.parentElement?.localName, cspFirst: csp === doc.head.firstElementChild };
+}, html);
+
+// A 1×1 PNG.
+const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+
+await test("zip: index.html with its stylesheet, images and fonts inlined", async () => {
+  const zip = zipSync({
+    "site/index.html": strToU8(`<!doctype html><html><head><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="./css/more.css"></head>
+      <body><h1>Hello</h1><img src="logo.png" alt=""><img src="img/a%20b.png" alt=""><a href="other.html">next</a></body></html>`),
+    "site/style.css": strToU8("h1 { color: rgb(255, 0, 0); } body { background: url(logo.png); }"),
+    "site/css/more.css": strToU8("@font-face { font-family: X; src: url('../fonts/x.woff') } p { background: url(\"../logo.png\") }"),
+    "site/logo.png": PNG,
+    "site/img/a b.png": PNG,
+    "site/fonts/x.woff": new Uint8Array([1, 2, 3]),
+    "site/other.html": strToU8("<p>other</p>"),
+  });
+  const html = await siteFromZip(zip);
+  eq(/Hello/.test(html), true, "index.html chosen");
+  eq(/href="style\.css"|href="\.\/css/.test(html), false, "stylesheets no longer relative");
+  eq((html.match(/src="data:image\/png;base64,/g) ?? []).length, 2, "both images inlined, including the escaped name");
+  const css = [...html.matchAll(/data:text\/css;base64,([A-Za-z0-9+/=]+)/g)].map((m) => Buffer.from(m[1], "base64").toString());
+  eq(css.length, 2, "two stylesheets");
+  eq(css[0].includes("rgb(255, 0, 0)") && /url\("?data:image\/png;base64,/.test(css[0]), true, "stylesheet kept, its image inlined");
+  eq(/url\("?data:font\/woff;base64,/.test(css[1]) && /url\("?data:image\/png/.test(css[1]), true, "paths resolved from the stylesheet's own folder");
+  eq(html.includes('href="other.html"'), true, "links between pages left alone");
+});
+
+await test("zip without an HTML page is refused", async () => {
+  let error = null;
+  try {
+    await siteFromZip(zipSync({ "a.txt": strToU8("x") }));
+  } catch (e) {
+    error = e;
+  }
+  eq(/no HTML page/.test(error?.message ?? ""), true, `error: ${error?.message}`);
+});
+
+// Sets the uncompressed size a zip declares for `name`, in its local and central headers.
+function claimSize(zip, name, size) {
+  const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+  const bytes = Buffer.from(name);
+  for (let i = 0; i < zip.length - 4; i++) {
+    const sig = view.getUint32(i, true);
+    const [nameAt, sizeAt] = sig === 0x04034b50 ? [30, 22] : sig === 0x02014b50 ? [46, 24] : [];
+    if (nameAt && Buffer.from(zip.subarray(i + nameAt, i + nameAt + bytes.length)).equals(bytes)) view.setUint32(i + sizeAt, size, true);
+  }
+  return zip;
+}
+
+// Files the page can't use aren't unpacked, and what it can use is capped,
+// so a small zip can't take gigabytes of a phone's memory.
+await test("zip: only page files are unpacked, up to a total size", async () => {
+  // An entry that would fail to inflate: unpacking it at all throws.
+  const zip = zipSync({ "index.html": strToU8("<p>Hello</p>"), "backup.bin": new Uint8Array(4096).fill(7) }, { level: 9 });
+  const at = Buffer.from(zip).indexOf(Buffer.from("backup.bin")) + "backup.bin".length;
+  zip.fill(0xff, at, at + 16);
+  let error = null;
+  try {
+    eq(/Hello/.test(await siteFromZip(zip)), true, "page read");
+  } catch (e) {
+    error = e;
+  }
+  eq(error, null, `an unused entry was unpacked: ${error?.message}`);
+  // A media file that says it is 300 MB.
+  let big = null;
+  try {
+    await siteFromZip(claimSize(zipSync({ "index.html": strToU8('<video src="v.mp4"></video>'), "v.mp4": new Uint8Array(10) }, { level: 0 }), "v.mp4", 300 * 2 ** 20));
+  } catch (e) {
+    big = e;
+  }
+  eq(/too (big|large)/i.test(big?.message ?? ""), true, `error: ${big?.message}`);
+});
+
+await test("remote URLs are replaced and counted; links stay", async () => {
+  const { html, blocked, cspIn, cspFirst } = await blockRemote(`<!doctype html><html><head>
+    <base href="https://example.com/">
+    <meta http-equiv="refresh" content="0;url=https://example.com/">
+    <link rel="stylesheet" href="https://cdn.example.com/a.css">
+    <link rel="icon" href="//cdn.example.com/i.png">
+    <script src="https://cdn.example.com/t.js"></script>
+    <style>@import url("https://fonts.example.com/f.css"); @import 'http://x.example/y.css'; .a { background: url('https://img.example.com/b.png') }</style>
+    </head><body style="background-image:url(http://img.example.com/c.png)">
+    <img src="https://img.example.com/x.png" srcset="https://img.example.com/x2.png 2x">
+    <img src='HTTPS://IMG.EXAMPLE.COM/Y.PNG'>
+    <iframe src="https://example.com/embed"></iframe>
+    <video poster="https://example.com/p.jpg"><source src="https://example.com/v.mp4"></video>
+    <a href="https://example.com/keep">a link</a>
+    <img src="data:image/png;base64,AAAA"><img src="local.png">
+    </body></html>`);
+  const loading = html.replace(/<a [^>]*>/g, "");
+  eq(/(?:https?:)?\/\/[a-z]/i.test(loading.replace(/http:\/\/www\.w3\.org\/2000\/svg/g, "")), false, `no remote URL left outside links: ${loading.match(/.{30}(?:https?:)?\/\/[a-z].{30}/i)?.[0]}`);
+  eq(html.includes('href="https://example.com/keep"'), true, "link kept");
+  eq(html.includes("data:image/png;base64,AAAA") && html.includes('src="local.png"'), true, "data and relative URLs kept");
+  eq(blocked, 15, "count");
+  eq(/<meta http-equiv="Content-Security-Policy" content="default-src 'none'/.test(html), true, "CSP as a backstop");
+  eq(cspIn === "head" && cspFirst, true, `CSP first in <head>, before anything that loads (in ${cspIn})`);
+});
+
+await test("tags a regex misreads: > in a value, / before a name, odd schemes", async () => {
+  const pages = {
+    header: '<header><h1>Report</h1></header><p>Body</p><img alt="a > b" src="https://example.com/a.png">',
+    slash: '<!doctype html><html><body><header>Top</header><img/src="https://example.com/b.png"></body></html>',
+    schemes: '<img src="https:example.com/c.png"><img src="\\\\example.com\\d.png"><img src=" //example.com/e.png"><video src="HTTP://example.com/f.mp4"></video>',
+    comment: '<!-- <img src="https://example.com/in-comment.png"> --><p title="<img src=https://example.com/in-title.png>">t</p><img src="ok.png">',
+  };
+  for (const [name, input] of Object.entries(pages)) {
+    const { html, blocked, cspIn, left } = await blockRemote(input);
+    eq(left.length, 0, `${name}: remote URL left in ${left.join(", ")}`);
+    eq(cspIn, "head", `${name}: CSP in <${cspIn}>`);
+    if (name === "comment") {
+      eq(blocked, 0, "comment: text that only looks like a tag isn't counted");
+      eq(html.includes('src="ok.png"'), true, "comment: relative image kept");
+    } else eq(blocked > 0, true, `${name}: counted (${blocked})`);
+  }
+  eq((await blockRemote(pages.schemes)).blocked, 4, "every odd scheme counted");
+});
+
+// CSS a url() regex misses: image-set() with plain strings, and escapes.
+// The CSP blocks these anyway; the notice has to count them.
+await test("CSS image-set() strings and escaped URLs are taken out and counted", async () => {
+  const pages = {
+    imageSet: `<div style="background-image: image-set('https://example.com/x.png' 1x, &quot;https://example.com/y.png&quot; 2x)">a</div>`,
+    webkit: `<style>p { background-image: -webkit-image-set("https://example.com/w.png" 1x) }</style><p>b</p>`,
+    escaped: `<style>p { background: url(\\68ttps://example.com/e.png) }</style><p>c</p>`,
+    escapedQuoted: `<style>p { background: url("\\68 ttps://example.com/q.png") }</style><p>d</p>`,
+  };
+  const want = { imageSet: 2, webkit: 1, escaped: 1, escapedQuoted: 1 };
+  for (const [name, input] of Object.entries(pages)) {
+    const { html, blocked } = await blockRemote(input);
+    eq(blocked, want[name], `${name}: counted`);
+    eq(/example\.com/.test(html), false, `${name}: remote URL left in ${html.match(/[^>]*example\.com[^<]*/)?.[0]}`);
+  }
+  eq((await blockRemote(`<style>p { background: image-set("ok.png" 1x); content: "\\201C" }</style>`)).blocked, 0, "local image-set and other escapes left alone");
+});
+
+await test("page size, orientation, margins and screen width", () => {
+  const page = htmlPage("<!doctype html><html><head><title>x</title></head><body>hi</body></html>", { pageSize: "a3", orientation: "landscape", margin: "none", screenWidth: "390" });
+  eq(/@page \{ size: A3 landscape; margin: 0(mm)?; \}/.test(page), true, `@page: ${page.match(/@page[^}]*}/)?.[0]}`);
+  eq(/width: 390px/.test(page), true, "screen width");
+  const fit = htmlPage("<p>x</p>", {});
+  eq(/@page \{ size: A4 portrait; margin: 12mm; \}/.test(fit), true, `default @page: ${fit.match(/@page[^}]*}/)?.[0]}`);
+  eq(/zoom/.test(fit), false, "fit to page by default");
+  eq(/size: A5 portrait; margin: 25mm/.test(htmlPage("<p>x</p>", { pageSize: "a5", margin: "large" })), true, "A5, large margin");
+  eq(/size: letter portrait/.test(htmlPage("<p>x</p>", { pageSize: "letter" })), true, "letter");
+});
+
+// The description is shared by the pages, the tool grid and the OG image. The
+// server build takes a URL and only .html, so it keeps its own wording.
+await test("each build describes the input it takes", async () => {
+  const lib = mkdtempSync(join(tmpdir(), "html-site-tools-"));
+  execFileSync(join(root, "node_modules/.bin/tsc"), ["--outDir", lib, "--module", "esnext", "--target", "es2022", "--moduleResolution", "bundler", "--skipLibCheck", "--noCheck", "src/lib/tools.ts"], { cwd: root, stdio: "inherit" });
+  cpSync(lib, `${lib}-static`, { recursive: true });
+  const en = {};
+  for (const m of readFileSync(join(root, "src/lib/i18n/dict/en.ts"), "utf8").matchAll(/^\s*"([^"]+)":\s*"((?:[^"\\]|\\.)*)",?\s*$/gm)) en[m[1]] = JSON.parse(`"${m[2]}"`);
+  const desc = async (dir, flag) => {
+    process.env.NEXT_PUBLIC_STATIC = flag;
+    const { toolById, descKey } = await import(pathToFileURL(join(dir, "tools.js")).href);
+    const tool = toolById("htmlToPdf");
+    return { mode: tool.mode, text: en[descKey(tool)] };
+  };
+  const server = await desc(lib, "0");
+  const site = await desc(`${lib}-static`, "1");
+  eq(server.mode, "url", "server build takes a URL");
+  eq(/zip|paste/i.test(server.text ?? ""), false, `server copy offers zip or paste: ${server.text}`);
+  eq(/web page/i.test(server.text ?? ""), true, `server copy mentions web pages: ${server.text}`);
+  eq(site.mode, "files", "static build takes files");
+  eq(/zip/i.test(site.text ?? "") && /paste/i.test(site.text ?? ""), true, `static copy names zip and paste: ${site.text}`);
+});
+
+await browser.close();
+process.exit(results.failed ? 1 : 0);

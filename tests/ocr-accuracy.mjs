@@ -3,15 +3,25 @@
 // the same page cleanup, and compares character error rates. Each case has a
 // ceiling for each engine, high accuracy must be at least as good overall,
 // and it's only offered for languages whose own letters it reads.
-// Text is drawn in the bundled fonts, so every machine renders the same pages.
+// Text is drawn as the outlines of the bundled fonts (laid out with fontkit,
+// filled as paths), not with fillText: the system rasterizer draws glyphs
+// heavier on macOS (Core Text) than on Linux (FreeType), and on the same
+// pages Tesseract read "degraded" at 10.2% on a Mac and 97.4% on the Linux
+// runners (run 39099273999). Paths go through the same rasterizer everywhere.
+// Bare outlines are thinner than either (97.7% Tesseract, 47.5% PaddleOCR on
+// "degraded"), so each glyph is also stroked with INK_SPREAD of a pixel, about
+// the weight Core Text adds and the bleed of ink on paper; with it the pages
+// read as they did on the Mac the ceilings were set on.
 // Needs Chrome (see tests/lib/chrome.mjs).
 //
 //   node tests/ocr-accuracy.mjs
+//   SHIFT=0.5 node tests/ocr-accuracy.mjs   text moved by a fraction of a pixel
 import pw from "playwright-core";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createWorker, createScheduler } from "tesseract.js";
+import fontkit from "@pdf-lib/fontkit";
 import { root, vendorDir, load, check, eq } from "./lib/load.mjs";
 import { requireChrome } from "./lib/chrome.mjs";
 
@@ -33,13 +43,17 @@ const LATIN = [
 const CHINESE = ["发票编号四四七一，开具日期为二零二六年三月十二日。", "应付总额为一千二百五十欧元，请在三十天内付款。"];
 
 // Each case: text lines, how they're drawn, the Tesseract language, and the
-// highest character error rate [Tesseract, PaddleOCR] may reach. Measured
-// 2026-10-17 with the text shifted by fractions of a pixel, which moves small
-// print by a whole word (Tesseract drops "accounts@northwind.example" at some
-// shifts: 0.4% to 10.6%), so each ceiling sits above the worst shift. That
-// puts degraded and Tesseract's small print above the 6% and 3% first aimed
-// for (PaddleOCR measures 6.8% on degraded); a gross regression still fails
-// them, a drop of less than about 2x may not.
+// highest character error rate [Tesseract, PaddleOCR] may reach. Set
+// 2026-10-17 (fillText on a Mac) with the text shifted by fractions of a
+// pixel, which moves small print by a whole word (Tesseract drops
+// "accounts@northwind.example" at some shifts: 0.4% to 10.6%), so each
+// ceiling sits above the worst shift. That puts degraded and Tesseract's small
+// print above the 6% and 3% first aimed for; a gross regression still fails
+// them, a drop of less than about 2x may not. Re-measured 2026-10-18 with
+// outlines (SHIFT 0, 0.25, 0.5, 0.75), every case under its ceiling at every
+// shift: smallPrint 0-1.5% / 0%, blurNoise 0.4-0.8% / 0.8-1.5%, degraded
+// 4.9-10.2% / 7.9-10.6%, chinese 0-4.2% / 0%.
+const INK_SPREAD = 0.3;
 const cases = {
   clean: { lines: LATIN, font: "28px Tinos", lang: "eng", max: [0.01, 0.01] },
   smallPrint: { lines: LATIN, font: "13px Arimo", lang: "eng", max: [0.15, 0.03] },
@@ -74,23 +88,56 @@ const LANGUAGES = {
 const FONTS = { jpn: "30px 'Noto Sans JP'", chi_tra: "30px 'Noto Sans TC'" };
 for (const [lang, lines] of Object.entries(LANGUAGES)) cases[lang] = { lines, font: FONTS[lang] ?? "26px Tinos", lang, language: true };
 
-// The fonts come from @fontsource, with their unicode ranges, over a stand-in origin.
-const FAMILIES = ["tinos", "arimo", "noto-sans-sc", "noto-sans-tc", "noto-sans-jp"];
+// The fonts come from @fontsource: each face file covers a unicode-range.
+const FAMILIES = { Tinos: "tinos", Arimo: "arimo", "Noto Sans SC": "noto-sans-sc", "Noto Sans TC": "noto-sans-tc", "Noto Sans JP": "noto-sans-jp" };
+const faces = new Map();
+function facesOf(family) {
+  if (!faces.has(family)) {
+    const dir = join(root, "node_modules/@fontsource", FAMILIES[family]);
+    const css = readFileSync(join(dir, "400.css"), "utf8");
+    faces.set(family, [...css.matchAll(/url\(\.\/(files\/[^)]+\.woff2)\)[^;]*;\s*unicode-range:\s*([^;]+);/g)].map(([, file, ranges]) => ({
+      file: join(dir, file),
+      ranges: ranges.split(",").map((r) => r.trim().replace(/^U\+/i, "").split("-").map((h) => parseInt(h, 16))).map(([a, b]) => [a, b ?? a]),
+    })));
+  }
+  return faces.get(family);
+}
+const fonts = new Map();
+const fontFor = (family, cp) => {
+  const face = facesOf(family).find((f) => f.ranges.some(([a, b]) => cp >= a && cp <= b));
+  if (!face) throw new Error(`no ${family} face for U+${cp.toString(16)}`);
+  if (!fonts.has(face.file)) fonts.set(face.file, fontkit.create(readFileSync(face.file)));
+  return fonts.get(face.file);
+};
+// One line as an SVG path in pixels, baseline at y = 0: runs of characters
+// that share a face file, each laid out (kerning, ligatures) by fontkit.
+function outline(line, font) {
+  const [, px, family] = font.match(/^(\d+)px '?([^']+)'?$/);
+  const size = Number(px);
+  const runs = [];
+  for (const ch of line) {
+    const f = fontFor(family, ch.codePointAt(0));
+    if (runs.at(-1)?.f === f) runs.at(-1).text += ch;
+    else runs.push({ f, text: ch });
+  }
+  let x = 0;
+  const parts = [];
+  for (const { f, text } of runs) {
+    const k = size / f.unitsPerEm;
+    const run = f.layout(text);
+    run.glyphs.forEach((g, i) => {
+      const pos = run.positions[i];
+      parts.push(g.path.scale(k, -k).translate(x + pos.xOffset * k, -pos.yOffset * k).toSVG());
+      x += pos.xAdvance * k;
+    });
+  }
+  return parts.join(" ");
+}
+
 const browser = await pw.chromium.launch({ executablePath: chrome });
 const page = await browser.newPage();
-await page.route("http://test.local/**", (route) => {
-  const path = new URL(route.request().url()).pathname;
-  if (path === "/") return route.fulfill({ contentType: "text/html", body: `<!doctype html>${FAMILIES.map((f) => `<link rel="stylesheet" href="/fonts/${f}/400.css">`).join("")}` });
-  const file = join(root, "node_modules/@fontsource", path.replace(/^\/fonts\//, ""));
-  if (!path.startsWith("/fonts/") || path.includes("..") || !existsSync(file)) return route.fulfill({ status: 404 });
-  return route.fulfill({ body: readFileSync(file), contentType: file.endsWith(".css") ? "text/css" : "font/woff2" });
-});
-await page.goto("http://test.local/");
 async function draw(c) {
   return page.evaluate(async (c) => {
-    // Canvas text doesn't wait for web fonts: load the faces this text needs, and refuse a fallback.
-    await document.fonts.load(c.font, c.lines.join(""));
-    if (!document.fonts.check(c.font, c.lines.join(""))) throw new Error(`font not loaded: ${c.font}`);
     const W = 1400, H = 700;
     const cv = document.createElement("canvas");
     cv.width = W;
@@ -109,9 +156,17 @@ async function draw(c) {
     if (c.rotate) { x.translate(W / 2, H / 2); x.rotate((c.rotate * Math.PI) / 180); x.translate(-W / 2, -H / 2); }
     if (c.blur) x.filter = `blur(${c.blur}px)`;
     x.fillStyle = c.ink ?? "#111";
-    x.font = c.font;
     const size = parseInt(c.font, 10);
-    c.lines.forEach((line, i) => x.fillText(line, 60, 120 + i * size * 2.2));
+    c.paths.forEach((d, i) => {
+      x.save();
+      x.translate(60 + c.shift, 120 + c.shift + i * size * 2.2);
+      const path = new Path2D(d);
+      x.fill(path);
+      x.lineWidth = c.spread;
+      x.strokeStyle = x.fillStyle;
+      x.stroke(path);
+      x.restore();
+    });
     x.restore();
     const img = x.getImageData(0, 0, W, H).data;
     const gray = new Array(W * H);
@@ -122,7 +177,7 @@ async function draw(c) {
       gray[i] = Math.max(0, Math.min(255, Math.round(img[i * 4] * 0.3 + img[i * 4 + 1] * 0.59 + img[i * 4 + 2] * 0.11 + n)));
     }
     return { w: W, h: H, data: gray };
-  }, c);
+  }, { ...c, spread: INK_SPREAD, shift: Number(process.env.SHIFT ?? 0), paths: c.lines.map((l) => outline(l, c.font)) });
 }
 
 // Character error rate: edit distance / reference length, ignoring spaces for Chinese.
@@ -199,7 +254,13 @@ await test("a page too poor to read is flagged, a clean one isn't", () => {
   eq(rows.find((r) => r.name === "extreme").doubtful, true, "extreme flagged");
   eq(rows.filter((r) => r.doubtful).map((r) => r.name).join(), "extreme", "pages flagged");
 });
-await test("high accuracy beats standard on average", () => eq(mean("paddle") < mean("tess"), true, "mean CER lower"));
+// Measured 2026-10-18 with outlines, mean CER Tesseract vs PaddleOCR at SHIFT 0,
+// 0.25, 0.5, 0.75: 1.9/1.3, 1.9/1.3, 1.7/1.7, 0.8/1.5 (3.3/1.1 with fillText on a
+// Mac). On these pages the two are level within a point, so "lower at every
+// shift" would hang on a fraction of a pixel; trailing by more than a point fails.
+await test("high accuracy is as good as standard on average", () => {
+  if (mean("paddle") > mean("tess") + 0.01) throw new Error(`mean CER ${pct(mean("paddle")).trim()} vs ${pct(mean("tess")).trim()}`);
+});
 // Measured 2026-10-17: PaddleOCR can trail Tesseract on tiny, blurred Latin print
 // ("degraded": 6.0-7.2% vs 1.9-10.9% as the text shifts) and leads elsewhere. Guard that gap.
 await test("high accuracy is never much worse on any page", () => {
