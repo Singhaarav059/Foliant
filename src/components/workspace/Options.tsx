@@ -7,9 +7,10 @@ import { useI18n } from "../I18n";
 import { optionVisible, type OptionDef } from "@/lib/tools";
 import { LangPicker } from "./LangPicker";
 
+// `notes`: a line of text under an option, by its key.
 export function Options({
-  defs, values, onChange, restore = false,
-}: { defs: OptionDef[]; values: Record<string, unknown>; onChange: (key: string, value: unknown) => void; restore?: boolean }) {
+  defs, values, onChange, restore = false, notes,
+}: { defs: OptionDef[]; values: Record<string, unknown>; onChange: (key: string, value: unknown) => void; restore?: boolean; notes?: Record<string, string> }) {
   const { t, tOr } = useI18n();
   const uid = useId();
   const visible = defs.filter((d) => optionVisible(d, values));
@@ -85,6 +86,7 @@ export function Options({
                 className="field"
                 value={String(value ?? "")}
                 placeholder={d.type === "text" ? d.placeholder : undefined}
+                aria-describedby={notes?.[d.key] ? `${id}-note` : undefined}
                 autoComplete={d.type === "password" ? "new-password" : "off"}
                 onChange={(e) => onChange(d.key, e.target.value)}
               />
@@ -99,6 +101,7 @@ export function Options({
                 max={d.max}
                 step={d.step ?? 1}
                 value={Number(value)}
+                aria-describedby={notes?.[d.key] ? `${id}-note` : undefined}
                 onChange={(e) => onChange(d.key, Math.min(d.max, Math.max(d.min, Number(e.target.value) || d.min)))}
               />
             )}
@@ -150,6 +153,7 @@ export function Options({
               </div>
             )}
             {d.type === "image" && <ImageOption value={value as File | undefined} onChange={(f) => onChange(d.key, f)} />}
+            {notes?.[d.key] && <p id={`${id}-note`} className="mt-1.5 text-[13px] text-muted">{notes[d.key]}</p>}
           </div>
         );
       })}

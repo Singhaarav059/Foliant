@@ -11,6 +11,7 @@ import { Results } from "./workspace/Results";
 import { ErrorBox, useProblem, type Problem } from "./workspace/ErrorBox";
 import { defaultOptions, TOOLS, toolById, type ToolId } from "@/lib/tools";
 import type { Output } from "@/lib/pdf/common";
+import { sizeFromMb } from "@/lib/pdf/split-plan";
 import { markUnrestricted, PERMISSIONS, protectProblem, withoutSecrets } from "@/lib/pdf/password";
 import { BRAND } from "@/lib/brand";
 import { STATIC } from "@/lib/mode";
@@ -247,7 +248,7 @@ export function Workflows() {
             <ul className="space-y-2">
               {saved.map((w) => (
                 <li key={w.id} className="flex items-center gap-2 rounded-xl border border-line p-2.5">
-                  <button className="min-w-0 flex-1 text-start" onClick={() => { setSteps(w.steps.map((s) => ({ tool: s.tool, options: { ...defaultOptions(toolById(s.tool)), ...s.options } }))); setName(w.name); }}>
+                  <button className="min-w-0 flex-1 text-start" onClick={() => { setSteps(w.steps.map((s) => ({ tool: s.tool, options: { ...defaultOptions(toolById(s.tool)), ...sizeFromMb(s.options), ...s.options } }))); setName(w.name); }}>
                     <p className="truncate text-[15px] font-medium">{w.name}</p>
                     <p className="truncate text-[13px] text-muted">{w.steps.map((s) => t(`tool.${s.tool}.name`)).join(" → ")}</p>
                   </button>
