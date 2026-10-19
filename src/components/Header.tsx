@@ -10,6 +10,7 @@ import { useI18n } from "./I18n";
 import { useUser, postJson } from "./User";
 import { CATEGORIES, TOOLS } from "@/lib/tools";
 import { LOCALES, type Locale } from "@/lib/i18n/locales";
+import { switchLanguage } from "@/lib/i18n/slugs";
 import { STATIC } from "@/lib/mode";
 
 function useDismiss(open: boolean, close: () => void) {
@@ -50,8 +51,7 @@ export function Header() {
   }, [menu]);
 
   const switchLocale = (code: Locale) => {
-    const rest = pathname.replace(/^\/[^/]+/, "");
-    router.push(`/${code}${rest}`);
+    router.push(switchLanguage(pathname, code));
     close();
   };
 

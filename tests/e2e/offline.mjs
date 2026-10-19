@@ -62,10 +62,10 @@ await suite(async ({ name, browser, test }) => {
   // Reaching the tool from the home page by a link is a client-side
   // navigation: the browser never requests the tool's page itself.
   const reach = {
-    "after one visit": (page) => page.goto(base + "/fr/compress-pdf"),
+    "after one visit": (page) => page.goto(base + "/fr/compresser-pdf"),
     "reached by a link": async (page) => {
-      await page.locator('a[href="/fr/compress-pdf"]').first().click();
-      await page.waitForURL("**/fr/compress-pdf");
+      await page.locator('a[href="/fr/compresser-pdf"]').first().click();
+      await page.waitForURL("**/fr/compresser-pdf");
     },
   };
   for (const [how, go] of Object.entries(reach)) {
@@ -171,7 +171,7 @@ await suite(async ({ name, browser, test }) => {
       if (!(await swOffline(page))) return "skipped: setOffline doesn't reach the service worker here";
       let navigations = 0;
       page.on("framenavigated", (f) => f === page.mainFrame() && navigations++);
-      const res = await page.goto(base + "/de/split-pdf", { waitUntil: "commit" });
+      const res = await page.goto(base + "/de/pdf-teilen", { waitUntil: "commit" });
       const html = await res.text();
       if (!/<html[^>]*lang="de"/.test(html)) throw new Error(`served ${html.match(/<html[^>]*>/)?.[0] ?? "nothing"}`);
       await page.waitForTimeout(2000);

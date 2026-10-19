@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { ShieldCheck, Server, ArrowRight } from "lucide-react";
 import { Workspace } from "@/components/workspace/Workspace";
 import { ToolIcon } from "@/components/ToolIcon";
@@ -13,11 +13,22 @@ import { LEGAL, LEGAL_UPDATED } from "@/lib/legal";
 import { BRAND, OPERATOR } from "@/lib/brand";
 import { readLicenses, LICENSES_URL } from "@/lib/licenses";
 import { REPO_URL, STATIC } from "@/lib/mode";
-import { INFO, pageMetadata, type Info } from "@/lib/seo";
+import { INFO, pageMetadata, pageUrl, type Info } from "@/lib/seo";
+import { englishSlug, localSlug, movedTo } from "@/lib/i18n/slugs";
+import { INTENTS, intentBySlug, type Intent } from "@/lib/intents";
 
+// Tools and intent pages at their slugs in each language; the old English
+// slugs are redirects (scripts/static-extras.mjs, src/proxy.server.ts).
 export function generateStaticParams() {
-  const slugs = [...TOOLS.map((t) => t.slug), ...INFO];
-  return LOCALE_CODES.flatMap((lang) => slugs.map((slug) => ({ lang, slug })));
+  const slugs = [...TOOLS.map((t) => t.slug), ...INTENTS.map((i) => i.slug), ...INFO];
+  return LOCALE_CODES.flatMap((lang) => slugs.map((slug) => ({ lang, slug: localSlug(slug, lang) })));
+}
+
+// What /{lang}/{slug} shows, by the page's English slug.
+function pageOf(lang: Locale, slug: string) {
+  const en = englishSlug(slug, lang);
+  if (!en) return {};
+  return { en, tool: toolBySlug(en), intent: intentBySlug(en), info: (INFO as readonly string[]).includes(en) ? (en as Info) : undefined };
 }
 
 function infoTitle(slug: Info, t: Dict) {
@@ -39,16 +50,21 @@ export async function generateMetadata({ params }: PageProps<"/[lang]/[slug]">):
   const { lang, slug } = await params;
   if (!hasLocale(lang)) return {};
   const t = await getDictionary(lang);
-  const tool = toolBySlug(slug);
+  const { en, tool, intent, info } = pageOf(lang, slug);
   if (tool) {
     const title = toolText(t, tool, "title");
     const description = toolText(t, tool, "meta");
-    return { title, description, ...pageMetadata({ lang, path: `/${slug}`, title, description, image: tool.slug }) };
+    return { title, description, ...pageMetadata({ lang, path: `/${en}`, title, description, image: tool.slug }) };
   }
-  if ((INFO as readonly string[]).includes(slug)) {
-    const title = infoTitle(slug as Info, t);
-    const description = infoDescription(slug as Info, t);
-    return { title, description, ...pageMetadata({ lang, path: `/${slug}`, title, description }) };
+  if (intent) {
+    const title = intent.title[lang];
+    const description = intentDescription(intent, t);
+    return { title, description, ...pageMetadata({ lang, path: `/${en}`, title, description }) };
+  }
+  if (info) {
+    const title = infoTitle(info, t);
+    const description = infoDescription(info, t);
+    return { title, description, ...pageMetadata({ lang, path: `/${en}`, title, description }) };
   }
   return {};
 }
@@ -69,10 +85,14 @@ export default function SlugPage({ params }: PageProps<"/[lang]/[slug]">) {
 async function SlugContent({ params }: { params: PageProps<"/[lang]/[slug]">["params"] }) {
   const { lang, slug } = await params;
   if (!hasLocale(lang)) notFound();
+  // The server build's proxy redirects old addresses first; this is a fallback.
+  const moved = movedTo(slug, lang);
+  if (moved) permanentRedirect(moved);
   const t = await getDictionary(lang);
-  const tool = toolBySlug(slug);
+  const { tool, intent, info } = pageOf(lang, slug);
   if (tool) return <ToolPage tool={tool} t={t} lang={lang} />;
-  if ((INFO as readonly string[]).includes(slug)) return <InfoPage slug={slug as Info} t={t} lang={lang} />;
+  if (intent) return <IntentPage intent={intent} t={t} lang={lang} />;
+  if (info) return <InfoPage slug={info} t={t} lang={lang} />;
   notFound();
 }
 
@@ -106,7 +126,7 @@ function ToolPage({ tool, t, lang }: { tool: Tool; t: Dict; lang: Locale }) {
             <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {related.map((r) => (
                 <li key={r.id}>
-                  <Link href={`/${lang}/${r.slug}`} className="group card flex items-center gap-3 p-3 transition-colors hover:border-line-strong">
+                  <Link href={pageUrl(lang, `/${r.slug}`)} className="group card flex items-center gap-3 p-3 transition-colors hover:border-line-strong">
                     <ToolIcon tool={r} size={32} />
                     <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{k(`tool.${r.id}.name`)}</span>
                     <ArrowRight size={14} className="text-muted opacity-0 transition-opacity group-hover:opacity-100 rtl:rotate-180" />
@@ -121,7 +141,42 @@ function ToolPage({ tool, t, lang }: { tool: Tool; t: Dict; lang: Locale }) {
   );
 }
 
-function InfoPage({ slug, t, lang }: { slug: Info; t: Dict; lang: string }) {
+// A search-intent page (src/lib/intents.ts): the tools that answer one
+// search, each with its own introduction and a link to it.
+const toolsOf = (intent: Intent) => intent.tools.map((id) => TOOLS.find((x) => x.id === id)!);
+const intentDescription = (intent: Intent, t: Dict) => toolsOf(intent).map((x) => t[`tool.${x.id}.name` as DictKey]).join(", ");
+
+function IntentPage({ intent, t, lang }: { intent: Intent; t: Dict; lang: Locale }) {
+  const k = (s: string) => t[s as DictKey];
+  return (
+    <div className="mx-auto max-w-[960px] px-4 pb-10 pt-12 sm:px-6 sm:pt-16">
+      <nav aria-label="Breadcrumb" className="eyebrow">
+        <Link href={`/${lang}`} className="transition-colors hover:text-ink">{t["nav.allTools"]}</Link>
+      </nav>
+      <h1 className="mt-5 text-balance text-[2.4rem] font-semibold leading-[1.05] tracking-[-0.04em] sm:text-[3rem]">{intent.title[lang]}</h1>
+      <p className="mt-4 max-w-[640px] text-pretty text-[17px] leading-relaxed text-ink-2">{intentDescription(intent, t)}</p>
+      <ul className="mt-12 divide-y divide-line border-y border-line">
+        {toolsOf(intent).map((tool) => (
+          <li key={tool.id} className="flex gap-4 py-7">
+            <ToolIcon tool={tool} size={40} />
+            <div className="min-w-0 flex-1">
+              <h2 className="text-[18px] font-medium tracking-[-0.015em]">
+                <Link href={pageUrl(lang, `/${tool.slug}`)} className="transition-colors hover:text-ink-2">{k(`tool.${tool.id}.name`)}</Link>
+              </h2>
+              <p className="mt-1 text-[15px] text-muted">{k(`tool.${tool.id}.desc`)}</p>
+              <p className="mt-3 max-w-[64ch] text-pretty text-[15px] leading-relaxed text-ink-2">{toolText(t, tool, "intro")}</p>
+              <Link href={pageUrl(lang, `/${tool.slug}`)} className="btn btn-quiet btn-sm mt-4">
+                {t["guide.open"]} <ArrowRight size={15} className="rtl:rotate-180" />
+              </Link>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function InfoPage({ slug, t, lang }: { slug: Info; t: Dict; lang: Locale }) {
   const k = (s: string, vars?: Record<string, string | number>) => format(t[s as DictKey] ?? s, vars);
   const wrap = (title: string, body: React.ReactNode, subtitle?: string) => (
     <div className="mx-auto max-w-[860px] px-4 pb-10 pt-12 sm:px-6 sm:pt-16">
@@ -202,7 +257,7 @@ function InfoPage({ slug, t, lang }: { slug: Info; t: Dict; lang: string }) {
                     <p className="font-medium tracking-[-0.01em]">{k(`tool.${tool.id}.name`)}</p>
                     <p className="text-[15px] text-muted">{k(`tool.${tool.id}.desc`)}</p>
                   </div>
-                  <Link href={`/${lang}/${tool.slug}`} className="btn btn-quiet btn-sm hidden sm:inline-flex">
+                  <Link href={pageUrl(lang, `/${tool.slug}`)} className="btn btn-quiet btn-sm hidden sm:inline-flex">
                     {t["guide.open"]} <ArrowRight size={15} className="rtl:rotate-180" />
                   </Link>
                 </li>

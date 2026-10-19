@@ -127,6 +127,41 @@ for (const name of engines) {
     return "noindex, no canonical or translations";
   });
 
+  // Tools have addresses in each language's words; the old English ones
+  // redirect (_redirects), or refresh where a host ignores _redirects.
+  await test("old address redirects to the localized one", async () => {
+    await open("/es/merge-pdf");
+    if (!page.url().endsWith("/es/unir-pdf")) throw new Error(`at ${page.url()}`);
+    return "/es/merge-pdf → /es/unir-pdf";
+  });
+
+  await test("old address refreshes without _redirects", async () => {
+    const c = await browser.newContext();
+    const p = await c.newPage();
+    await p.route("**/de/compress-pdf", (route) => route.fulfill({ contentType: "text/html", body: readFileSync(join(fixtures, "../../out/de/compress-pdf.html"), "utf8") }));
+    await p.goto(base + "/de/compress-pdf");
+    await p.waitForURL("**/de/pdf-komprimieren", { timeout: 10000 });
+    await c.close();
+    return "/de/compress-pdf → /de/pdf-komprimieren";
+  });
+
+  await test("switching language keeps the tool", async () => {
+    await open("/en/merge-pdf");
+    await page.getByRole("button", { name: "Language" }).click();
+    await page.locator('header button[lang="de"]').click();
+    await page.waitForURL("**/de/pdf-zusammenfuegen", { timeout: 10000 });
+    const h1 = await page.locator("h1").textContent();
+    if (h1 !== "PDF zusammenfügen") throw new Error(`h1 ${h1}`);
+    return "/en/merge-pdf → /de/pdf-zusammenfuegen";
+  });
+
+  await test("intent page links to the tools in its language", async () => {
+    await open("/fr/convertisseur-pdf");
+    await page.locator('main a[href="/fr/pdf-en-word"]').first().click();
+    await page.waitForURL("**/fr/pdf-en-word", { timeout: 10000 });
+    return "/fr/convertisseur-pdf → /fr/pdf-en-word";
+  });
+
   await test("home lists 31 tools", async () => {
     await open("/en");
     const n = await page.locator("main a[data-tool]").count();

@@ -1,6 +1,7 @@
 // The static build's finishing step (scripts/static-extras.mjs) on small
-// stand-in builds: it writes the host files, and it refuses a build that
-// Cloudflare Pages' free plan wouldn't take.
+// stand-in builds: it writes the host files, redirects old addresses to the
+// localized ones the sitemap lists, and it refuses a build that Cloudflare
+// Pages' free plan wouldn't take.
 //
 //   node tests/static-extras.mjs
 import { spawnSync } from "node:child_process";
@@ -70,6 +71,52 @@ await test("fails on more than 18,000 files", () => {
   });
   eq(status, 1, "exit status");
   eq(/1900\d files; keep it under 18000/.test(log), true, `says why (${log.trim().split("\n").at(-1)})`);
+});
+
+// A sitemap entry: the page's address and its English translation.
+const entry = (loc, en) =>
+  `<url><loc>https://example.org${loc}</loc><xhtml:link rel="alternate" hreflang="en" href="https://example.org${en}"/></url>`;
+const sitemap = (out, entries) =>
+  writeFileSync(join(out, "sitemap.xml"), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${entries.join("\n")}\n</urlset>\n`);
+
+await test("redirects old English tool addresses to the localized ones", () => {
+  const { out, status, log } = finish((out) => {
+    mkdirSync(join(out, "es"));
+    for (const f of ["unir-pdf", "convertidor-pdf", "faq"]) writeFileSync(join(out, "es", `${f}.html`), "<!doctype html>");
+    sitemap(out, [
+      entry("/en/merge-pdf", "/en/merge-pdf"),
+      entry("/es/unir-pdf", "/en/merge-pdf"),
+      entry("/ja/merge-pdf", "/en/merge-pdf"),
+      // A new page (not a tool's old address) and a page that kept its slug.
+      entry("/es/convertidor-pdf", "/en/pdf-converter"),
+      entry("/es/faq", "/en/faq"),
+    ]);
+  });
+  eq(status, 0, `exit status (${log.trim()})`);
+  eq(readFileSync(join(out, "_redirects"), "utf8"), "/es/merge-pdf /es/unir-pdf 301\n", "_redirects");
+  const html = readFileSync(join(out, "es/merge-pdf.html"), "utf8");
+  eq(/<meta http-equiv="refresh" content="0; url=\/es\/unir-pdf">/.test(html), true, `refresh (${html})`);
+  eq(/<link rel="canonical" href="https:\/\/example\.org\/es\/unir-pdf">/.test(html), true, "canonical");
+  eq(/<html lang="es">/.test(html), true, "language");
+  eq(existsSync(join(out, "es/pdf-converter.html")) || existsSync(join(out, "ja/merge-pdf.html")), false, "no redirect for pages that didn't move");
+});
+
+await test("refuses a redirect over a real page", () => {
+  const { status, log } = finish((out) => {
+    mkdirSync(join(out, "es"));
+    writeFileSync(join(out, "es/merge-pdf.html"), "<!doctype html><title>real</title>");
+    sitemap(out, [entry("/es/unir-pdf", "/en/merge-pdf")]);
+  });
+  eq(status, 1, "exit status");
+  eq(/es\/merge-pdf\.html is a page/.test(log), true, `says why (${log.trim().split("\n").at(-1)})`);
+});
+
+await test("fails on more than 2,000 redirects", () => {
+  const { status, log } = finish((out) => {
+    sitemap(out, Array.from({ length: 2001 }, (_, i) => entry(`/l${i}/unir-pdf`, "/en/merge-pdf")));
+  });
+  eq(status, 1, "exit status");
+  eq(/2001 redirects; Cloudflare Pages takes 2000/.test(log), true, `says why (${log.trim().split("\n").at(-1)})`);
 });
 
 for (const dir of dirs) rmSync(dir, { recursive: true, force: true });

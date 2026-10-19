@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect } from "react";
 import { format, type Dict, type DictKey } from "@/lib/i18n/dictionary";
 import type { Locale } from "@/lib/i18n/locales";
+import { localizePath } from "@/lib/i18n/slugs";
 
 type Ctx = { locale: Locale; dict: Dict };
 const I18nContext = createContext<Ctx | null>(null);
@@ -33,6 +34,7 @@ export function useI18n() {
     (key: string, fallback: string) => (dict as Record<string, string>)[key] ?? fallback,
     [dict],
   );
-  const href = useCallback((path: string) => `/${locale}${path === "/" ? "" : path}`, [locale]);
+  // Paths use English slugs ("/merge-pdf"); links get the language's own.
+  const href = useCallback((path: string) => `/${locale}${path === "/" ? "" : localizePath(path, locale)}`, [locale]);
   return { t, tOr, locale, href };
 }
