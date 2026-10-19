@@ -5,18 +5,20 @@ import {
   MousePointer2, Type, ImagePlus, Square, Circle, Minus, Pencil, Highlighter, Eraser, Undo2, Redo2, Trash2,
   ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Signature as SignatureIcon, CalendarDays, Search, ScanEye, Crop as CropIcon,
   TextCursorInput, SquareCheck, Copy, Bold, Stamp, UserRound, Crosshair, CircleDot, SquareChevronDown, List, PenLine,
+  LetterText, BringToFront, SendToBack, RotateCcw,
 } from "lucide-react";
 import { useI18n } from "../I18n";
 import { SignaturePad, type SignatureImage } from "./SignaturePad";
 import { DetectPanel, FIELD_LABELS, FieldInput, FieldPreview, FieldSettings, SuggestionBox, fieldShape, fieldSize, newField } from "./FormFields";
 import type { Suggestion } from "@/lib/pdf/formsdetect";
 import { thumbUrl, pageSizes, docFor } from "@/lib/pdf/thumbs";
-import type { EditorItem, FieldInfo, FracRect } from "@/lib/pdf/edit";
+import type { EditorItem, FieldInfo, FracRect, TextBox } from "@/lib/pdf/edit";
+import { moveLayer } from "@/lib/pdf/layers";
 import { parseRanges, type Output, type Progress } from "@/lib/pdf/common";
 import { isFieldKind, type FieldKind } from "@/lib/pdf/formsmeta";
 import type { ToolId } from "@/lib/tools";
 
-type EdTool = "select" | "text" | "image" | "rect" | "ellipse" | "line" | "path" | "highlight" | "whiteout" | "redact" | "crop" | FieldKind | "place";
+type EdTool = "select" | "editText" | "text" | "image" | "rect" | "ellipse" | "line" | "path" | "highlight" | "whiteout" | "redact" | "crop" | FieldKind | "place";
 type Size = { w: number; h: number };
 // Marks from a search keep the text matched, the search they came from (and
 // its pattern, to run it again on the result) and how many boxes that text
@@ -29,8 +31,16 @@ const PRESET_NAMES = ["emails", "phones", "numbers"] as const;
 // How an item on the page is announced.
 const ITEM_LABELS: Record<EditorItem["kind"], string> = {
   text: "ed.text", image: "ed.image", rect: "ed.rect", ellipse: "ed.ellipse", line: "ed.line", path: "ed.draw",
-  highlight: "ed.highlight", whiteout: "ed.whiteout", ...FIELD_LABELS,
+  highlight: "ed.highlight", whiteout: "ed.whiteout", textEdit: "ed.editText", ...FIELD_LABELS,
 };
+// What saving will do with a change to the page's own text (edit.ts textFonts), for the text it was checked with.
+type FontNote = { text: string; result: Awaited<ReturnType<typeof import("@/lib/pdf/edit").textFonts>> };
+const fontBlocks = (n?: FontNote) => Boolean(n && ("unsupported" in n.result || (!n.result.kept && !n.result.fallback)));
+// A CSS stand-in for a PDF font, for showing changed text in the editor.
+const cssFamily = (font = "") =>
+  /mono|courier|cousine|consol/i.test(font) ? "'Courier New', Cousine, monospace"
+  : /times|serif|tinos|georgia|roman|garamond|cambria|caladea|mincho|song|batang/i.test(font) && !/sans/i.test(font) ? "'Times New Roman', Tinos, serif"
+  : "Helvetica, Arial, Arimo, sans-serif";
 // Pages a signature can be copied to.
 const PLACEMENTS = ["all", "allButLast", "last", "custom"] as const;
 type Placement = (typeof PLACEMENTS)[number];
@@ -124,6 +134,9 @@ export function Editor({
   // Fields found on a flat form, waiting to be accepted or rejected.
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [detected, setDetected] = useState<null | "busy" | number>(null);
+  // The page's own text objects, for the Edit text tool, and what saving each change will do to its font.
+  const [pageText, setPageText] = useState<{ page: number; list: TextBox[] } | null>(null);
+  const [fontNotes, setFontNotes] = useState<Record<string, FontNote>>({});
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<number | null>(null);
   const [matchCase, setMatchCase] = useState(false);
@@ -175,6 +188,28 @@ export function Editor({
       live = false;
     };
   }, [file, page, width]);
+
+  useEffect(() => {
+    if (tool !== "editText" || pageText?.page === page) return;
+    let live = true;
+    import("@/lib/pdf/edit").then(({ listText }) => listText(file, page)).catch(() => [] as TextBox[])
+      .then((list) => live && setPageText({ page, list }));
+    return () => {
+      live = false;
+    };
+  }, [tool, page, file, pageText?.page]);
+
+  // Checks each changed text once typing stops, and again after undo or redo.
+  useEffect(() => {
+    for (const i of items.value) {
+      if (i.kind !== "textEdit" || !i.source || editing === i.id || !i.text || i.text === i.source.was) continue;
+      if (fontNotes[i.id]?.text === i.text) continue;
+      const { id, page: p, text } = i, index = i.source.index;
+      import("@/lib/pdf/edit").then(({ textFonts }) => textFonts(file, p, index, text))
+        .then((result) => setFontNotes((n) => ({ ...n, [id]: { text, result } })))
+        .catch(() => {});
+    }
+  }, [items.value, editing, fontNotes, file]);
 
   const pageItems = items.value.filter((i) => i.page === page);
   const pageMarks = marks.value.filter((m) => m.page === page);
@@ -243,7 +278,7 @@ export function Editor({
       setTool("select");
       return;
     }
-    if (tool === "select" || tool === "place") {
+    if (tool === "select" || tool === "place" || tool === "editText") {
       setSel(null);
       setEditing(null);
       return;
@@ -344,7 +379,7 @@ export function Editor({
   };
 
   const startItemDrag = (e: React.PointerEvent, it: EditorItem, kind: "move" | "resize") => {
-    if (tool !== "select" && tool !== "place") return;
+    if (tool !== "select" && tool !== "place" && tool !== "editText") return;
     e.stopPropagation();
     if (editing === it.id && kind === "move") return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -366,8 +401,12 @@ export function Editor({
         if (e.shiftKey) { items.redo(); marks.redo(); } else { items.undo(); marks.undo(); }
       } else if ((e.key === "Delete" || e.key === "Backspace") && sel) {
         e.preventDefault();
-        items.set((l) => l.filter((i) => i.id !== sel));
-        setSel(null);
+        // The page's own text is deleted from the file, not just from the list.
+        if (items.value.find((i) => i.id === sel)?.kind === "textEdit") patch(sel, { text: "" });
+        else {
+          items.set((l) => l.filter((i) => i.id !== sel));
+          setSel(null);
+        }
       } else if (sel && e.key.startsWith("Arrow")) {
         e.preventDefault();
         const step = e.shiftKey ? 0.01 : 0.002;
@@ -453,6 +492,24 @@ export function Editor({
     setCrops((mp) => new Map(mp).set(options.cropScope === "current" ? page : -1, r));
   };
 
+  // ── Edit text: a change to one of the page's own text objects.
+  const editExisting = (o: TextBox) => {
+    const have = items.value.find((i) => i.kind === "textEdit" && i.page === page && i.source?.index === o.index);
+    if (have) {
+      setSel(have.id);
+      setEditing(have.id);
+      return;
+    }
+    const it: EditorItem = {
+      id: uid(), page, kind: "textEdit", x: o.box.x, y: o.box.y, w: o.box.w, h: o.box.h, text: o.text,
+      fontSize: o.size, color: o.color, bold: o.bold,
+      source: { index: o.index, was: o.text, x: o.box.x, y: o.box.y, font: o.font, angle: o.angle },
+    };
+    items.set((l) => [...l, it]);
+    setSel(it.id);
+    setEditing(it.id);
+  };
+
   const run = () => {
     onRun(async (progress) => {
       const edit = await import("@/lib/pdf/edit");
@@ -483,11 +540,12 @@ export function Editor({
   const canRun =
     toolId === "redact" ? marks.value.length > 0 :
     toolId === "crop" ? [...crops.values()].some((r) => r.w > 0.02 && r.h > 0.02) :
-    toolId === "forms" ? true : items.value.length > 0;
+    toolId === "forms" ? true : items.value.length > 0 && !items.value.some((i) => i.kind === "textEdit" && fontBlocks(fontNotes[i.id]));
 
   const tools: { id: EdTool; icon: React.ReactNode; label: string }[] = useMemo(() => {
     const base = [{ id: "select" as EdTool, icon: <MousePointer2 size={18} />, label: t("ed.select") }];
     if (toolId === "edit") return [...base,
+      { id: "editText", icon: <LetterText size={18} />, label: t("ed.editText") },
       { id: "text", icon: <Type size={18} />, label: t("ed.text") },
       { id: "image", icon: <ImagePlus size={18} />, label: t("ed.image") },
       { id: "rect", icon: <Square size={18} />, label: t("ed.rect") },
@@ -512,7 +570,7 @@ export function Editor({
     return [{ id: "crop", icon: <CropIcon size={18} />, label: t("tool.crop.name") }];
   }, [toolId, t]);
 
-  const cursor = tool === "select" ? "default" : tool === "text" ? "text" : "crosshair";
+  const cursor = tool === "select" || tool === "editText" ? "default" : tool === "text" ? "text" : "crosshair";
 
   const placeLabel = t("ed.placeCentre");
   const runButton = <button className="btn btn-primary btn-lg w-full" disabled={!canRun} onClick={run}>{actionLabel}</button>;
@@ -604,6 +662,16 @@ export function Editor({
               }} />
             )}
 
+            {/* The page's own text, to click and change */}
+            {tool === "editText" && pageText?.page === page && pageText.list
+              .filter((o) => !pageItems.some((i) => i.kind === "textEdit" && i.source?.index === o.index))
+              .map((o) => (
+                <button key={o.index} type="button" data-text-object={o.index} aria-label={`${t("ed.editText")}: ${o.text}`} title={o.text}
+                  className="absolute cursor-text rounded-[2px] outline-dashed outline-1 outline-[color-mix(in_oklab,var(--accent)_55%,transparent)] hover:bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+                  style={{ left: `${o.box.x * 100}%`, top: `${o.box.y * 100}%`, width: `${o.box.w * 100}%`, height: `${o.box.h * 100}%` }}
+                  onPointerDown={(e) => e.stopPropagation()} onClick={() => editExisting(o)} />
+              ))}
+
             {/* Items */}
             <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 1000 1000" preserveAspectRatio="none">
               {pageItems.filter((i) => i.kind === "path" || i.kind === "line").map((i) => (
@@ -629,6 +697,43 @@ export function Editor({
                 ...(editing === i.id ? {} : { tabIndex: 0, role: "button", "aria-label": i.kind === "text" ? i.text || t("ed.text") : t(ITEM_LABELS[i.kind]) }),
               };
               let inner: React.ReactNode = null;
+              if (i.kind === "textEdit" && i.source) {
+                const src = i.source;
+                const fs = (i.fontSize ?? 12) * ptToPx;
+                const changed = i.text !== src.was || i.x !== src.x || i.y !== src.y;
+                const bad = fontBlocks(fontNotes[i.id]);
+                return (
+                  <div key={i.id} className="contents">
+                    {/* Hides the old text in the preview; saving removes it from the file. */}
+                    {/* Padded for anti-aliasing, and below for descenders the box may leave out. */}
+                    {changed && <div aria-hidden className="pointer-events-none absolute bg-white"
+                      style={{ fontSize: fs, left: `calc(${src.x * 100}% - 2px)`, top: `calc(${src.y * 100}% - 2px)`, width: `calc(${i.w * 100}% + 4px)`, height: `calc(${i.h * 100}% + 0.25em + 4px)` }} />}
+                    <div {...common} onDoubleClick={() => setEditing(i.id)} data-text-edit={src.index}
+                      aria-label={i.text ? `${t("ed.editText")}: ${i.text}` : t("ed.textDeleted")}
+                      className={`absolute flex items-end whitespace-pre leading-none ${frame} ${bad ? "outline outline-2 outline-[var(--danger)]" : ""} ${editing === i.id ? "" : "cursor-move"}`}
+                      style={{
+                        left: `${i.x * 100}%`, top: `${i.y * 100}%`, minWidth: `${i.w * 100}%`, height: `${i.h * 100}%`, fontSize: fs, color: i.color,
+                        fontWeight: i.bold ? 700 : 400, fontFamily: cssFamily(src.font),
+                        transform: src.angle && Math.abs(src.angle) > 0.5 ? `rotate(${-src.angle}deg)` : undefined, transformOrigin: "0 100%",
+                      }}>
+                      {editing === i.id ? (
+                        <input ref={(el) => { if (el && document.activeElement !== el) el.focus(); }} value={i.text ?? ""} aria-label={t("ed.editText")}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onChange={(e) => patch(i.id, { text: e.target.value }, false)}
+                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur(); }}
+                          onBlur={() => setEditing(null)}
+                          className="-mb-[0.22em] h-[calc(100%+0.22em)] bg-[color-mix(in_oklab,var(--accent)_8%,white)] p-0 outline-none"
+                          style={{ font: "inherit", color: "inherit", width: `${Math.max(4, (i.text ?? "").length + 2)}ch` }} />
+                      ) : changed && !i.text ? (
+                        <span className="h-full w-full min-w-4 border border-dashed border-[var(--danger)]" />
+                      ) : changed ? (
+                        // The box ends at the baseline; the line's descent goes below it.
+                        <span style={{ marginBottom: "-0.22em" }}>{i.text}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              }
               if (i.kind === "text") {
                 const fs = (i.fontSize ?? 16) * ptToPx;
                 return (
@@ -798,7 +903,39 @@ export function Editor({
         {/* Style for new and selected items */}
         {selected && isFieldKind(selected.kind) && <FieldSettings item={selected} onChange={(p) => patch(selected.id, p)} />}
 
-        {(toolId === "edit" || toolId === "sign" || toolId === "forms") && selected?.kind !== "image" && !(selected && isFieldKind(selected.kind)) && (
+        {tool === "editText" && !selected && (
+          <p className="text-[14px] text-muted">
+            {pageText?.page === page && pageText.list.length === 0 ? t("ed.noEditableText") : t("ed.editTextHint")}
+          </p>
+        )}
+
+        {selected?.kind === "textEdit" && selected.source && (() => {
+          const note = fontNotes[selected.id];
+          const changedText = selected.text !== selected.source.was;
+          const r = note?.text === selected.text ? note.result : null;
+          return (
+            <div className="space-y-3" aria-live="polite">
+              {!selected.text ? <p className="text-[14px] text-ink-2">{t("ed.textDeleted")}</p>
+                : !changedText || !r ? <p className="text-[14px] text-muted">{t("ed.fontKept", { font: selected.source.font ?? "" })}</p>
+                : "unsupported" in r ? <p className="text-[14px] text-danger">{t("ed.scriptUnsupported")}</p>
+                : r.kept ? <p className="text-[14px] text-muted">{t("ed.fontKept", { font: r.font })}</p>
+                : r.fallback ? <p className="rounded-xl bg-surface-2 p-3 text-[13px] text-ink-2">{t("ed.fontFallback", { font: r.font, fallback: r.fallback })}</p>
+                : <p className="text-[14px] text-danger">{t("ed.fontNone")}</p>}
+              <div className="flex flex-wrap gap-2">
+                {selected.text ? (
+                  <button className="btn btn-quiet btn-sm text-danger" onClick={() => patch(selected.id, { text: "" })}>
+                    <Trash2 size={15} /> {t("ed.deleteText")}
+                  </button>
+                ) : null}
+                <button className="btn btn-quiet btn-sm" onClick={() => { items.set((l) => l.filter((i) => i.id !== selected.id)); setSel(null); }}>
+                  <RotateCcw size={15} /> {t("ed.restoreText")}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+
+        {(toolId === "edit" || toolId === "sign" || toolId === "forms") && selected?.kind !== "image" && selected?.kind !== "textEdit" && !(selected && isFieldKind(selected.kind)) && !(tool === "editText" && !selected) && (
           <div className="space-y-3">
             <div className="flex flex-wrap gap-1.5">
               {COLORS.map((c) => (
@@ -837,8 +974,16 @@ export function Editor({
           </div>
         )}
 
-        {selected && (
+        {selected && selected.kind !== "textEdit" && (
           <div className="flex flex-wrap gap-2 border-t border-line pt-4">
+            <button className="btn btn-quiet btn-sm" disabled={moveLayer(items.value, selected.id, 1) === items.value}
+              onClick={() => items.set((l) => moveLayer(l, selected.id, 1))}>
+              <BringToFront size={15} /> {t("ed.bringForward")}
+            </button>
+            <button className="btn btn-quiet btn-sm" disabled={moveLayer(items.value, selected.id, -1) === items.value}
+              onClick={() => items.set((l) => moveLayer(l, selected.id, -1))}>
+              <SendToBack size={15} /> {t("ed.sendBackward")}
+            </button>
             {toolId === "sign" && sizes.length > 1 && (
               <div className="grid w-full gap-2">
                 <label className="flex items-center gap-2 text-[13px] text-ink-2">

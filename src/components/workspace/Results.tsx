@@ -75,6 +75,7 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
         </p>
       )}
       {first?.note === "notSmaller" && <p className="mt-2 text-[15px] text-muted">{t("res.notSmaller")}</p>}
+      {first?.note?.startsWith("textFallback:") && <p className="mt-2 text-[15px] text-muted">{t("res.textFallback", { fonts: first.note.slice(13) })}</p>}
       {first?.note === "rebuilt" && <p className="mt-2 text-[15px] text-muted">{t("res.rebuilt")}</p>}
       {first?.note === "ocrNone" && <p className="mt-2 text-[15px] text-muted">{t("res.ocrNone")}</p>}
       {first?.note === "ocrDoubtful" && <p className="mt-2 text-[15px] text-muted">{t("res.ocrDoubtful")}</p>}

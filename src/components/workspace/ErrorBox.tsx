@@ -31,6 +31,7 @@ const MESSAGES: Record<ErrorCode, [key: string, fix?: Fix]> = {
   bad_ranges: ["err.badRanges"],
   empty_document: ["err.emptyDocument"],
   missing_image: ["err.missingImage"],
+  text_edit_failed: ["err.textEdit"],
   download_failed: ["err.download"],
   office_isolation: ["ws.officeReload"],
   office_memory: ["ws.officeMemory"],
