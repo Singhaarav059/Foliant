@@ -1,5 +1,6 @@
 import { getDb } from "@/lib/server/db";
-import { currentUser, error, json, sameOrigin } from "@/lib/server/auth";
+import { currentUser } from "@/lib/server/auth";
+import { error, json, sameOrigin } from "@/lib/server/http";
 
 // Typed by hand: the generated RouteContext type is missing from static builds,
 // which leave this file out.
