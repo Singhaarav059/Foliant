@@ -141,6 +141,11 @@ const expect = {
     eq(grid(t).map((r) => r.map((c) => c?.text).join("|")).join("/"), "Item|Qty/Pens|10", "cells");
     const corner = t.cells.find((c) => Math.min(c.x, L.width - c.x - c.w) < 40 && Math.min(c.y, L.height - c.y - c.h) < 40);
     if (corner) throw new Error(`cell near a page corner at ${Math.round(corner.x)},${Math.round(corner.y)}`);
+    // The filled value reads where the field shows it: inside its box, beside "Name".
+    const value = L.lines.flatMap((l) => l.runs).find((r) => r.text.includes("Ada Lovelace"));
+    if (!value) throw new Error("field value missing from the text");
+    if (!(value.x > 120 && value.x < 360 && value.y > 60 && value.y + value.h < 82))
+      throw new Error(`field value at ${Math.round(value.x)},${Math.round(value.y)}, outside its field`);
   },
 };
 
