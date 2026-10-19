@@ -148,11 +148,24 @@ for (const name of engines) {
   await test("switching language keeps the tool", async () => {
     await open("/en/merge-pdf");
     await page.getByRole("button", { name: "Language" }).click();
-    await page.locator('header button[lang="de"]').click();
+    await page.locator('header a[hreflang="de"]').click();
     await page.waitForURL("**/de/pdf-zusammenfuegen", { timeout: 10000 });
     const h1 = await page.locator("h1").textContent();
     if (h1 !== "PDF zusammenfügen") throw new Error(`h1 ${h1}`);
     return "/en/merge-pdf → /de/pdf-zusammenfuegen";
+  });
+
+  // The language menu is links, one per translation, to the same addresses
+  // the page's <link rel=alternate hreflang> tags give.
+  await test("language menu links match hreflang", async () => {
+    await open("/es/unir-pdf");
+    await page.getByRole("button", { name: "Idioma" }).click();
+    const { links, alternates } = await page.evaluate(() => ({
+      links: [...document.querySelectorAll("header a[hreflang]")].map((a) => `${a.hreflang}=${a.getAttribute("href")}|${a.lang}`),
+      alternates: [...document.querySelectorAll("link[rel=alternate][hreflang]")].filter((l) => l.hreflang !== "x-default").map((l) => `${l.hreflang}=${new URL(l.href).pathname}|${l.hreflang}`),
+    }));
+    if (links.length !== 26 || links.sort().join() !== alternates.sort().join()) throw new Error(`${links.length} links, e.g. ${links.find((l) => !alternates.includes(l))}`);
+    return "26 links, same as hreflang";
   });
 
   await test("intent page links to the tools in its language", async () => {

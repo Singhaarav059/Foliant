@@ -123,15 +123,21 @@ export function Header() {
             </button>
             {menu === "lang" && (
               <div className="rise absolute end-0 top-11 card grid w-[420px] grid-cols-2 gap-0.5 p-1.5 shadow-card">
+                {/* Plain links to this page in each language: they work without
+                    scripts, open in a new tab, and a language change loads a
+                    new root layout (<html lang>) anyway. */}
                 {LOCALES.map((l) => (
-                  <button
+                  <a
                     key={l.code}
+                    href={switchLanguage(pathname, l.code)}
+                    hrefLang={l.code}
                     lang={l.code}
-                    onClick={() => switchLocale(l.code)}
+                    aria-current={l.code === locale ? "true" : undefined}
+                    onClick={close}
                     className={`rounded-md px-3 py-1.5 text-start text-[14px] hover:bg-surface-2 ${l.code === locale ? "bg-surface-2 font-medium text-ink" : "text-ink-2"}`}
                   >
                     {l.name}
-                  </button>
+                  </a>
                 ))}
               </div>
             )}
