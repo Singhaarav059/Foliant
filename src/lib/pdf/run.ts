@@ -58,8 +58,19 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
       return each(files, progress, (f) => rotateAll(f, n(o.angle)));
     }
     case "compress": {
+      // A size to reach (KB of 1,024 bytes), or a level.
+      const kb = o.targetKb === "custom" ? n(o.customKb) : n(o.targetKb);
+      if (kb > 0) {
+        const { compressToSize } = await import("./targetsize");
+        return each(files, progress, (f, p) => compressToSize(f, { targetBytes: kb * 1024, gray: b(o.allowGray) }, p));
+      }
       const { compress } = await import("./optimize");
       return each(files, progress, (f, p) => compress(f, { level: s(o.level) }, p));
+    }
+    case "examKit": {
+      const { examKit, examSpec } = await import("./examkit");
+      const spec = examSpec({ preset: s(o.examPreset), w: n(o.examWidth), h: n(o.examHeight), minKb: n(o.examMinKb), maxKb: n(o.examMaxKb) });
+      return examKit(files, { spec, fit: o.examFit === "pad" ? "pad" : "crop", gray: b(o.examGray) }, progress);
     }
     case "repair": {
       const { repair } = await import("./optimize");
@@ -206,8 +217,11 @@ export async function prepare(id: ToolId): Promise<unknown> {
     case "rotate":
       return (await import("./organize")).prepare();
     case "compress":
+      return Promise.all([(await import("./optimize")).prepare(), import("./targetsize")]);
     case "repair":
       return (await import("./optimize")).prepare();
+    case "examKit":
+      return Promise.all([(await import("./jpeg")).prepareJpeg(), import("./examkit"), import("./images")]);
     case "jpgToPdf":
     case "scan":
       return import("./convert");

@@ -34,6 +34,7 @@
     "test:word-structure": "node tests/word-structure.mjs",
     "test:docx-features": "node tests/docx-features.mjs",
     "test:compress": "node tests/compress.mjs",
+    "test:targetsize": "node tests/targetsize.mjs",
     "test:ocr": "node tests/ocr.mjs",
     "test:ocr-langs": "node tests/ocr-langs.mjs",
     "test:auto-ocr": "node tests/auto-ocr.mjs",
@@ -60,6 +61,7 @@
     "test:e2e:tools": "node tests/e2e/tools/run.mjs",
     "test:e2e:office-high": "node tests/e2e/office-high.mjs chromium",
     "test:e2e:images": "node tests/e2e/images.mjs",
+    "test:e2e:exactsize": "node tests/e2e/exactsize.mjs chromium",
     "test:image-bytes": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/image-bytes.mjs"
   },
   "dependencies": {

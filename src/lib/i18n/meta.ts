@@ -18,9 +18,9 @@ export function titleFrom(key: DictKey, page?: { path: string; description: Dict
 }
 
 // Texts only server-rendered pages use: each tool page's long-form content
-// (src/components/ToolContent.tsx). Left out of the dictionary the browser
+// (src/components/ToolContent.tsx) and the landing pages' (IntentPage.tsx). Left out of the dictionary the browser
 // receives, which every page carries, so they don't weigh on every page.
-const SERVER_ONLY = /^(tp\.|tool\.[^.]+\.(title|meta|intro|private|step\d+|q\d+|a\d+)$)/;
+const SERVER_ONLY = /^(tp\.|intent\.|tool\.[^.]+\.(title|meta|intro|private|step\d+|q\d+|a\d+)$)/;
 
 export function clientDict(dict: Dict): Dict {
   return Object.fromEntries(Object.entries(dict).filter(([k]) => !SERVER_ONLY.test(k))) as Dict;

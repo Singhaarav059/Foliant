@@ -168,7 +168,7 @@ await test("no two English tool pages share half their text", () => {
 // Every page sends the dictionary to the browser; the long-form content is
 // for the server-rendered HTML only, so it must not ride along on every page.
 await test("tool-page content stays out of the dictionary the browser gets", () => {
-  const leaks = ["en.html", "en/merge-pdf.html", "en/faq.html"].filter((f) => /\\?"(tool\.merge\.intro|tp\.howTo)\\?"/.test(readFileSync(join(out, f), "utf8")));
+  const leaks = ["en.html", "en/merge-pdf.html", "en/faq.html", "en/compress-pdf-to-100kb.html"].filter((f) => /\\?"(tool\.merge\.intro|tp\.howTo|intent\.intro)\\?"/.test(readFileSync(join(out, f), "utf8")));
   ok(!leaks.length, `content keys in the client payload of ${leaks.join(", ")}`);
 });
 

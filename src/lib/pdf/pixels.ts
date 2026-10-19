@@ -190,6 +190,13 @@ export function asGray(p: Pixels): Pixels | null {
   return { w: p.w, h: p.h, ch: 1, data: out };
 }
 
+// RGB as grey by Rec. 601 luma, for Compress to a size's greyscale step.
+export function luma(p: Pixels): Pixels {
+  const out = new Uint8Array(p.w * p.h);
+  for (let i = 0, q = 0; i < out.length; i++, q += 3) out[i] = Math.round(0.299 * p.data[q] + 0.587 * p.data[q + 1] + 0.114 * p.data[q + 2]);
+  return { w: p.w, h: p.h, ch: 1, data: out };
+}
+
 // Images with few colours (charts, screenshots, logos) as palette indices,
 // packed at 1, 2, 4 or 8 bits. Lossless.
 export function palette(p: Pixels, max = 256): { colors: Uint8Array; bits: 1 | 2 | 4 | 8; data: Uint8Array } | null {

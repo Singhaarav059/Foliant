@@ -56,6 +56,10 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
   );
 
   const saved = first?.note?.startsWith("saved:") ? first.note.split(":").map(Number) : null;
+  // Compress to a size and the exam kit (src/lib/pdf/targetsize.ts, examkit.ts).
+  const [kind, ...nums] = first?.note?.split(":") ?? [];
+  const [n1, n2, n3, n4, n5] = nums.map(Number);
+  const kb = (b: number) => `${(b / 1024).toFixed(1)} KB`;
 
   return (
     <div className="rise mx-auto max-w-[760px] text-center">
@@ -66,6 +70,21 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
       {saved && (
         <p className="tabular mt-2 text-[15px] text-ink-2">
           {t("res.saved", { pct: Math.round((1 - saved[2] / saved[1]) * 100), from: humanSize(saved[1]), to: humanSize(saved[2]) })}
+        </p>
+      )}
+      {kind === "target" && (
+        <p className="tabular mt-2 text-[15px] text-ink-2">
+          {t("res.target", { to: kb(n3), target: kb(n1), from: humanSize(n2) })}
+          {n5 === 1 && ` ${t("res.targetGray")}`}
+          {n4 < 100 && ` ${t("res.targetLowDpi", { dpi: n4 })}`}
+        </p>
+      )}
+      {kind === "targetMissed" && <p className="tabular mt-2 text-[15px] text-ink-2">{t("res.targetMissed", { to: kb(n3), target: kb(n1), from: humanSize(n2) })}</p>}
+      {kind === "underTarget" && <p className="tabular mt-2 text-[15px] text-muted">{t("res.underTarget", { size: kb(n2), target: kb(n1) })}</p>}
+      {kind === "exam" && (
+        <p className="tabular mt-2 text-[15px] text-ink-2">
+          {t(nums[0] === "tooBig" ? "res.examTooBig" : "res.exam", { w: n2, h: n3, size: kb(n4), min: n5, max: Number(nums[5]) })}
+          {nums[0] === "padded" && ` ${t("res.examPadded", { min: n5 })}`}
         </p>
       )}
       {first?.note === "notSmaller" && <p className="mt-2 text-[15px] text-muted">{t("res.notSmaller")}</p>}

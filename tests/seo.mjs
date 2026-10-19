@@ -218,6 +218,23 @@ await test("favicon.ico, PNG icons and the manifest", () => {
   for (const want of ["/favicon.ico", "/apple-touch-icon.png"]) ok(linked.some((h) => h.endsWith(want)), `pages don't link ${want}`);
 });
 
+await test("compress-pdf-to-{100,200,500}kb: in every language and the sitemap, with JSON-LD", () => {
+  const xml = read("sitemap.xml");
+  const bad = [];
+  for (const kb of [100, 200, 500])
+    for (const lang of locales) {
+      const path = `/${lang}/compress-pdf-to-${kb}kb`;
+      if (!pages.includes(`${path.slice(1)}.html`)) { bad.push(`${path} missing`); continue; }
+      if (!xml.includes(`<loc>${abs(path)}</loc>`)) bad.push(`${path} not in the sitemap`);
+      const html = read(`${path.slice(1)}.html`);
+      const ld = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((m) => JSON.parse(m[1]));
+      const app = ld.flatMap((d) => d["@graph"] ?? []).find((n) => n["@type"] === "SoftwareApplication");
+      if (app?.url !== abs(path)) bad.push(`${path} JSON-LD url ${app?.url}`);
+    }
+  ok(!bad.length, `${bad.length} problems, e.g. ${bad.slice(0, 3).join("; ")}`);
+  ok(/<h1[^>]*>Compress PDF to 100 KB<\/h1>/.test(read("en/compress-pdf-to-100kb.html")), "en/compress-pdf-to-100kb has no h1");
+});
+
 await test("a release build without NEXT_PUBLIC_SITE_URL stops", () => {
   const env = { ...process.env, NOPLOAD_RELEASE: "1", NOPLOAD_STATIC: "", NEXT_PUBLIC_SITE_URL: "" };
   const run = spawnSync(join(root, "node_modules/.bin/next"), ["build"], { cwd: root, env, encoding: "utf8", timeout: 300000 });
