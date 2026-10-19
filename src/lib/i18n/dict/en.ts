@@ -1171,6 +1171,14 @@ const en = {
   "wf.running": "Running step {n} of {total}: {tool}",
   "wf.needSteps": "Add at least one step.",
 
+  // Open with / share sheet (/{lang}/open)
+  "open.title": "Open files",
+  "open.subtitle": "Pick a tool for these files. They stay on your device.",
+  "open.files": "Files to open",
+  "open.tools": "Tools for these files",
+  "open.empty": "No files were shared with {brand} or opened with it. Choose some to get started.",
+  "open.noTool": "No tool takes all of these files together. Share files of one type at a time.",
+
   // Pricing
 
   // Footer and pages

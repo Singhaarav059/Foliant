@@ -15,7 +15,7 @@ import { ErrorBox, useProblem, type Problem } from "./ErrorBox";
 import { Results } from "./Results";
 import { PrintResults } from "./PrintResults";
 import { PasteHtml } from "./PasteHtml";
-import { clearHandoff, peekHandoff } from "@/lib/handoff";
+import { peekHandoff, restoreHandoff } from "@/lib/handoff";
 import { fileExt, type Output, type Progress } from "@/lib/pdf/common";
 import { fileError } from "@/lib/pdf/errors";
 import { markUnrestricted, PERMISSIONS, protectProblem } from "@/lib/pdf/password";
@@ -89,7 +89,10 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
     setStage("work");
   }, [items, t, tool]);
 
-  useEffect(() => clearHandoff(), []);
+  // Files handed over before a full page load (from /{lang}/open, offline)
+  // come from storage once the page is up.
+  const restored = useEffectEvent((handed: File[]) => void (handed.length && addFiles(handed, [])));
+  useEffect(() => void restoreHandoff(toolId).then(restored), [toolId]);
 
   // Once the page has settled, load what this tool runs on, so it also works
   // offline. The imports match the ones each stage makes when it runs.

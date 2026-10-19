@@ -28,6 +28,8 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
+      - name: Hand-over to tools (Open with, share sheet)
+        run: npm run test:handoff
       - run: npm run i18n:check
       - run: npm run test:static
       - name: Server build defences (addresses, egress proxy, limits, subprocesses)
@@ -91,6 +93,9 @@ jobs:
       - name: Summarize
         if: success() || failure()
         run: npm run test:e2e:summarize -- ${{ matrix.browser }}
+      - name: Share sheet and Open with
+        if: success() || failure()
+        run: node scripts/ci-report.mjs "Share sheet and Open with (${{ matrix.browser }})" npm run test:e2e:share -- ${{ matrix.browser }}
       - name: Rotate
         if: success() || failure()
         run: npm run test:e2e:rotate -- ${{ matrix.browser }}

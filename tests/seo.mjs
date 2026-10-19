@@ -63,7 +63,10 @@ const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
 const pages = walk(out);
 const urlPath = (file) => (file === "index.html" ? "/" : `/${file.replace(/\.html$/, "")}`);
 const isError = (file) => /(^|\/)(404|_not-found)\.html$/.test(file);
-const indexable = pages.filter((f) => !isError(f));
+// Where the installed app lands with files shared to it or opened with it
+// (/{lang}/open): noindex, so it has no search or sharing metadata.
+const isAppOnly = (file) => /^[^/]+\/open\.html$/.test(file);
+const indexable = pages.filter((f) => !isError(f) && !isAppOnly(f));
 
 // The site's address: the configured one, else whatever the home page claims,
 // which must at least be absolute.
@@ -117,12 +120,16 @@ await test("every page: canonical is itself, translations of the same page", () 
   ok(!bad.length, `${bad.length} problems, e.g. ${bad.slice(0, 3).join("; ")}`);
 });
 
-await test("/ is the indexable x-default home, error pages are noindex", () => {
+await test("/ is the indexable x-default home, error and /{lang}/open pages are noindex", () => {
   ok(!head("index.html").meta("robots").some((r) => /noindex/.test(r)), "/ is noindex");
   eq(head("index.html").alternates.length, 27, "alternates on /");
   const open = pages.filter(isError).filter((f) => !head(f).meta("robots").some((r) => /noindex/.test(r)));
   ok(pages.filter(isError).length >= 27, "error pages missing");
   ok(!open.length, `indexable error pages: ${open.slice(0, 4).join(", ")}`);
+  const app = pages.filter(isAppOnly);
+  eq(app.length, locales.length, "/{lang}/open pages");
+  const listed = app.filter((f) => !head(f).meta("robots").some((r) => /noindex/.test(r)));
+  ok(!listed.length, `indexable app pages: ${listed.slice(0, 4).join(", ")}`);
 });
 
 await test("sitemap.xml lists every page with its translations", () => {
@@ -213,7 +220,9 @@ await test("favicon.ico, PNG icons and the manifest", () => {
   const icons = manifest.icons.map((i) => `${i.src} ${i.sizes} ${i.purpose ?? "any"}`);
   for (const want of ["/icon-192.png 192x192 any", "/icon-512.png 512x512 any", "/icon-maskable-512.png 512x512 maskable"])
     ok(icons.includes(want), `manifest icon missing: ${want}`);
-  ok(!("file_handlers" in manifest), "manifest declares file_handlers nothing handles");
+  // "Open with" lands on a page that exists; shares go to the service worker.
+  for (const h of manifest.file_handlers ?? []) ok(existsSync(join(out, `${h.action.slice(1)}.html`)), `file_handlers action ${h.action} has no page`);
+  if (manifest.share_target) ok(read("sw.js").includes(`"${manifest.share_target.action}"`), "sw.js doesn't handle the share_target action");
   const linked = head("en/merge-pdf.html").icons;
   for (const want of ["/favicon.ico", "/apple-touch-icon.png"]) ok(linked.some((h) => h.endsWith(want)), `pages don't link ${want}`);
 });

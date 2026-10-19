@@ -71,7 +71,9 @@
     "test:html-site": "node tests/html-site.mjs",
     "test:e2e:summarize": "node tests/e2e/summarize.mjs",
     "test:server": "node tests/server.mjs",
-    "test:server-routes": "node tests/server-routes.mjs"
+    "test:server-routes": "node tests/server-routes.mjs",
+    "test:handoff": "node tests/handoff.mjs",
+    "test:e2e:share": "node tests/e2e/share.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
