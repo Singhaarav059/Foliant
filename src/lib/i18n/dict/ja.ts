@@ -10,6 +10,7 @@ const d: { [K in DictKey]?: string } = {
   "nav.language": "言語",
   "nav.menu": "メニュー",
   "nav.close": "閉じる",
+  "handoff.pick": "{name} を開きました。使うツールを選んでください。",
   "nav.skip": "本文へ移動",
   "home.title": "必要な PDF ツールが、ひとつの場所に",
   "home.subtitle": "PDF の結合、分割、圧縮、変換、署名、編集。ほとんどのツールはブラウザ内だけで動くので、ファイルが端末の外に出ることはありません。",

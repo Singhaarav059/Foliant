@@ -10,6 +10,7 @@ const d: { [K in DictKey]?: string } = {
   "nav.language": "語言",
   "nav.menu": "選單",
   "nav.close": "關閉",
+  "handoff.pick": "已開啟 {name}。請選擇要使用的工具。",
   "nav.skip": "跳到主要內容",
   "home.title": "你需要的 PDF 工具，全都在這裡",
   "home.subtitle": "合併、分割、壓縮、轉換、簽署及編輯 PDF。大多數工具完全在瀏覽器中執行，檔案不會離開你的裝置。",

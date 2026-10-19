@@ -10,6 +10,7 @@ const d: { [K in DictKey]?: string } = {
   "nav.language": "Språk",
   "nav.menu": "Meny",
   "nav.close": "Stäng",
+  "handoff.pick": "{name} är öppnad. Välj ett verktyg för den.",
   "nav.skip": "Hoppa till innehållet",
   "home.title": "Alla PDF-verktyg du behöver, på ett ställe",
   "home.subtitle": "Slå ihop, dela, komprimera, konvertera, signera och redigera PDF-filer. De flesta verktygen körs helt i webbläsaren, så dina filer lämnar aldrig din enhet.",

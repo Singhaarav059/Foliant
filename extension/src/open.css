@@ -1,0 +1,9 @@
+:root { color-scheme: light dark; --bg: #f7f7f5; --ink: #191917; --muted: #6b6b66; --line: #dcdcd6; --accent: #191917; --on-accent: #fff; }
+@media (prefers-color-scheme: dark) { :root { --bg: #121211; --ink: #ececea; --muted: #a2a29c; --line: #34342f; --accent: #ececea; --on-accent: #121211; } }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 520px; margin: 0 auto; padding: 64px 16px; }
+h1 { font-size: 1.5rem; letter-spacing: -0.02em; margin: 16px 0 8px; }
+.file { overflow-wrap: anywhere; color: var(--muted); font-size: 14px; }
+.note { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+button { font: inherit; font-weight: 500; padding: 10px 18px; border-radius: 10px; border: 0; background: var(--accent); color: var(--on-accent); cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

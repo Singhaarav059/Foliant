@@ -10,6 +10,7 @@ const d: { [K in DictKey]?: string } = {
   "nav.language": "Taal",
   "nav.menu": "Menu",
   "nav.close": "Sluiten",
+  "handoff.pick": "{name} is geopend. Kies er een tool voor.",
   "nav.skip": "Naar de inhoud",
   "home.title": "Alle pdf-tools die je nodig hebt, op één plek",
   "home.subtitle": "Pdf’s samenvoegen, splitsen, comprimeren, converteren, ondertekenen en bewerken. De meeste tools werken volledig in je browser, dus je bestanden verlaten je apparaat nooit.",

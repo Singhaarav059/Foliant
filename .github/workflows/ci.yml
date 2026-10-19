@@ -34,6 +34,8 @@ jobs:
       - run: npm run test:static
       - name: Server build defences (addresses, egress proxy, limits, subprocesses)
         run: node scripts/ci-report.mjs "test:server" npm run test:server
+      - name: Browser add-on (manifests and store zips)
+        run: npm run test:extension
       - name: Server build
         run: npm run build
       # Runs `next start` on the server build (Chrome is on the runner image).
@@ -120,6 +122,15 @@ jobs:
       - name: Sign and editor
         if: success() || failure()
         run: npm run test:e2e:sign -- ${{ matrix.browser }}
+      - name: Browser add-on handoff
+        if: matrix.browser == 'chromium' && (success() || failure())
+        run: node scripts/ci-report.mjs "Browser add-on handoff" npm run test:e2e:extension
+      # Playwright's Firefox can't load add-ons; the runner image's release Firefox can.
+      - name: Browser add-on handoff (release Firefox)
+        if: matrix.browser == 'firefox' && (success() || failure())
+        run: node scripts/ci-report.mjs "Browser add-on handoff (Firefox)" npm run test:e2e:extension:firefox
+        env:
+          FIREFOX_PATH: /usr/bin/firefox
       - name: Office to PDF with LibreOffice, first visit
         if: matrix.browser == 'chromium'
         run: npm run test:e2e-office
