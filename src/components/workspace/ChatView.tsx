@@ -27,8 +27,8 @@ export function ChatView({ file, models, options, defs, onOption, onError }: {
   onError: (e: unknown) => void;
 }) {
   const { t } = useI18n();
-  // The index of the file as read with an OCR language; another language reads it again.
-  const [built, setBuilt] = useState<{ lang: string; ix: DocIndex } | null>(null);
+  // The index of the file as read with these OCR options; others read it again.
+  const [built, setBuilt] = useState<{ lang: string; ix: DocIndex; note?: string } | null>(null);
   const [reading, setReading] = useState(0);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [q, setQ] = useState("");
@@ -41,19 +41,21 @@ export function ChatView({ file, models, options, defs, onOption, onError }: {
     failed.current = onError;
   });
   const aiModel = String(options.aiModel ?? "");
-  const ocrLang = String(options.ocrLang ?? "eng");
+  const ocrLang = `${options.ocr ?? "auto"}:${options.ocrLang ?? "eng"}`;
   const index = built?.lang === ocrLang ? built.ix : null;
+  const note = built?.lang === ocrLang ? built.note : undefined;
 
   // Read and index the file once (again if the OCR language changes).
   useEffect(() => {
     let live = true;
+    const [ocr, langs] = ocrLang.split(":");
     import("@/lib/ai/chat")
       .then(async (c) => {
-        const pages = await c.readPages(file, { ocrLang }, (d, total) => live && setReading(total ? d / total : 0));
+        const { pages, note } = await c.readDocument(file, { ocr, ocrLang: langs }, (d, total) => live && setReading(total ? d / total : 0));
         if (!pages.some((p) => p.text.trim())) throw new (await import("@/lib/pdf/errors")).PdfError("no_text", file.name);
-        return c.buildIndex(pages);
+        return { ix: await c.buildIndex(pages), note };
       })
-      .then((ix) => live && setBuilt({ lang: ocrLang, ix }), (e) => live && failed.current(e));
+      .then(({ ix, note }) => live && setBuilt({ lang: ocrLang, ix, note }), (e) => live && failed.current(e));
     return () => {
       live = false;
     };
@@ -84,7 +86,7 @@ export function ChatView({ file, models, options, defs, onOption, onError }: {
         setBusy("loading");
         try {
           ix = await c.buildIndex(index.pages, embed);
-          setBuilt({ lang: ocrLang, ix });
+          setBuilt({ lang: ocrLang, ix, note });
         } catch (err) {
           console.warn("The light model didn't run; answering by keywords.", err);
           embed = undefined;
@@ -129,6 +131,7 @@ export function ChatView({ file, models, options, defs, onOption, onError }: {
             </div>
           )}
           {index && !turns.length && <p className="text-[15px] text-muted">{t("chat.empty", { n: pages })}</p>}
+          {note && <p className="text-[13px] text-muted" data-ocr-note={note}>{t(`res.${note}`)}</p>}
           {turns.map((x, i) => (
             <div key={i} className="space-y-2">
               <p className="ms-auto w-fit max-w-[85%] rounded-xl bg-[color-mix(in_oklab,var(--brand)_10%,var(--surface))] px-3.5 py-2 text-[15px]">{x.q}</p>

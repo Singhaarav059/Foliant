@@ -1,5 +1,5 @@
-// Chat with a PDF. The document is read page by page (text layer first,
-// OCR for pages that are pictures of text), cut into chunks (./chunk.ts) and
+// Chat with a PDF. The document is read page by page (its text layer, after
+// auto-OCR of pages that are pictures of text), cut into chunks (./chunk.ts) and
 // indexed (./retrieve.ts). A question finds its chunks; then either
 //  - light: the sentences that answer it best are shown, each with its page, or
 //  - a language model on this device writes the answer from those chunks,
@@ -16,9 +16,6 @@ import { cosine, search, type Hit } from "./retrieve";
 export type { Answer, Part } from "./cite";
 export type { PageText } from "./chunk";
 
-// Pages with this many characters or fewer, and nothing else to go on, are read by OCR.
-const SCANNED = 40;
-
 const linesOf = (l: PageLayout) =>
   l.sections.flatMap((s) => s.columns.flatMap((c) => c.items.flatMap((it) => (it.kind === "lines" ? [it.lines] : []))));
 
@@ -26,12 +23,12 @@ const linesOf = (l: PageLayout) =>
 // lines of their own, table rows with their cells joined by " | ". Header
 // and footer lines (text repeated on most pages) are kept: a document can be
 // mostly repeated lines, and repeated words count for little in the index.
-export async function readPages(file: File, o: { ocrLang?: string } = {}, progress?: Progress): Promise<PageText[]> {
+export async function readPages(file: File, progress?: Progress): Promise<PageText[]> {
   const doc = await openPdf(await file.arrayBuffer());
   try {
-    const layouts = await documentLayout(doc, (i) => progress?.(i, doc.numPages * 2));
+    const layouts = await documentLayout(doc, (i) => progress?.(i, doc.numPages));
     const body = bodySizeOf(layouts.map((l) => ({ lines: linesOf(l).flat() })));
-    const pages = layouts.map((layout, i) => {
+    return layouts.map((layout, i) => {
       const out: string[] = layout.header.map((l) => l.text.trim());
       for (const s of layout.sections)
         for (const c of s.columns)
@@ -47,39 +44,33 @@ export async function readPages(file: File, o: { ocrLang?: string } = {}, progre
       out.push(...layout.footer.map((l) => l.text.trim()));
       return { page: i + 1, text: out.filter(Boolean).join("\n") };
     });
-    const scanned = pages.filter((p) => p.text.replace(/\s/g, "").length <= SCANNED).map((p) => p.page);
-    if (scanned.length && o.ocrLang && typeof document !== "undefined") {
-      const read = await ocrPages(doc, scanned, o.ocrLang, (d) => progress?.(doc.numPages + (d / scanned.length) * doc.numPages, doc.numPages * 2));
-      for (const [page, text] of read) if (text.trim()) pages[page - 1].text = text;
-    }
-    progress?.(1, 1);
-    return pages;
   } finally {
     await closePdf(doc);
   }
 }
 
-// The OCR tool's engine and page reader (../pdf/ocr.ts), at 200 dpi. Words
-// come back in reading order: lines of a paragraph, paragraphs of a block.
-async function ocrPages(doc: Awaited<ReturnType<typeof openPdf>>, pages: number[], lang: string, done: (n: number) => void) {
-  const [{ engine, readPage }, { grayOf }, { renderPage }] = await Promise.all([import("../pdf/ocr"), import("../pdf/ocrprep"), import("../pdf/common")]);
-  const out = new Map<number, string>();
-  const ocr = await engine.create(lang, 1);
-  try {
-    for (const n of pages) {
-      const page = await doc.getPage(n);
-      const canvas = await renderPage(page, 200 / 72);
-      const image = grayOf(canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height));
-      canvas.width = canvas.height = 0;
-      page.cleanup();
-      const { words } = await readPage(ocr.recognise, image);
-      out.set(n, words.map((w) => w.text).join(" "));
-      done(out.size);
+// The document as chat reads it. Scanned pages first get the OCR text layer
+// the PDF conversions use (../pdf/ocr.ts autoOcr: only pages that are
+// pictures of text, and Tesseract isn't loaded when there are none), unless
+// `ocr` is "off". `note` is the OCR note the conversions show: "ocrUsed",
+// "ocrNone" or "ocrDoubtful", or "ocrSkipped" when OCR couldn't start (offline
+// before its engine was ever fetched), in which case the pages keep the text
+// they have.
+export async function readDocument(file: File, o: { ocr?: string; ocrLang?: string } = {}, progress?: Progress): Promise<{ pages: PageText[]; note?: string }> {
+  let note: string | undefined;
+  let read = file;
+  if (o.ocr !== "off") {
+    try {
+      const { autoOcr } = await import("../pdf/ocr");
+      const scan = await autoOcr(file, { ocrLang: o.ocrLang || "eng" }, (d, t) => progress?.(d / Math.max(1, t) / 2, 1));
+      if (scan.pages) [read, note] = [scan.file, scan.note];
+    } catch {
+      note = "ocrSkipped";
     }
-  } finally {
-    await ocr.stop();
   }
-  return out;
+  const pages = await readPages(read, (d, t) => progress?.(0.5 + d / Math.max(1, t) / 2, 1));
+  progress?.(1, 1);
+  return { pages, note };
 }
 
 // Embeds texts with the light model: one unit-length vector each.

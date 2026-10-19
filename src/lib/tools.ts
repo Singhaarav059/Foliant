@@ -259,7 +259,8 @@ const ALL: Tool[] = [
     // src/lib/ai/chat.ts: answers from the PDF's own text, citing pages; better with a model.
     id: "chat", slug: "chat-with-pdf", category: "convertFrom", icon: "MessagesSquare", mode: "chat",
     runtime: "browser", accept: PDF, multiple: false, isNew: true, ai: ["light", "small", "large"],
-    options: [{ key: "ocrLang", type: "select", choices: OCR_LANGS, default: "eng" }],
+    // Scanned pages are read like the PDF conversions read them.
+    options: AUTO_OCR,
   },
   {
     // src/lib/ai/translate.ts: the browser's built-in Translator, else the large model.
