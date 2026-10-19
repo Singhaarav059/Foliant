@@ -3,7 +3,7 @@
 // at all, then with the light model the visitor chooses to download. The
 // model comes from this site only after the click, works again after a
 // reload with no network, and no request ever leaves the site. Summarize
-// stays fast without WebGPU.
+// stays fast without WebGPU. A scanned PDF is read by the conversions' auto-OCR.
 //
 // AI_LARGE=1 also downloads the small (273 MB) and large (570 MB) models and
 // runs them (WebGPU in Chrome; slow on the CPU elsewhere): a written answer
@@ -139,6 +139,17 @@ await suite(async ({ browser, test }) => {
       await ctx.setOffline(false);
     }
     return "answered offline";
+  });
+
+  await test("a scanned PDF: pages read by auto-OCR, answer cites page 1", async () => {
+    await open(page, "/en/chat-with-pdf");
+    await pick(page, ["scanned.pdf"]);
+    await page.waitForFunction(() => !document.querySelector("#chat-q")?.disabled, null, { timeout: 120000 });
+    const note = await page.locator("[data-ocr-note]").getAttribute("data-ocr-note");
+    if (note !== "ocrUsed") throw new Error(`note ${note}`);
+    const a = await ask(page, "What is the total due?");
+    if (a.pages[0] !== 1 || !a.text.includes("1,250.00")) throw new Error(`cited ${a.pages}: ${a.text}`);
+    return "OCR note shown, cites p. 1";
   });
 
   await test("summary without a model in under 10 s", async () => {
