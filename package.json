@@ -60,6 +60,8 @@
     "test:e2e:tools": "node tests/e2e/tools/run.mjs",
     "test:e2e:office-high": "node tests/e2e/office-high.mjs chromium",
     "test:e2e:images": "node tests/e2e/images.mjs",
+    "test:scanner": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/scanner-quad.mjs",
+    "test:e2e:scanner": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/e2e/scanner.mjs",
     "test:image-bytes": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/image-bytes.mjs"
   },
   "dependencies": {

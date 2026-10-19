@@ -80,8 +80,8 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
       const { imagesToPdf, scanFilter } = await import("./convert");
       const filtered = await Promise.all(files.map((f) => scanFilter(f, s(o.filter))));
       return imagesToPdf(filtered, files.map((_, i) => `scan-${i + 1}`), {
-        orientation: "auto", pageSize: s(o.pageSize), margin: 0, separate: false,
-      }, progress).then((r) => r.map((x) => ({ ...x, name: `scan-${new Date().toISOString().slice(0, 10)}.pdf` })));
+        orientation: s(o.orientation) || "auto", pageSize: s(o.pageSize), margin: n(o.margin) || 0, separate: b(o.separate),
+      }, progress).then((r) => r.length > 1 ? r : r.map((x) => ({ ...x, name: `scan-${new Date().toISOString().slice(0, 10)}.pdf` })));
     }
     case "pdfToJpg": {
       const { pdfToImages, extractImages } = await import("./convert");
