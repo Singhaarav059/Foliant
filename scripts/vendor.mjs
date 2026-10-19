@@ -179,8 +179,19 @@ console.log(`vendor: ${fontFiles} font slices`);
     }
     manifest.files[name] = { parts, size: data.length };
   }
-  for (const [from, to] of [["wasm/soffice.js", "soffice.js"], ["wasm/soffice.worker.js", "soffice.worker.js"], ["dist/browser.worker.global.js", "browser.worker.js"]])
+  for (const [from, to] of [["wasm/soffice.js", "soffice.js"], ["wasm/soffice.worker.js", "soffice.worker.js"]])
     copyFileSync(join(pkg, from), join(loOut, to));
+  // The converter's worker turns on every LibreOffice log (SAL_LOG=+ALL) and
+  // prints it all to the console: thousands of lines a second during a
+  // conversion, each a task on the page's main thread, which then can't
+  // answer a click (Cancel) for tens of seconds. Warnings and errors only, and
+  // LibreOffice's own output kept out of the console.
+  let worker = readFileSync(join(pkg, "dist/browser.worker.global.js"), "utf8");
+  for (const [from, to] of [['a.ENV.SAL_LOG="+ALL"', 'a.ENV.SAL_LOG="-INFO-WARN"'], ["print:console.log,printErr:console.error}", "print:()=>{},printErr:()=>{}}"]]) {
+    if (!worker.includes(from)) throw new Error(`vendor: LibreOffice's browser worker changed; ${from} not found`);
+    worker = worker.replace(from, to);
+  }
+  writeFileSync(join(loOut, "browser.worker.js"), worker);
   writeFileSync(join(loOut, "manifest.json"), JSON.stringify(manifest));
   console.log(`vendor: LibreOffice ${pkgVersion}, ${Object.values(manifest.files).reduce((n, f) => n + f.parts.length, 0)} parts`);
 }

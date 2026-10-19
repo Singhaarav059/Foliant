@@ -6,7 +6,9 @@ import { PdfError } from "./errors";
 
 // `print`: the blob is HTML to save through the browser's print dialog (static build).
 // `unrestricted`: an input's owner-password restrictions were left behind.
-export type Output = { name: string; blob: Blob; note?: string; print?: boolean; unrestricted?: boolean };
+// `skipped`: files, or pages of a file, that failed and were left out while the rest came through.
+export type Skipped = { file: string; page?: number; code: string };
+export type Output = { name: string; blob: Blob; note?: string; print?: boolean; unrestricted?: boolean; skipped?: Skipped[] };
 export type Progress = (done: number, total: number) => void;
 
 let pdfjsPromise: Promise<typeof import("pdfjs-dist")> | null = null;
@@ -18,6 +20,29 @@ export function pdfjs() {
     return lib;
   });
   return pdfjsPromise;
+}
+
+// How big a page may be drawn. iOS refuses canvases over about 16.7 million
+// pixels and a tab there has little memory; elsewhere a page gets 64 million
+// (256 MB as RGBA, about as much again while it's encoded). No side over
+// 16,384 px, the smallest limit among browsers.
+// Pictures inside a PDF over `image` pixels aren't decoded at all (a
+// 20,000 x 20,000 one takes gigabytes) and are left out of the drawing; an A0
+// scan at 300 dpi (140 million) still fits. Those over the page budget are
+// shrunk in pdf.js's worker before they reach the page.
+const ios = typeof navigator !== "undefined" &&
+  (/iP(hone|ad|od)/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
+export const renderLimits = ios ? { pixels: 16e6, side: 16384, image: 50e6 } : { pixels: 64e6, side: 16384, image: 200e6 };
+
+// The scale a page is drawn at: `scale`, or less when that would go over
+// renderLimits, or over `pixels` when the caller needs less (OCR).
+export function fitScale(page: PDFPageProxy, scale: number, rotation?: number, budget = renderLimits.pixels) {
+  const { width, height } = page.getViewport({ scale: 1, rotation });
+  const { side } = renderLimits;
+  const pixels = Math.min(budget, renderLimits.pixels);
+  // Rounded canvas sides must stay within the limits too.
+  const fit = Math.min((side - 0.5) / Math.max(width, height), Math.sqrt((pixels * 0.999) / Math.max(1e-9, width * height)));
+  return Math.min(scale, fit);
 }
 
 export async function openPdf(data: ArrayBuffer | Uint8Array, password?: string): Promise<PDFDocumentProxy> {
@@ -34,6 +59,8 @@ export async function openPdf(data: ArrayBuffer | Uint8Array, password?: string)
     standardFontDataUrl: `${VENDOR}pdfjs/standard_fonts/`,
     wasmUrl: `${VENDOR}pdfjs/wasm/`,
     iccUrl: `${VENDOR}pdfjs/iccs/`,
+    maxImageSize: renderLimits.image,
+    canvasMaxAreaInBytes: renderLimits.pixels * 4,
   }).promise;
 }
 
@@ -42,16 +69,16 @@ export const closePdf = (doc: PDFDocumentProxy) => doc.loadingTask.destroy();
 
 // `rotation` overrides the page's own, to draw it in the view a layout was
 // read in. `withoutText` leaves out the text-drawing operators: what's left is
-// the page's pictures and vector art.
-export async function renderPage(page: PDFPageProxy, scale: number, background = "#ffffff", o: { rotation?: number; withoutText?: boolean } = {}) {
-  const { rotation, withoutText = false } = o;
-  const viewport = page.getViewport({ scale, rotation });
+// the page's pictures and vector art. A page too big for renderLimits is drawn
+// at the largest scale that fits (fitScale says which). `signal` stops the drawing.
+export async function renderPage(page: PDFPageProxy, scale: number, background = "#ffffff", o: { rotation?: number; withoutText?: boolean; signal?: AbortSignal } = {}) {
+  const { rotation, withoutText = false, signal } = o;
+  signal?.throwIfAborted();
+  const viewport = page.getViewport({ scale: fitScale(page, scale, rotation), rotation });
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(viewport.width));
   canvas.height = Math.max(1, Math.round(viewport.height));
   const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = background;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
   let operationsFilter: ((i: number, list: { fnArray: number[] }) => boolean) | undefined;
   if (withoutText) {
     const { OPS } = await pdfjs();
@@ -60,8 +87,46 @@ export async function renderPage(page: PDFPageProxy, scale: number, background =
   }
   // "print" renders without requestAnimationFrame, which browsers pause in
   // background tabs; a long job keeps going when the user switches away.
-  await page.render({ canvas, canvasContext: ctx, viewport, intent: "print", operationsFilter }).promise;
+  // pdf.js paints `background` under the page; a clear one leaves it transparent.
+  const task = page.render({ canvas, canvasContext: ctx, viewport, intent: "print", operationsFilter, background });
+  const stop = () => task.cancel();
+  signal?.addEventListener("abort", stop, { once: true });
+  try {
+    await task.promise;
+  } catch (e) {
+    canvas.width = canvas.height = 0;
+    throw signal?.aborted ? signal.reason : e;
+  } finally {
+    signal?.removeEventListener("abort", stop);
+  }
   return canvas;
+}
+
+// `work`, or the abort's reason as soon as `signal` fires. The work itself
+// goes on unless its owner stops it too (terminating a worker, say).
+export function abortable<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return work;
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const stop = () => reject(signal.reason);
+    signal.addEventListener("abort", stop, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener("abort", stop));
+  });
+}
+
+// Lets the page handle input (a click on Cancel) and paint between steps of
+// work done on the main thread. A message goes to the back of the task queue,
+// behind the clicks waiting there. Not a timer, which background tabs slow to
+// one a second, nor scheduler.yield(), which resumes ahead of them.
+export function yieldToPage(): Promise<void> {
+  return new Promise((resolve) => {
+    const c = new MessageChannel();
+    c.port1.onmessage = () => {
+      c.port1.close();
+      resolve();
+    };
+    c.port2.postMessage(0);
+  });
 }
 
 export function canvasToBlob(canvas: HTMLCanvasElement, type = "image/jpeg", quality = 0.9) {

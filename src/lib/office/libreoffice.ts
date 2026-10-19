@@ -9,7 +9,7 @@
 // the page must be cross-origin isolated (COOP/COEP headers; the service
 // worker adds them on hosts that can't), and it needs about 1 GB of memory.
 
-import { baseName, type Output, type Progress } from "@/lib/pdf/common";
+import { abortable, baseName, type Output, type Progress } from "@/lib/pdf/common";
 import { VENDOR } from "@/lib/vendor";
 
 type Converter = InstanceType<typeof import("@matbee/libreoffice-converter/browser").WorkerBrowserConverter>;
@@ -24,10 +24,10 @@ export class OfficeError extends Error {
 }
 
 // Downloads one file's parts in order, reporting bytes, and returns an unzipped blob URL.
-async function fetchParts(file: Manifest["files"]["soffice.wasm"], type: string, onBytes: (n: number) => void): Promise<string> {
+async function fetchParts(file: Manifest["files"]["soffice.wasm"], type: string, onBytes: (n: number) => void, signal?: AbortSignal): Promise<string> {
   const parts: Blob[] = [];
   for (const part of file.parts) {
-    const res = await fetch(base() + part);
+    const res = await fetch(base() + part, { signal });
     if (!res.ok || !res.body) throw new Error(`Couldn't download ${part} (${res.status})`);
     const reader = res.body.getReader();
     const chunks: Uint8Array[] = [];
@@ -61,28 +61,39 @@ type Office = { converter: Converter; died: Promise<never> };
 const stalled = (why: string) => new OfficeError("office_stalled", why);
 const isStalled = (e: unknown) => e instanceof OfficeError && e.code === "office_stalled";
 
-// `work`, or an office_stalled rejection when the worker reports an error or `ms` pass first.
-function settle<T>(work: Promise<T>, died: Promise<never>, ms: number): Promise<T> {
+// `work`, or an office_stalled rejection when the worker reports an error or
+// `ms` pass first, or the abort's reason when `signal` fires.
+function settle<T>(work: Promise<T>, died: Promise<never>, ms: number, signal?: AbortSignal): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(stalled("LibreOffice stopped responding")), ms);
   });
   const dead = died.catch((e) => Promise.reject(stalled(`LibreOffice stopped: ${e}`)));
-  return Promise.race([work, dead, late]).finally(() => clearTimeout(timer));
+  return abortable(Promise.race([work, dead, late]), signal).finally(() => clearTimeout(timer));
 }
 
 let loading: Promise<Office> | null = null;
 
-function load(progress?: Progress): Promise<Office> {
+// Cancelling (`signal`) while it downloads or starts stops it, worker and
+// all, and the next job starts over.
+function load(progress?: Progress, signal?: AbortSignal): Promise<Office> {
   loading ??= (async () => {
-    const manifest = (await (await fetch(base() + "manifest.json")).json()) as Manifest;
+    const manifest = (await (await fetch(base() + "manifest.json", { signal })).json()) as Manifest;
     const total = manifest.files["soffice.wasm"].size + manifest.files["soffice.data"].size;
     let got = 0;
     // Downloading is most of the wait: count it as 90% of the bar, starting LibreOffice the rest.
     const onBytes = (n: number) => progress?.((got += n) * 0.9, total);
-    const wasm = await fetchParts(manifest.files["soffice.wasm"], "application/wasm", onBytes);
-    const data = await fetchParts(manifest.files["soffice.data"], "application/octet-stream", onBytes);
+    const wasm = await fetchParts(manifest.files["soffice.wasm"], "application/wasm", onBytes, signal);
+    const data = await fetchParts(manifest.files["soffice.data"], "application/octet-stream", onBytes, signal).catch((e) => {
+      URL.revokeObjectURL(wasm);
+      throw e;
+    });
     const { WorkerBrowserConverter } = await import("@matbee/libreoffice-converter/browser");
+    if (signal?.aborted) {
+      URL.revokeObjectURL(wasm);
+      URL.revokeObjectURL(data);
+      throw signal.reason;
+    }
     let die: (e: Error) => void = () => {};
     const died = new Promise<never>((_, reject) => (die = reject));
     died.catch(() => {});
@@ -95,7 +106,7 @@ function load(progress?: Progress): Promise<Office> {
       onError: die,
     });
     try {
-      await settle(converter.initialize(), died, officeLimits.startMs);
+      await settle(converter.initialize(), died, officeLimits.startMs, signal);
     } catch (e) {
       abandon(converter);
       if (!isStalled(e) && /memory|Out of memory|RangeError/i.test(String(e))) throw new OfficeError("office_memory", String(e));
@@ -117,17 +128,21 @@ function load(progress?: Progress): Promise<Office> {
 export const officeAvailable = () =>
   typeof crossOriginIsolated !== "undefined" && crossOriginIsolated && typeof SharedArrayBuffer !== "undefined";
 
-export async function officeToPdf(file: File, progress?: Progress): Promise<Output> {
+// `signal` cancels: a conversion under way can't be stopped any other way,
+// so LibreOffice's worker (and its threads) is terminated, and the next job
+// starts it again.
+export async function officeToPdf(file: File, progress?: Progress, signal?: AbortSignal): Promise<Output> {
   if (!officeAvailable()) throw new OfficeError("office_isolation", "This page isn't cross-origin isolated");
-  const current = load(progress);
-  const { converter, died } = await current;
+  signal?.throwIfAborted();
+  const current = load(progress, signal);
+  const { converter, died } = await abortable(current, signal);
   const input = new Uint8Array(await file.arrayBuffer());
   let result;
   try {
-    result = await settle(converter.convert(input, { outputFormat: "pdf" }, file.name), died, officeLimits.convertMs + (input.length / 1e6) * officeLimits.perMbMs);
+    result = await settle(converter.convert(input, { outputFormat: "pdf" }, file.name), died, officeLimits.convertMs + (input.length / 1e6) * officeLimits.perMbMs, signal);
   } catch (e) {
-    // A LibreOffice that hung or died is no use to the next job: that one starts afresh.
-    if (isStalled(e)) {
+    // A LibreOffice that hung, died or was stopped is no use to the next job: that one starts afresh.
+    if (isStalled(e) || signal?.aborted) {
       abandon(converter);
       if (loading === current) loading = null;
     }

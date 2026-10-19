@@ -293,6 +293,11 @@ try {
             const [x0, y0, x1, y1] = p.view;
             let w = Math.abs(x1 - x0) * Number(dpi) / 72, h = Math.abs(y1 - y0) * Number(dpi) / 72;
             if (p.rotate % 180) [w, h] = [h, w];
+            // A page too big for a canvas comes out at the largest size that fits, and says so.
+            const { renderLimits: lim } = await load("common");
+            const fit = Math.min(1, (lim.side - 0.5) / Math.max(w, h), Math.sqrt((lim.pixels * 0.999) / (w * h)));
+            if (fit < 1 && !/^lowerDpi:\d+$/.test(outs[i].note ?? "")) problem(`images: page ${i + 1} was made smaller without a note`);
+            [w, h] = [w * fit, h * fit];
             if (Math.abs(img.width - w) > 2 || Math.abs(img.height - h) > 2) problem(`images: page ${i + 1} is ${img.width}x${img.height}, expected ~${Math.round(w)}x${Math.round(h)}`);
           }
           (result.info.dims ??= []).push(`${img.width}x${img.height}`);

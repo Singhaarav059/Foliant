@@ -204,8 +204,11 @@ const ALL: Tool[] = [
     runtime: "browser", accept: PDF, multiple: true,
     options: [
       { key: "jpgMode", type: "select", choices: ["pages", "images"], default: "pages" },
-      { key: "dpi", type: "select", choices: ["72", "150", "300"], default: "150", when: { key: "jpgMode", is: ["pages"] } },
-      { key: "format", type: "select", choices: ["jpg", "png"], default: "jpg", when: { key: "jpgMode", is: ["pages"] } },
+      { key: "format", type: "select", choices: ["jpg", "png", "webp"], default: "jpg", when: { key: "jpgMode", is: ["pages"] } },
+      { key: "dpi", type: "select", choices: ["72", "150", "300", "custom"], default: "150", when: { key: "jpgMode", is: ["pages"] } },
+      { key: "customDpi", type: "number", min: 72, max: 600, step: 1, default: 200, when: { key: "dpi", is: ["custom"] } },
+      { key: "pageRange", type: "text", default: "", placeholder: "all", when: { key: "jpgMode", is: ["pages"] } },
+      { key: "transparent", type: "toggle", default: false, when: { key: "format", is: ["png", "webp"] } },
     ],
   },
   {
@@ -378,8 +381,13 @@ export function defaultOptions(tool: Tool): Record<string, unknown> {
   return out;
 }
 
-export function optionVisible(o: OptionDef, values: Record<string, unknown>) {
-  return !o.when || o.when.is.includes(values[o.when.key] as string | boolean);
+// With `defs`, an option shown only for another option's value is also hidden
+// while that other option is (PDF to JPG's custom dpi, under the hidden dpi).
+export function optionVisible(o: OptionDef, values: Record<string, unknown>, defs?: OptionDef[]): boolean {
+  if (!o.when) return true;
+  if (!o.when.is.includes(values[o.when.key] as string | boolean)) return false;
+  const parent = defs?.find((d) => d.key === o.when!.key);
+  return !parent || parent === o || optionVisible(parent, values, defs);
 }
 
 // Per task. On-device tools are bounded mainly by the device's memory.

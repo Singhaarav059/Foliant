@@ -64,7 +64,15 @@ export function nodeCanvas() {
   globalThis.document = {
     createElement: () => {
       const c = createCanvas(1, 1);
-      c.toBlob = (cb, type, q) => cb(new Blob([c.toBuffer(type === "image/png" ? "image/png" : "image/jpeg", Math.round((q ?? 0.9) * 100))]));
+      // As in browsers, a canvas has one context: later calls get the first,
+      // whatever they ask for (pdf.js asks for an opaque one).
+      const getContext = c.getContext.bind(c);
+      let ctx;
+      c.getContext = (type, opts) => (ctx ??= getContext(type, opts));
+      c.toBlob = (cb, type, q) => {
+        const t = type === "image/png" ? "image/png" : "image/jpeg";
+        cb(new Blob([c.toBuffer(t, Math.round((q ?? 0.9) * 100))], { type: t }));
+      };
       return c;
     },
   };

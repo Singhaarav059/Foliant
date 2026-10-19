@@ -1,8 +1,8 @@
 "use client";
 
 import { LIGHT_OFFICE, type ToolId } from "../tools";
-import { baseName, type Output, type Progress } from "./common";
-import { forFile, PdfError, ServerError } from "./errors";
+import { baseName, type Output, type Progress, type Skipped } from "./common";
+import { forFile, PdfError, ServerError, toPdfError } from "./errors";
 import { STATIC } from "../mode";
 
 type Opts = Record<string, unknown>;
@@ -11,14 +11,29 @@ const b = (v: unknown) => Boolean(v);
 const n = (v: unknown) => Number(v);
 
 // Runs the per-file loop for tools that take several files and treat each alone.
-// A failure names the file it happened on.
-async function each(files: File[], progress: Progress | undefined, fn: (f: File, p: Progress) => Promise<Output[]>) {
+// A failure names the file it happened on. In a batch, a file that fails is
+// left out and listed in the first result's `skipped`, and the batch fails
+// only when every file does; `strict` fails it on the first (Office's
+// Automatic, which then prints the whole batch instead). Cancelling (`signal`)
+// always stops it.
+async function each(files: File[], progress: Progress | undefined, fn: (f: File, p: Progress) => Promise<Output[]>, signal?: AbortSignal, strict = false) {
   const out: Output[] = [];
+  const skipped: Skipped[] = [];
+  let first: unknown;
   for (let i = 0; i < files.length; i++) {
-    const res = await forFile(files[i], () => fn(files[i], (d, t) => progress?.(i + d / Math.max(1, t), files.length)));
-    out.push(...res);
+    signal?.throwIfAborted();
+    try {
+      out.push(...(await forFile(files[i], () => fn(files[i], (d, t) => progress?.(i + d / Math.max(1, t), files.length)))));
+    } catch (e) {
+      if (signal?.aborted) throw signal.reason;
+      if (strict || files.length === 1) throw e;
+      first ??= e;
+      skipped.push({ file: files[i].name, code: toPdfError(e, files[i].name).code });
+    }
     progress?.(i + 1, files.length);
   }
+  if (!out.length && first) throw first;
+  if (skipped.length) out[0] = { ...out[0], skipped: [...skipped, ...(out[0].skipped ?? [])] };
   return out;
 }
 
@@ -27,13 +42,14 @@ async function each(files: File[], progress: Progress | undefined, fn: (f: File,
 // Missing "ocr" (a job saved before it existed) counts as automatic.
 // If OCR fails (offline, its engine not cached yet), the file is converted
 // as it is, and the result says scanned pages weren't read.
-async function withOcr(f: File, o: Opts, p: Progress, convert: (f: File, p: Progress) => Promise<Output[]>) {
+async function withOcr(f: File, o: Opts, p: Progress, convert: (f: File, p: Progress) => Promise<Output[]>, signal?: AbortSignal) {
   if (o.ocr === "off") return convert(f, p);
   let scan: Awaited<ReturnType<typeof import("./ocr").autoOcr>>;
   try {
     const { autoOcr } = await import("./ocr");
-    scan = await autoOcr(f, { ocrLang: s(o.ocrLang) }, (d, t) => p(d / Math.max(1, t) / 2, 1));
+    scan = await autoOcr(f, { ocrLang: s(o.ocrLang) }, (d, t) => p(d / Math.max(1, t) / 2, 1), signal);
   } catch {
+    if (signal?.aborted) throw signal.reason;
     return (await convert(f, p)).map((x) => ({ ...x, note: x.note ?? "ocrSkipped" }));
   }
   if (!scan.pages) return convert(f, p);
@@ -43,7 +59,9 @@ async function withOcr(f: File, o: Opts, p: Progress, convert: (f: File, p: Prog
 
 export type Labels = { page: string; pageOf: string; nOf: string };
 
-export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Progress, labels?: Labels): Promise<Output[]> {
+// `signal` cancels the run: the engines it started stop (workers are
+// terminated, renders cancelled, documents closed) and runTool rejects with its reason.
+export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Progress, labels?: Labels, signal?: AbortSignal): Promise<Output[]> {
   switch (id) {
     case "merge": {
       const { merge } = await import("./organize");
@@ -55,19 +73,19 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
     }
     case "rotate": {
       const { rotateAll } = await import("./organize");
-      return each(files, progress, (f) => rotateAll(f, n(o.angle)));
+      return each(files, progress, (f) => rotateAll(f, n(o.angle)), signal);
     }
     case "compress": {
       const { compress } = await import("./optimize");
-      return each(files, progress, (f, p) => compress(f, { level: s(o.level) }, p));
+      return each(files, progress, (f, p) => compress(f, { level: s(o.level) }, p, signal), signal);
     }
     case "repair": {
       const { repair } = await import("./optimize");
-      return each(files, progress, (f) => repair(f));
+      return each(files, progress, (f) => repair(f), signal);
     }
     case "ocr": {
       const { ocr } = await import("./optimize");
-      return each(files, progress, (f, p) => ocr(f, { ocrLang: s(o.ocrLang), dpi: s(o.dpi), ocrEngine: s(o.ocrEngine) }, p));
+      return each(files, progress, (f, p) => ocr(f, { ocrLang: s(o.ocrLang), dpi: s(o.dpi), ocrEngine: s(o.ocrEngine) }, p, signal), signal);
     }
     case "jpgToPdf": {
       const { imagesToPdf } = await import("./convert");
@@ -86,27 +104,28 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
     case "pdfToJpg": {
       const { pdfToImages, extractImages } = await import("./convert");
       return each(files, progress, (f, p) =>
-        s(o.jpgMode) === "images" ? extractImages(f) : pdfToImages(f, { dpi: s(o.dpi), format: s(o.format) }, p));
+        s(o.jpgMode) === "images" ? extractImages(f, signal)
+          : pdfToImages(f, { dpi: s(o.dpi), customDpi: s(o.customDpi), format: s(o.format), pageRange: s(o.pageRange), transparent: b(o.transparent) }, p, signal), signal);
     }
     case "pdfToWord": {
       const { pdfToWord } = await import("./convert");
-      return each(files, progress, (f, p) => withOcr(f, o, p, (g, q) => pdfToWord(g, { wordMode: s(o.wordMode) }, q)));
+      return each(files, progress, (f, p) => withOcr(f, o, p, (g, q) => pdfToWord(g, { wordMode: s(o.wordMode) }, q), signal), signal);
     }
     case "pdfToPpt": {
       const { pdfToPpt } = await import("./convert");
-      return each(files, progress, (f, p) => withOcr(f, o, p, (g, q) => pdfToPpt(g, { pptText: b(o.pptText) }, q)));
+      return each(files, progress, (f, p) => withOcr(f, o, p, (g, q) => pdfToPpt(g, { pptText: b(o.pptText) }, q), signal), signal);
     }
     case "pdfToExcel": {
       const { pdfToExcel } = await import("./convert");
-      return each(files, progress, (f, p) => withOcr(f, o, p, (g, q) => pdfToExcel(g, { sheetPer: s(o.sheetPer) }, q)));
+      return each(files, progress, (f, p) => withOcr(f, o, p, (g, q) => pdfToExcel(g, { sheetPer: s(o.sheetPer) }, q), signal), signal);
     }
     case "pdfToPdfa": {
       const { pdfToPdfa } = await import("./convert");
-      return each(files, progress, (f, p) => pdfToPdfa(f, { pdfaDpi: s(o.pdfaDpi), keepText: b(o.keepText) }, p));
+      return each(files, progress, (f, p) => pdfToPdfa(f, { pdfaDpi: s(o.pdfaDpi), keepText: b(o.keepText) }, p), signal);
     }
     case "pdfToMarkdown": {
       const { pdfToMarkdown } = await import("./convert");
-      return each(files, progress, (f, p) => withOcr(f, o, p, (g, q) => pdfToMarkdown(g, { pageBreaks: b(o.pageBreaks) }, q)));
+      return each(files, progress, (f, p) => withOcr(f, o, p, (g, q) => pdfToMarkdown(g, { pageBreaks: b(o.pageBreaks) }, q), signal), signal);
     }
     case "pageNumbers": {
       const { pageNumbers } = await import("./edit");
@@ -118,7 +137,7 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
         template: s(o.template), numberStyle: s(o.numberStyle), margin: s(o.margin), font: s(o.font),
         batesPrefix: s(o.batesPrefix), batesDigits: n(o.batesDigits), counter,
         labels,
-      }));
+      }), signal);
     }
     case "watermark": {
       const { watermark } = await import("./edit");
@@ -127,7 +146,7 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
         fontSize: n(o.fontSize), color: s(o.color), imageScale: n(o.imageScale), position: s(o.position),
         mosaic: b(o.mosaic), opacity: n(o.opacity), rotation: n(o.rotation), layer: s(o.layer), pageRange: s(o.pageRange),
         font: s(o.font), markBox: b(o.markBox), tileSpacing: n(o.tileSpacing),
-      }));
+      }), signal);
     }
     case "protect": {
       const { protect } = await import("./security");
@@ -138,11 +157,11 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
       }).catch((e) => {
         // qpdf can't open a file that already has an open password.
         throw (e as { code?: string }).code === "encrypted" ? new PdfError("already_encrypted", f.name, e) : e;
-      }));
+      }), signal);
     }
     case "unlock": {
       const { unlock } = await import("./security");
-      return each(files, progress, (f) => unlock(f, { password: s(o.password) }));
+      return each(files, progress, (f) => unlock(f, { password: s(o.password) }), signal);
     }
     case "wordToPdf":
     case "pptToPdf":
@@ -156,16 +175,16 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
         const light = files.every((f) => LIGHT_OFFICE.includes(ext(f)));
         const print = async () => {
           const { printable } = await import("@/lib/office/print");
-          return each(files, progress, async (f) => [await printable(f, { orientation: s(o.orientation || "auto") })]);
+          return each(files, progress, async (f) => [await printable(f, { orientation: s(o.orientation || "auto") })], signal);
         };
         if (light && o.fidelity === "standard") return print();
         const { officeAvailable, officeToPdf } = await import("@/lib/office/libreoffice");
         const fallback = light && o.fidelity !== "high";
         if (fallback && !officeAvailable()) return print();
         try {
-          return await each(files, progress, async (f, p) => [await officeToPdf(f, p)]);
+          return await each(files, progress, async (f, p) => [await officeToPdf(f, p, signal)], signal, true);
         } catch (e) {
-          if (!fallback) throw e;
+          if (!fallback || signal?.aborted) throw e;
           return print();
         }
       }
@@ -173,9 +192,9 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
         const form = new FormData();
         form.append("file", f);
         form.append("orientation", s(o.orientation || "auto"));
-        const blob = await upload("/api/convert/office", form, p);
+        const blob = await upload("/api/convert/office", form, p, signal);
         return [{ name: `${baseName(f.name)}.pdf`, blob }];
-      });
+      }, signal);
     }
     case "htmlToPdf": {
       if (STATIC) {
@@ -186,7 +205,7 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
       if (files[0]) form.append("file", files[0]);
       else form.append("url", s(o.url));
       for (const k of ["pageSize", "orientation", "screenWidth", "hideOverlays"]) form.append(k, s(o[k]));
-      const blob = await upload("/api/convert/html", form, progress);
+      const blob = await upload("/api/convert/html", form, progress, signal);
       const name = files[0] ? baseName(files[0].name) : hostName(s(o.url));
       return [{ name: `${name}.pdf`, blob }];
     }
@@ -244,9 +263,14 @@ function hostName(url: string) {
 }
 
 // XHR rather than fetch so uploads can report progress.
-export function upload(url: string, body: FormData, progress?: Progress): Promise<Blob> {
+export function upload(url: string, body: FormData, progress?: Progress, signal?: AbortSignal): Promise<Blob> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason);
     const xhr = new XMLHttpRequest();
+    signal?.addEventListener("abort", () => {
+      xhr.abort();
+      reject(signal.reason);
+    }, { once: true });
     xhr.open("POST", url);
     xhr.responseType = "blob";
     xhr.upload.onprogress = (e) => e.lengthComputable && progress?.(e.loaded / e.total * 0.6, 1);

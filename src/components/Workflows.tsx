@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowDown, Download, Loader2, Play, Plus, Save, Trash2, Upload, X } from "lucide-react";
 import { useI18n } from "./I18n";
 import { useUser, postJson } from "./User";
@@ -57,6 +57,9 @@ export function Workflows() {
   const [error, setError] = useState<Problem | null>(null);
   const say = (text: string) => setError({ text });
   const [outputs, setOutputs] = useState<Output[] | null>(null);
+  // The running workflow's controller: Cancel or leaving the page stops its engines.
+  const abort = useRef<AbortController | null>(null);
+  useEffect(() => () => abort.current?.abort(), []);
   const addFiles = (f: File[]) => setFiles((list) => [...list, ...f.filter((x) => /\.pdf$/i.test(x.name))]);
   // Dropped or pasted anywhere on the page.
   const over = useFileIntake(addFiles);
@@ -145,17 +148,19 @@ export function Workflows() {
     const { runTool } = await import("@/lib/pdf/run");
     let current = files;
     let out: Output[] = [];
+    const controller = (abort.current = new AbortController());
     try {
       for (let i = 0; i < steps.length; i++) {
         const s = steps[i];
         setStatus(t("wf.running", { n: i + 1, total: steps.length, tool: t(`tool.${s.tool}.name`) }));
-        out = await runTool(s.tool, current, s.options, undefined, { page: tOr("ws.page", "Page {n}"), pageOf: tOr("ws.processingPage", "Page {n} of {total}"), nOf: tOr("fmt.nOfTotal", "{n} of {total}") });
+        out = await runTool(s.tool, current, s.options, undefined, { page: tOr("ws.page", "Page {n}"), pageOf: tOr("ws.processingPage", "Page {n} of {total}"), nOf: tOr("fmt.nOfTotal", "{n} of {total}") }, controller.signal);
         current = out.map((o) => new File([o.blob], o.name, { type: "application/pdf" }));
       }
       setOutputs(steps.some((s) => s.tool === "protect" || s.tool === "unlock") ? out : await markUnrestricted(files, out));
     } catch (e) {
-      setError(problem(e));
+      if (!controller.signal.aborted) setError(problem(e));
     } finally {
+      if (abort.current === controller) abort.current = null;
       setStatus(null);
     }
   };
@@ -237,7 +242,12 @@ export function Workflows() {
             </button>
             <button className="btn btn-quiet" onClick={save}><Save size={17} /> {t("wf.save")}</button>
           </div>
-          {status && <p className="mt-3 text-[14px] text-muted" aria-live="polite">{status}</p>}
+          {status && (
+            <div className="mt-3 flex items-center gap-3">
+              <p className="text-[14px] text-muted" aria-live="polite">{status}</p>
+              <button className="btn btn-quiet btn-sm" onClick={() => abort.current?.abort()}>{t("ws.cancel")}</button>
+            </div>
+          )}
         </section>
 
         <aside className="card h-max min-w-0 p-5">

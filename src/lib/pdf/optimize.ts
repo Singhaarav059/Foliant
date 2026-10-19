@@ -2,7 +2,7 @@
 
 import { PDFDocument, PDFName, PDFRawStream, PDFStream, PDFNumber, PDFRef, PDFArray, PDFDict, PDFHexString, PDFString, decodePDFRawStream, type PDFContext, type PDFObject } from "pdf-lib";
 import { Unzlib, zlibSync } from "fflate";
-import { baseName, bytesOf, canvasToBlob, closePdf, openPdf, pdfBlob, pdfjs, renderPage, type Output, type Progress } from "./common";
+import { baseName, bytesOf, canvasToBlob, closePdf, openPdf, pdfBlob, pdfjs, renderPage, yieldToPage, type Output, type Progress } from "./common";
 import { loadPdf } from "./organize";
 import { prepareQpdf, runQpdf } from "./qpdf";
 import { PdfError } from "./errors";
@@ -22,12 +22,12 @@ const LEVELS = {
   light: { dpi: 220, quality: 82, maxSide: 2600, keepCmyk: true },
 } as const;
 
-function num(d: PDFDict, key: string) {
+export function num(d: PDFDict, key: string) {
   const v = d.lookup(PDFName.of(key));
   return v instanceof PDFNumber ? v.asNumber() : undefined;
 }
 
-function filterNames(d: PDFDict) {
+export function filterNames(d: PDFDict) {
   const f = d.lookup(PDFName.of("Filter"));
   if (f instanceof PDFName) return [f.asString()];
   if (f instanceof PDFArray) return f.asArray().map((x) => String(x));
@@ -85,9 +85,9 @@ function inflate(stream: PDFRawStream, limit: number): Uint8Array | null {
 // The colour spaces Compress re-encodes: device grey, RGB and CMYK, ICC
 // profiles with 1, 3 or 4 components, and palettes over any of those.
 // `space` is what to write back while the channel count still matches.
-type Colour = { n: 1 | 3 | 4; space: PDFObject; palette?: { hival: number; lookup: Uint8Array } };
+export type Colour = { n: 1 | 3 | 4; space: PDFObject; palette?: { hival: number; lookup: Uint8Array } };
 
-function colourOf(ctx: PDFContext, cs: PDFObject | undefined, nested = false): Colour | null {
+export function colourOf(ctx: PDFContext, cs: PDFObject | undefined, nested = false): Colour | null {
   if (cs instanceof PDFRef) cs = ctx.lookup(cs);
   if (cs instanceof PDFName) {
     const n = ({ "/DeviceGray": 1, "/DeviceRGB": 3, "/DeviceCMYK": 4 } as const)[cs.asString()];
@@ -115,8 +115,8 @@ function colourOf(ctx: PDFContext, cs: PDFObject | undefined, nested = false): C
 
 // Decoded 8-bit samples of an image, in its base colour space (palettes
 // expanded, 16-bit cut to 8, an inverted /Decode applied), or null for
-// anything Compress leaves alone.
-async function readImage(stream: PDFRawStream, w: number, h: number, colour: Colour): Promise<Pixels | null> {
+// anything Compress leaves alone. Extract images reads pictures with it too.
+export async function readImage(stream: PDFRawStream, w: number, h: number, colour: Colour): Promise<Pixels | null> {
   const d = stream.dict;
   const filters = filterNames(d);
   const bpc = num(d, "BitsPerComponent");
@@ -210,7 +210,7 @@ async function dedupe(doc: PDFDocument) {
   return replace.size;
 }
 
-export async function compress(file: File, o: { level: string }, progress?: Progress): Promise<Output[]> {
+export async function compress(file: File, o: { level: string }, progress?: Progress, signal?: AbortSignal): Promise<Output[]> {
   const original = await bytesOf(file);
   const doc = await loadPdf(file, file.name);
   const { dpi, quality, maxSide, keepCmyk } = LEVELS[o.level as keyof typeof LEVELS] ?? LEVELS.recommended;
@@ -240,6 +240,9 @@ export async function compress(file: File, o: { level: string }, progress?: Prog
 
   let done = 0;
   for (const [ref, stream] of images) {
+    // Each image takes a moment on the main thread: let the page answer (Cancel) in between.
+    await yieldToPage();
+    signal?.throwIfAborted();
     progress?.(++done, images.length);
     const d = stream.dict;
     const w = num(d, "Width");
@@ -311,12 +314,15 @@ export async function compress(file: File, o: { level: string }, progress?: Prog
     ctx.assign(ref, PDFRawStream.of(nd, best.bytes));
   }
 
+  signal?.throwIfAborted();
   // Recompress plain Flate streams (fonts, page content) at the highest level.
   // qpdf's --recompress-flate would do this too but drops PNG predictors on the way.
   for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
     if (!(obj instanceof PDFRawStream) || obj.contents.length < 256) continue;
     const f = filterNames(obj.dict);
     if (f.length !== 1 || f[0] !== "/FlateDecode" || obj.dict.get(PDFName.of("DecodeParms"))) continue;
+    await yieldToPage();
+    signal?.throwIfAborted();
     try {
       const plain = inflate(obj, MAX_STREAM_BYTES);
       const packed = plain && zlibSync(plain, { level: 9 });
@@ -332,7 +338,9 @@ export async function compress(file: File, o: { level: string }, progress?: Prog
     page.node.delete(PDFName.of("PieceInfo"));
     page.node.delete(PDFName.of("Thumb"));
   }
+  signal?.throwIfAborted();
   let out = await doc.save({ useObjectStreams: true });
+  signal?.throwIfAborted();
   // qpdf drops unreferenced objects and packs the rest into compressed object streams.
   try {
     const packed = (await runQpdf(out, (i, o) => ["--object-streams=generate", "--compression-level=9", i, o])).output;

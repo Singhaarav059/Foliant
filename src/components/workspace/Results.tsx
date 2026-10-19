@@ -56,6 +56,9 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
   );
 
   const saved = first?.note?.startsWith("saved:") ? first.note.split(":").map(Number) : null;
+  // Pages drawn at less than the chosen dpi (too big for the browser's canvas), and what failed.
+  const lowerDpi = outputs.flatMap((o) => (o.note?.startsWith("lowerDpi:") ? [Number(o.note.slice(9))] : []));
+  const skipped = outputs.flatMap((o) => o.skipped ?? []);
 
   return (
     <div className="rise mx-auto max-w-[760px] text-center">
@@ -74,6 +77,12 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
       {first?.note === "ocrDoubtful" && <p className="mt-2 text-[15px] text-muted">{t("res.ocrDoubtful")}</p>}
       {first?.note === "ocrUsed" && <p className="mt-2 text-[15px] text-muted">{t("res.ocrUsed")}</p>}
       {first?.note === "ocrSkipped" && <p className="mt-2 text-[15px] text-muted">{t("res.ocrSkipped")}</p>}
+      {lowerDpi.length > 0 && <p className="mt-2 text-[15px] text-muted">{t("res.lowerDpi", { dpi: Math.min(...lowerDpi) })}</p>}
+      {skipped.length > 0 && (
+        <p className="mt-2 text-[15px] text-muted">
+          {t("res.skipped", { list: skipped.map((x) => (x.page ? t("res.skippedPage", { file: x.file, n: x.page }) : x.file)).join("; ") })}
+        </p>
+      )}
       {outputs.some((o) => o.unrestricted) && <p className="mt-2 text-[15px] text-muted">{t("res.unrestricted")}</p>}
       <p className="mt-2 flex items-center justify-center gap-1.5 text-[13px] text-muted">
         {tool.runtime === "browser" ? <ShieldCheck size={14} strokeWidth={1.75} /> : <Server size={14} strokeWidth={1.75} />}

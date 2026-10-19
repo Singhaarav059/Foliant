@@ -129,6 +129,7 @@ export async function inspect(path) {
         if (ie === "pdf") e.pages = (await PDFDocument.load(ib)).getPageCount();
         if (ie === "jpg" && !(ib[0] === 0xff && ib[1] === 0xd8)) throw new Error(`${n} is not a JPEG`);
         if (ie === "png" && ib.subarray(1, 4).toString("latin1") !== "PNG") throw new Error(`${n} is not a PNG`);
+        if (ie === "webp" && ib.subarray(8, 12).toString("latin1") !== "WEBP") throw new Error(`${n} is not a WebP`);
         info.entries.push(e);
       }
     } else if (ext === "docx") {
