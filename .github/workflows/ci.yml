@@ -102,6 +102,9 @@ jobs:
       - name: Sign and editor
         if: success() || failure()
         run: npm run test:e2e:sign -- ${{ matrix.browser }}
+      - name: Certificate signing and Check PDF signatures
+        if: success() || failure()
+        run: npm run test:e2e:pades -- ${{ matrix.browser }}
       - name: Office to PDF with LibreOffice, first visit
         if: matrix.browser == 'chromium'
         run: npm run test:e2e-office
