@@ -3,6 +3,7 @@
 
 import { STATIC } from "./mode";
 import { LOCALE_CODES } from "./i18n/locales";
+import { MAX_OCR_LANGS } from "./ocr-langs";
 
 export type CategoryId =
   | "organize"
@@ -32,11 +33,14 @@ export type ToolMode = "files" | "pages" | "editor" | "scan" | "compare" | "url"
 
 export type OptionDef =
   | { key: string; type: "select"; choices: string[]; default: string; when?: Cond }
+  // Up to `max` of the choices, joined with "+" ("eng+hin"), in the order picked.
+  | { key: string; type: "multi"; choices: string[]; max: number; default: string; when?: Cond }
   | { key: string; type: "toggle"; default: boolean; when?: Cond }
   | { key: string; type: "number"; min: number; max: number; step?: number; default: number; when?: Cond }
   | { key: string; type: "range"; min: number; max: number; step?: number; default: number; unit?: string; when?: Cond }
   | { key: string; type: "text"; default: string; placeholder?: string; when?: Cond }
-  | { key: string; type: "password"; default: string; when?: Cond }
+  // `strength`: a strength meter and a suggested password, which also fills `confirm`.
+  | { key: string; type: "password"; default: string; when?: Cond; strength?: boolean; confirm?: string }
   | { key: string; type: "color"; default: string; when?: Cond }
   | { key: string; type: "position"; default: string; grid: 6 | 9; when?: Cond }
   | { key: string; type: "image"; when?: Cond };
@@ -72,17 +76,34 @@ export type Tool = {
 };
 
 const PDF = ["pdf"];
-const IMAGES = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "heic"];
+const IMAGES = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif", "tif", "tiff", "avif", "svg"];
 
 // Languages PaddleOCR's PP-OCRv5 model reads at least about as well as Tesseract
 // (Tesseract codes), for high-accuracy OCR. tests/ocr-accuracy.mjs holds each to that.
 // Not Greek (no accented letters or final sigma), French (« » œ ï î) or Portuguese (ã).
 export const PADDLE_LANGS = ["eng", "deu", "ita", "spa", "nld", "swe", "cat", "ind", "msa", "swa", "chi_sim", "chi_tra", "jpn"];
 
+// Tesseract's languages (tessdata_best, Apache-2.0), one vendored model each
+// (scripts/vendor.mjs), downloaded only when picked. Every @tesseract.js-data
+// package with an LSTM model; names come from src/lib/ocr-langs.ts.
 export const OCR_LANGS = [
-  "eng", "spa", "fra", "deu", "ita", "por", "jpn", "rus", "kor", "chi_sim",
-  "chi_tra", "ara", "bul", "cat", "nld", "ell", "hin", "ind", "msa", "pol",
-  "swe", "tha", "tur", "ukr", "vie", "swa",
+  "afr", "amh", "ara", "asm", "aze", "aze_cyrl", "bel", "ben", "bod", "bos", "bre", "bul",
+  "cat", "ceb", "ces", "chi_sim", "chi_sim_vert", "chi_tra", "chi_tra_vert", "chr", "cos", "cym", "dan", "deu",
+  "div", "dzo", "ell", "eng", "enm", "epo", "est", "eus", "fao", "fas", "fil", "fin",
+  "fra", "frk", "frm", "fry", "gla", "gle", "glg", "grc", "guj", "hat", "heb", "hin",
+  "hrv", "hun", "hye", "iku", "ind", "isl", "ita", "ita_old", "jav", "jpn", "jpn_vert", "kan",
+  "kat", "kat_old", "kaz", "khm", "kir", "kmr", "kor", "kor_vert", "lao", "lat", "lav", "lit",
+  "ltz", "mal", "mar", "mkd", "mlt", "mon", "mri", "msa", "mya", "nep", "nld", "nor",
+  "oci", "ori", "pan", "pol", "por", "pus", "que", "ron", "rus", "san", "sin", "slk",
+  "slv", "snd", "spa", "spa_old", "sqi", "srp", "srp_latn", "sun", "swa", "swe", "syr", "tam",
+  "tat", "tel", "tgk", "tha", "tir", "ton", "tur", "uig", "ukr", "urd", "uzb", "uzb_cyrl",
+  "vie", "yid", "yor",
+];
+
+// PDF to Word, Excel, PowerPoint and Markdown read scanned pages with OCR first (ocr.ts autoOcr).
+const AUTO_OCR: OptionDef[] = [
+  { key: "ocr", type: "select", choices: ["auto", "off"], default: "auto" },
+  { key: "ocrLang", type: "multi", choices: OCR_LANGS, max: MAX_OCR_LANGS, default: "eng", when: { key: "ocr", is: ["auto"] } },
 ];
 
 const ALL: Tool[] = [
@@ -138,7 +159,7 @@ const ALL: Tool[] = [
     id: "ocr", slug: "ocr-pdf", category: "optimize", icon: "ScanText", mode: "files",
     runtime: "browser", accept: PDF, multiple: false, chainable: true,
     options: [
-      { key: "ocrLang", type: "select", choices: OCR_LANGS, default: "eng" },
+      { key: "ocrLang", type: "multi", choices: OCR_LANGS, max: MAX_OCR_LANGS, default: "eng" },
       // PaddleOCR (src/lib/pdf/paddle.ts); downloads about 36 MB the first time.
       { key: "ocrEngine", type: "select", choices: ["standard", "accurate"], default: "standard", when: { key: "ocrLang", is: PADDLE_LANGS } },
       { key: "dpi", type: "select", choices: ["150", "200", "300"], default: "200" },
@@ -149,9 +170,12 @@ const ALL: Tool[] = [
     id: "jpgToPdf", slug: "jpg-to-pdf", category: "convertTo", icon: "ImagePlus", mode: "files",
     runtime: "browser", accept: IMAGES, multiple: true,
     options: [
-      { key: "orientation", type: "select", choices: ["auto", "portrait", "landscape"], default: "auto" },
-      { key: "pageSize", type: "select", choices: ["fit", "a4", "letter"], default: "a4" },
-      { key: "margin", type: "select", choices: ["none", "small", "large"], default: "small" },
+      { key: "pageSize", type: "select", choices: ["fit", "a4", "a3", "a5", "letter", "legal", "custom"], default: "a4" },
+      // Millimetres (src/lib/pdf/convert.ts imagesToPdf).
+      { key: "pageWidth", type: "number", min: 10, max: 5000, default: 210, when: { key: "pageSize", is: ["custom"] } },
+      { key: "pageHeight", type: "number", min: 10, max: 5000, default: 297, when: { key: "pageSize", is: ["custom"] } },
+      { key: "orientation", type: "select", choices: ["auto", "portrait", "landscape"], default: "auto", when: { key: "pageSize", is: ["a4", "a3", "a5", "letter", "legal"] } },
+      { key: "margin", type: "range", min: 0, max: 50, default: 7, unit: " mm", when: { key: "pageSize", is: ["a4", "a3", "a5", "letter", "legal", "custom"] } },
       { key: "separate", type: "toggle", default: false },
     ],
   },
@@ -191,17 +215,17 @@ const ALL: Tool[] = [
   {
     id: "pdfToWord", slug: "pdf-to-word", category: "convertFrom", icon: "FileText", mode: "files",
     runtime: "browser", accept: PDF, multiple: true,
-    options: [{ key: "wordMode", type: "select", choices: ["editable", "exact"], default: "editable" }],
+    options: [{ key: "wordMode", type: "select", choices: ["editable", "exact"], default: "editable" }, ...AUTO_OCR],
   },
   {
     id: "pdfToPpt", slug: "pdf-to-powerpoint", category: "convertFrom", icon: "MonitorPlay", mode: "files",
     runtime: "browser", accept: PDF, multiple: true,
-    options: [{ key: "pptText", type: "toggle", default: true }],
+    options: [{ key: "pptText", type: "toggle", default: true }, ...AUTO_OCR],
   },
   {
     id: "pdfToExcel", slug: "pdf-to-excel", category: "convertFrom", icon: "Table", mode: "files",
     runtime: "browser", accept: PDF, multiple: true,
-    options: [{ key: "sheetPer", type: "select", choices: ["page", "document"], default: "page" }],
+    options: [{ key: "sheetPer", type: "select", choices: ["page", "document"], default: "page" }, ...AUTO_OCR],
   },
   {
     id: "pdfToPdfa", slug: "pdf-to-pdfa", category: "convertFrom", icon: "Archive", mode: "files",
@@ -217,7 +241,7 @@ const ALL: Tool[] = [
   {
     id: "pdfToMarkdown", slug: "pdf-to-markdown", category: "convertFrom", icon: "Hash", mode: "files",
     runtime: "browser", accept: PDF, multiple: true, isNew: true,
-    options: [{ key: "pageBreaks", type: "toggle", default: false }],
+    options: [{ key: "pageBreaks", type: "toggle", default: false }, ...AUTO_OCR],
   },
   {
     // src/lib/ai/summarize.ts: the browser's built-in AI when already on the device, else extractive.
@@ -240,12 +264,20 @@ const ALL: Tool[] = [
     runtime: "browser", accept: PDF, multiple: true, chainable: true,
     options: [
       { key: "position", type: "position", grid: 6, default: "bottom-center" },
-      { key: "numberFormat", type: "select", choices: ["n", "pageN", "nOfTotal", "pageNOfTotal"], default: "n" },
-      { key: "startAt", type: "number", min: 1, max: 9999, default: 1 },
+      { key: "numberFormat", type: "select", choices: ["n", "pageN", "nOfTotal", "pageNOfTotal", "custom", "bates"], default: "n" },
+      // {page} and {pages}; {filename} and {date} work too.
+      { key: "template", type: "text", default: "{page} / {pages}", when: { key: "numberFormat", is: ["custom"] } },
+      { key: "batesPrefix", type: "text", default: "", placeholder: "ABC", when: { key: "numberFormat", is: ["bates"] } },
+      { key: "batesDigits", type: "number", min: 1, max: 12, default: 6, when: { key: "numberFormat", is: ["bates"] } },
+      { key: "numberStyle", type: "select", choices: ["1", "i", "I", "a", "A"], default: "1", when: { key: "numberFormat", is: ["n", "pageN", "nOfTotal", "pageNOfTotal", "custom"] } },
+      { key: "startAt", type: "number", min: 1, max: 999999, default: 1 },
       { key: "pageRange", type: "text", default: "", placeholder: "all" },
-      { key: "skipFirst", type: "toggle", default: false },
+      { key: "skipFirstPages", type: "number", min: 0, max: 9999, default: 0 },
+      { key: "skipLastPages", type: "number", min: 0, max: 9999, default: 0 },
+      { key: "font", type: "select", choices: ["helvetica", "arimo", "tinos", "cousine", "noto"], default: "helvetica" },
       { key: "fontSize", type: "range", min: 6, max: 36, default: 11, unit: "pt" },
       { key: "color", type: "color", default: "#1f2937" },
+      { key: "margin", type: "select", choices: ["small", "normal", "large"], default: "normal" },
       { key: "facing", type: "toggle", default: false },
     ],
   },
@@ -254,15 +286,19 @@ const ALL: Tool[] = [
     runtime: "browser", accept: PDF, multiple: true, chainable: true,
     options: [
       { key: "markType", type: "select", choices: ["text", "image"], default: "text" },
+      // {filename} and {date} are filled in per file.
       { key: "markText", type: "text", default: "CONFIDENTIAL", when: { key: "markType", is: ["text"] } },
+      { key: "font", type: "select", choices: ["helvetica", "arimo", "tinos", "cousine", "noto"], default: "helvetica", when: { key: "markType", is: ["text"] } },
       { key: "markImage", type: "image", when: { key: "markType", is: ["image"] } },
       { key: "fontSize", type: "range", min: 8, max: 160, default: 56, unit: "pt", when: { key: "markType", is: ["text"] } },
       { key: "color", type: "color", default: "#d33f6a", when: { key: "markType", is: ["text"] } },
+      { key: "markBox", type: "toggle", default: false, when: { key: "markType", is: ["text"] } },
       { key: "imageScale", type: "range", min: 5, max: 100, default: 40, unit: "%", when: { key: "markType", is: ["image"] } },
       { key: "position", type: "position", grid: 9, default: "middle-center" },
       { key: "mosaic", type: "toggle", default: false },
+      { key: "tileSpacing", type: "range", min: 60, max: 300, step: 10, default: 100, unit: "%", when: { key: "mosaic", is: [true] } },
       { key: "opacity", type: "range", min: 5, max: 100, default: 30, unit: "%" },
-      { key: "rotation", type: "select", choices: ["0", "45", "90", "180", "270", "-45"], default: "45" },
+      { key: "rotation", type: "range", min: -180, max: 180, default: 45, unit: "°" },
       { key: "layer", type: "select", choices: ["over", "under"], default: "over" },
       { key: "pageRange", type: "text", default: "", placeholder: "all" },
     ],
@@ -291,11 +327,19 @@ const ALL: Tool[] = [
     id: "protect", slug: "protect-pdf", category: "security", icon: "Lock", mode: "files",
     runtime: "browser", accept: PDF, multiple: true, chainable: true,
     options: [
-      { key: "password", type: "password", default: "" },
-      { key: "confirmPassword", type: "password", default: "" },
+      // Off: anyone can open the file, and the permissions below still apply.
+      { key: "openPassword", type: "toggle", default: true },
+      { key: "password", type: "password", default: "", strength: true, confirm: "confirmPassword", when: { key: "openPassword", is: [true] } },
+      { key: "confirmPassword", type: "password", default: "", when: { key: "openPassword", is: [true] } },
       { key: "allowPrint", type: "toggle", default: true },
+      { key: "allowPrintHigh", type: "toggle", default: true, when: { key: "allowPrint", is: [true] } },
       { key: "allowCopy", type: "toggle", default: true },
       { key: "allowModify", type: "toggle", default: false },
+      { key: "allowAnnotate", type: "toggle", default: false },
+      { key: "allowForms", type: "toggle", default: false },
+      { key: "allowAssemble", type: "toggle", default: false },
+      { key: "ownerPassword", type: "password", default: "" },
+      { key: "encryption", type: "select", choices: ["aes256", "aes128"], default: "aes256" },
     ],
   },
   {

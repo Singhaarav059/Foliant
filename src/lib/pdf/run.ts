@@ -3,7 +3,7 @@
 import { LIGHT_OFFICE, type ToolId } from "../tools";
 import { baseName, type Output, type Progress } from "./common";
 import { forFile, PdfError, ServerError } from "./errors";
-import { STATIC } from "@/lib/mode";
+import { STATIC } from "../mode";
 
 type Opts = Record<string, unknown>;
 const s = (v: unknown) => String(v ?? "");
@@ -20,6 +20,25 @@ async function each(files: File[], progress: Progress | undefined, fn: (f: File,
     progress?.(i + 1, files.length);
   }
   return out;
+}
+
+// Auto-OCR for the conversions from PDF: scanned pages get a text layer
+// first (ocr.ts), so the conversion has their words; the result notes it.
+// Missing "ocr" (a job saved before it existed) counts as automatic.
+// If OCR fails (offline, its engine not cached yet), the file is converted
+// as it is, and the result says scanned pages weren't read.
+async function withOcr(f: File, o: Opts, p: Progress, convert: (f: File, p: Progress) => Promise<Output[]>) {
+  if (o.ocr === "off") return convert(f, p);
+  let scan: Awaited<ReturnType<typeof import("./ocr").autoOcr>>;
+  try {
+    const { autoOcr } = await import("./ocr");
+    scan = await autoOcr(f, { ocrLang: s(o.ocrLang) }, (d, t) => p(d / Math.max(1, t) / 2, 1));
+  } catch {
+    return (await convert(f, p)).map((x) => ({ ...x, note: x.note ?? "ocrSkipped" }));
+  }
+  if (!scan.pages) return convert(f, p);
+  const out = await convert(scan.file, (d, t) => p(0.5 + d / Math.max(1, t) / 2, 1));
+  return out.map((x) => ({ ...x, note: x.note ?? scan.note }));
 }
 
 export type Labels = { page: string; pageOf: string; nOf: string };
@@ -53,14 +72,15 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
     case "jpgToPdf": {
       const { imagesToPdf } = await import("./convert");
       return imagesToPdf(files, files.map((f) => f.name), {
-        orientation: s(o.orientation), pageSize: s(o.pageSize), margin: s(o.margin), separate: b(o.separate),
+        orientation: s(o.orientation), pageSize: s(o.pageSize), margin: n(o.margin), width: n(o.pageWidth), height: n(o.pageHeight),
+        separate: b(o.separate),
       }, progress);
     }
     case "scan": {
       const { imagesToPdf, scanFilter } = await import("./convert");
       const filtered = await Promise.all(files.map((f) => scanFilter(f, s(o.filter))));
       return imagesToPdf(filtered, files.map((_, i) => `scan-${i + 1}`), {
-        orientation: "auto", pageSize: s(o.pageSize), margin: "none", separate: false,
+        orientation: "auto", pageSize: s(o.pageSize), margin: 0, separate: false,
       }, progress).then((r) => r.map((x) => ({ ...x, name: `scan-${new Date().toISOString().slice(0, 10)}.pdf` })));
     }
     case "pdfToJpg": {
@@ -70,15 +90,15 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
     }
     case "pdfToWord": {
       const { pdfToWord } = await import("./convert");
-      return each(files, progress, (f, p) => pdfToWord(f, { wordMode: s(o.wordMode) }, p));
+      return each(files, progress, (f, p) => withOcr(f, o, p, (g, q) => pdfToWord(g, { wordMode: s(o.wordMode) }, q)));
     }
     case "pdfToPpt": {
       const { pdfToPpt } = await import("./convert");
-      return each(files, progress, (f, p) => pdfToPpt(f, { pptText: b(o.pptText) }, p));
+      return each(files, progress, (f, p) => withOcr(f, o, p, (g, q) => pdfToPpt(g, { pptText: b(o.pptText) }, q)));
     }
     case "pdfToExcel": {
       const { pdfToExcel } = await import("./convert");
-      return each(files, progress, (f, p) => pdfToExcel(f, { sheetPer: s(o.sheetPer) }, p));
+      return each(files, progress, (f, p) => withOcr(f, o, p, (g, q) => pdfToExcel(g, { sheetPer: s(o.sheetPer) }, q)));
     }
     case "pdfToPdfa": {
       const { pdfToPdfa } = await import("./convert");
@@ -86,17 +106,21 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
     }
     case "pdfToMarkdown": {
       const { pdfToMarkdown } = await import("./convert");
-      return each(files, progress, (f, p) => pdfToMarkdown(f, { pageBreaks: b(o.pageBreaks) }, p));
+      return each(files, progress, (f, p) => withOcr(f, o, p, (g, q) => pdfToMarkdown(g, { pageBreaks: b(o.pageBreaks) }, q)));
     }
     case "summarize": {
-      const { summarizePdf } = await import("@/lib/ai/summarize");
+      const { summarizePdf } = await import("../ai/summarize");
       return each(files, progress, (f, p) => summarizePdf(f, { summaryLength: s(o.summaryLength), summaryLang: s(o.summaryLang) }, p));
     }
     case "pageNumbers": {
       const { pageNumbers } = await import("./edit");
+      // Bates numbers run on from one file to the next.
+      const counter = { next: n(o.startAt) };
       return each(files, progress, (f) => pageNumbers(f, {
         position: s(o.position), numberFormat: s(o.numberFormat), startAt: n(o.startAt), pageRange: s(o.pageRange),
-        skipFirst: b(o.skipFirst), fontSize: n(o.fontSize), color: s(o.color), facing: b(o.facing),
+        skipFirst: n(o.skipFirstPages), skipLast: n(o.skipLastPages), fontSize: n(o.fontSize), color: s(o.color), facing: b(o.facing),
+        template: s(o.template), numberStyle: s(o.numberStyle), margin: s(o.margin), font: s(o.font),
+        batesPrefix: s(o.batesPrefix), batesDigits: n(o.batesDigits), counter,
         labels,
       }));
     }
@@ -105,13 +129,16 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
       return each(files, progress, (f) => watermark(f, {
         markType: s(o.markType), markText: s(o.markText), markImage: o.markImage as File | undefined,
         fontSize: n(o.fontSize), color: s(o.color), imageScale: n(o.imageScale), position: s(o.position),
-        mosaic: b(o.mosaic), opacity: n(o.opacity), rotation: s(o.rotation), layer: s(o.layer), pageRange: s(o.pageRange),
+        mosaic: b(o.mosaic), opacity: n(o.opacity), rotation: n(o.rotation), layer: s(o.layer), pageRange: s(o.pageRange),
+        font: s(o.font), markBox: b(o.markBox), tileSpacing: n(o.tileSpacing),
       }));
     }
     case "protect": {
       const { protect } = await import("./security");
       return each(files, progress, (f) => protect(f, {
-        password: s(o.password), allowPrint: b(o.allowPrint), allowCopy: b(o.allowCopy), allowModify: b(o.allowModify),
+        password: o.openPassword === false ? "" : s(o.password), allowPrint: b(o.allowPrint), allowCopy: b(o.allowCopy), allowModify: b(o.allowModify),
+        allowPrintHigh: b(o.allowPrintHigh ?? true), allowAnnotate: b(o.allowAnnotate), allowForms: b(o.allowForms), allowAssemble: b(o.allowAssemble),
+        ownerPassword: s(o.ownerPassword), encryption: s(o.encryption || "aes256"),
       }).catch((e) => {
         // qpdf can't open a file that already has an open password.
         throw (e as { code?: string }).code === "encrypted" ? new PdfError("already_encrypted", f.name, e) : e;
@@ -181,7 +208,7 @@ export async function prepare(id: ToolId): Promise<unknown> {
     case "merge":
     case "split":
     case "rotate":
-      return import("./organize");
+      return (await import("./organize")).prepare();
     case "compress":
     case "repair":
       return (await import("./optimize")).prepare();
@@ -189,17 +216,20 @@ export async function prepare(id: ToolId): Promise<unknown> {
     case "scan":
       return import("./convert");
     case "pdfToJpg":
-    case "pdfToMarkdown":
     case "pdfToPdfa":
       return (await import("./convert")).prepare("pdf");
+    // With the auto-OCR code, which checks every file for scanned pages
+    // (Tesseract itself is still left to first use).
+    case "pdfToMarkdown":
+      return Promise.all([(await import("./convert")).prepare("pdf"), import("./ocr")]);
     case "pdfToWord":
-      return (await import("./convert")).prepare("word");
+      return Promise.all([(await import("./convert")).prepare("word"), import("./ocr")]);
     case "pdfToExcel":
-      return (await import("./convert")).prepare("excel");
+      return Promise.all([(await import("./convert")).prepare("excel"), import("./ocr")]);
     case "pdfToPpt":
-      return (await import("./convert")).prepare("ppt");
+      return Promise.all([(await import("./convert")).prepare("ppt"), import("./ocr")]);
     case "summarize":
-      return (await import("@/lib/ai/summarize")).prepare();
+      return (await import("../ai/summarize")).prepare();
     case "pageNumbers":
     case "watermark":
       return import("./edit");

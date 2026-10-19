@@ -85,6 +85,9 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
           {outputs.some((o) => o.note?.endsWith(":noLang")) && <> {t("res.summaryNoLang")}</>}
         </p>
       )}
+      {first?.note === "ocrUsed" && <p className="mt-2 text-[15px] text-muted">{t("res.ocrUsed")}</p>}
+      {first?.note === "ocrSkipped" && <p className="mt-2 text-[15px] text-muted">{t("res.ocrSkipped")}</p>}
+      {outputs.some((o) => o.unrestricted) && <p className="mt-2 text-[15px] text-muted">{t("res.unrestricted")}</p>}
       <p className="mt-2 flex items-center justify-center gap-1.5 text-[13px] text-muted">
         {tool.runtime === "browser" ? <ShieldCheck size={14} strokeWidth={1.75} /> : <Server size={14} strokeWidth={1.75} />}
         {tool.runtime === "browser" ? t("ws.processedLocally") : t("ws.processedServer")}

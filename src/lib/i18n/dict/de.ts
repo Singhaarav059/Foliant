@@ -532,7 +532,6 @@ const d: { [K in DictKey]?: string } = {
   "feat.f2t": "Echtes Schwärzen",
   "feat.f2b": "Geschwärzte Seiten werden neu aufgebaut, damit verdeckter Text wirklich weg ist und nicht nur unter einem schwarzen Kasten liegt.",
   "feat.f3t": "Durchsuchbare Scans in jeder Sprache",
-  "feat.f3b": "Die OCR fügt eine unsichtbare Textebene in 26 Sprachen hinzu, darunter Chinesisch, Arabisch und Hindi.",
   "feat.f4t": "Workflows",
   "feat.f4b": "Speichere eine Kette von Werkzeugen und wende sie in einem Schritt auf neue Dateien an.",
   "feat.f5t": "Weitermachen, wo du aufgehört hast",

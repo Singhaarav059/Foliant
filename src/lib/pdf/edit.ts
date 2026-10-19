@@ -3,11 +3,12 @@
 import {
   PDFDocument, PDFPage, PDFFont, StandardFonts, rgb, degrees, BlendMode, PDFArray, PDFName,
   PDFCheckBox, PDFDropdown, PDFRadioGroup, PDFTextField, PDFOptionList,
+  PDFHexString, PDFOperator, PDFOperatorNames as Ops, PDFRawStream, decodePDFRawStream,
 } from "pdf-lib";
 import { baseName, hexToRgb, isWinAnsi, normaliseImage, pageSet, pdfBlob, textToPng, type Output } from "./common";
 import { loadPdf } from "./organize";
 import { PdfError } from "./errors";
-import { fontCovering, layoutText, type LaidOut } from "./fonts";
+import { FAMILIES, fontCovering, layoutText, type Family, type LaidOut } from "./fonts";
 
 // ── Visual ↔ user space
 // Users place things on the page as they see it. A page may carry /Rotate and
@@ -54,95 +55,249 @@ export function visualFrame(page: PDFPage) {
 // pdf-lib appends drawing after the page's own content without restoring the
 // graphics state, so a page that leaves a transform open would shift whatever
 // we draw. Wrap the original content in q…Q once before drawing on it.
+// Content that stops inside an inline image's data (BI … ID with no EI) would
+// swallow everything after it, so that image is closed first.
 const isolated = new WeakSet<PDFPage>();
 export function isolate(page: PDFPage) {
   if (isolated.has(page)) return;
   isolated.add(page);
   const ctx = page.doc.context;
-  page.node.wrapContentStreams(ctx.register(ctx.stream("q")), ctx.register(ctx.stream("Q")));
+  const close = endsInInlineImage(page) ? "\nEI\nQ" : "Q";
+  // A lone content stream becomes an array first; only an array can be wrapped.
+  page.node.normalize();
+  page.node.wrapContentStreams(ctx.register(ctx.stream("q")), ctx.register(ctx.stream(close)));
+}
+
+// The page's content, decoded and joined the way readers join it. A stream
+// that can't be decoded is left out: readers draw nothing from it either.
+function endsInInlineImage(page: PDFPage) {
+  const c = page.node.Contents();
+  const refs = c instanceof PDFArray ? c.asArray() : c ? [c] : [];
+  const parts: Uint8Array[] = [];
+  for (const ref of refs) {
+    const s = page.doc.context.lookup(ref);
+    if (!(s instanceof PDFRawStream)) continue;
+    try {
+      parts.push(decodePDFRawStream(s).decode(), new Uint8Array([10]));
+    } catch {
+      // Unreadable.
+    }
+  }
+  const all = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const p of parts) all.set(p, (at += p.length) - p.length);
+  return unterminatedInlineImage(all);
+}
+
+// Tokenises content just enough to skip strings, names, comments and inline
+// image data; true when the last inline image has no EI.
+const WS = new Set([0, 9, 10, 12, 13, 32]);
+const DELIM = new Set([...Array.from("()<>[]{}/%")].map((c) => c.charCodeAt(0)));
+export function unterminatedInlineImage(b: Uint8Array) {
+  const n = b.length;
+  let i = 0;
+  while (i < n) {
+    const c = b[i];
+    if (WS.has(c)) { i++; continue; }
+    if (c === 0x25) { while (i < n && b[i] !== 10 && b[i] !== 13) i++; continue; } // %
+    if (c === 0x28) { // ( string ), nested, with escapes
+      let depth = 0;
+      for (; i < n; i++) {
+        if (b[i] === 0x5c) i++;
+        else if (b[i] === 0x28) depth++;
+        else if (b[i] === 0x29 && --depth === 0) { i++; break; }
+      }
+      continue;
+    }
+    if (c === 0x3c && b[i + 1] === 0x3c) { i += 2; continue; } // <<
+    if (c === 0x3c) { while (i < n && b[i] !== 0x3e) i++; i++; continue; } // <hex>
+    if (DELIM.has(c)) { i++; if (c === 0x2f) while (i < n && !WS.has(b[i]) && !DELIM.has(b[i])) i++; continue; }
+    const start = i;
+    while (i < n && !WS.has(b[i]) && !DELIM.has(b[i])) i++;
+    if (i - start === 2 && b[start] === 0x49 && b[start + 1] === 0x44) { // ID
+      // Data starts after one white-space byte and ends at white space, "EI", then white space or the end.
+      let j = i + 1;
+      for (; j + 1 < n; j++) {
+        if (b[j] === 0x45 && b[j + 1] === 0x49 && WS.has(b[j - 1]) && (j + 2 === n || WS.has(b[j + 2]) || DELIM.has(b[j + 2]))) break;
+      }
+      if (j + 1 >= n) return true;
+      i = j + 2;
+    }
+  }
+  return false;
 }
 
 async function save(doc: PDFDocument) {
   return pdfBlob(await doc.save({ useObjectStreams: true }));
 }
 
-// ── Text helpers. Helvetica when it can encode the text, bundled Noto fonts
-// for other scripts, and an image of the text as a last resort (no bundled
-// glyph, or the fonts couldn't be fetched).
-async function textLine(doc: PDFDocument, font: PDFFont, text: string, size: number, bold = false): Promise<LaidOut | null> {
-  if (isWinAnsi(text)) return { width: font.widthOfTextAtSize(text, size), runs: [{ font, text, x: 0 }] };
+// ── Text helpers. Helvetica (not embedded) when it can encode the text, or
+// the chosen bundled family; Noto for other scripts; and an image of the text
+// as a last resort (no bundled glyph, or the fonts couldn't be fetched).
+export type FontChoice = "helvetica" | Family | "noto";
+const fontChoice = (v: unknown): FontChoice =>
+  v === "noto" || FAMILIES.includes(v as Family) ? (v as FontChoice) : "helvetica";
+
+const standard = new WeakMap<PDFDocument, Map<string, Promise<PDFFont>>>();
+function standardFont(doc: PDFDocument, name: StandardFonts) {
+  let m = standard.get(doc);
+  if (!m) standard.set(doc, (m = new Map()));
+  let p = m.get(name);
+  if (!p) m.set(name, (p = doc.embedFont(name)));
+  return p;
+}
+
+// The standard font closest to each family, for when its file can't be fetched.
+const FALLBACK: Record<FontChoice, [StandardFonts, StandardFonts]> = {
+  helvetica: [StandardFonts.Helvetica, StandardFonts.HelveticaBold],
+  arimo: [StandardFonts.Helvetica, StandardFonts.HelveticaBold],
+  noto: [StandardFonts.Helvetica, StandardFonts.HelveticaBold],
+  tinos: [StandardFonts.TimesRoman, StandardFonts.TimesRomanBold],
+  cousine: [StandardFonts.Courier, StandardFonts.CourierBold],
+};
+
+async function textLine(doc: PDFDocument, family: FontChoice, text: string, size: number, bold = false): Promise<LaidOut | null> {
+  const plain = async () => {
+    const font = await standardFont(doc, FALLBACK[family][bold ? 1 : 0]);
+    return { width: font.widthOfTextAtSize(text, size), runs: [{ font, text, x: 0 }] };
+  };
+  if (family === "helvetica" && isWinAnsi(text)) return plain();
   if (text.includes("\n")) return null;
-  return layoutText(doc, text, size, bold).catch(() => null);
+  const laid = await layoutText(doc, text, size, bold, family === "helvetica" || family === "noto" ? undefined : family).catch(() => null);
+  return laid ?? (isWinAnsi(text) ? plain() : null);
+}
+
+// Text drawn in pieces (a run per font, or an image) is wrapped in a span
+// whose /ActualText is the whole string, so readers that honour it extract
+// and search it as one word.
+function asOneString(page: PDFPage, text: string, pieces: number, draw: () => void) {
+  if (pieces < 2 && !/[^\x20-\x7e]/.test(text)) return draw();
+  page.pushOperators(PDFOperator.of(Ops.BeginMarkedContentSequence, [PDFName.of("Span"), `<< /ActualText ${PDFHexString.fromText(text).toString()} >>`]));
+  draw();
+  page.pushOperators(PDFOperator.of(Ops.EndMarkedContent));
 }
 
 async function drawLabel(
-  doc: PDFDocument, page: PDFPage, font: PDFFont, text: string,
-  o: { vx: number; vy: number; size: number; color: string; anchor: "left" | "center" | "right"; opacity?: number; angle?: number; bold?: boolean },
+  doc: PDFDocument, page: PDFPage, family: FontChoice, text: string,
+  o: {
+    vx: number; vy: number; size: number; color: string; anchor: "left" | "center" | "right"; opacity?: number; angle?: number; bold?: boolean;
+    // Wider text is drawn smaller to fit.
+    maxWidth?: number;
+  },
 ) {
   isolate(page);
   const f = visualFrame(page);
   const c = hexToRgb(o.color);
   const extra = o.angle ?? 0;
-  const line = await textLine(doc, font, text, o.size, o.bold);
+  const a = (extra * Math.PI) / 180;
+  const fit = (width: number) => (o.maxWidth && width > o.maxWidth ? o.maxWidth / width : 1);
+  const line = await textLine(doc, family, text, o.size, o.bold);
   if (line) {
-    const dx = o.anchor === "center" ? -line.width / 2 : o.anchor === "right" ? -line.width : 0;
+    const k = fit(line.width);
+    const size = o.size * k, width = line.width * k;
+    const dx = o.anchor === "center" ? -width / 2 : o.anchor === "right" ? -width : 0;
     // Offset along the rotated baseline so rotated labels stay anchored.
-    const a = (extra * Math.PI) / 180;
-    for (const run of line.runs) {
-      const [x, y] = f.map(o.vx + (dx + run.x) * Math.cos(a), o.vy + (dx + run.x) * Math.sin(a));
-      page.drawText(run.text, { x, y, size: o.size, font: run.font, color: rgb(c.r, c.g, c.b), opacity: o.opacity ?? 1, rotate: degrees(f.rot + extra) });
-    }
-    return { width: line.width, height: o.size };
+    asOneString(page, text, line.runs.length, () => {
+      for (const run of line.runs) {
+        const [x, y] = f.map(o.vx + (dx + run.x * k) * Math.cos(a), o.vy + (dx + run.x * k) * Math.sin(a));
+        page.drawText(run.text, { x, y, size, font: run.font, color: rgb(c.r, c.g, c.b), opacity: o.opacity ?? 1, rotate: degrees(f.rot + extra) });
+      }
+    });
+    return { width, height: size };
   }
   const img = await textToPng(text, o.size, o.color, `${o.bold ? 700 : 500} {s}px system-ui, sans-serif`);
   const png = await doc.embedPng(img.png);
-  const dx = o.anchor === "center" ? -img.width / 2 : o.anchor === "right" ? -img.width : 0;
-  const a = (extra * Math.PI) / 180;
-  const [x, y] = f.map(o.vx + dx * Math.cos(a) + img.height * 0.2 * Math.sin(a), o.vy + dx * Math.sin(a) - img.height * 0.2 * Math.cos(a));
-  page.drawImage(png, { x, y, width: img.width, height: img.height, opacity: o.opacity ?? 1, rotate: degrees(f.rot + extra) });
-  return { width: img.width, height: img.height };
+  const k = fit(img.width);
+  const w = img.width * k, h = img.height * k;
+  const dx = o.anchor === "center" ? -w / 2 : o.anchor === "right" ? -w : 0;
+  const [x, y] = f.map(o.vx + dx * Math.cos(a) + h * 0.2 * Math.sin(a), o.vy + dx * Math.sin(a) - h * 0.2 * Math.cos(a));
+  asOneString(page, text, 1, () => page.drawImage(png, { x, y, width: w, height: h, opacity: o.opacity ?? 1, rotate: degrees(f.rot + extra) }));
+  return { width: w, height: h };
 }
+
+// ── Numbers in a style: 1, i, I, a, A. Roman numerals stop at 3999 and
+// letters at 0; beyond those the number is written in digits.
+export function formatNumber(n: number, style: string) {
+  if ((style === "i" || style === "I") && n >= 1 && n < 4000) {
+    const parts: [number, string][] = [[1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"], [90, "XC"], [50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]];
+    let out = "";
+    for (const [v, s] of parts) while (n >= v) { out += s; n -= v; }
+    return style === "i" ? out.toLowerCase() : out;
+  }
+  if ((style === "a" || style === "A") && n >= 1) {
+    // a…z, aa…az, ba…
+    let out = "";
+    for (let k = n; k > 0; k = Math.floor((k - 1) / 26)) out = String.fromCharCode(97 + ((k - 1) % 26)) + out;
+    return style === "A" ? out.toUpperCase() : out;
+  }
+  return String(n);
+}
+
+// {filename} and {date} in user text; {date} is the local date as YYYY-MM-DD.
+function fillVariables(text: string, file: File) {
+  const d = new Date();
+  const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return text.replaceAll("{filename}", baseName(file.name)).replaceAll("{date}", date);
+}
+
+const MARGINS: Record<string, [number, number]> = { small: [9, 0.025], normal: [18, 0.045], large: [36, 0.08] };
 
 // ── Page numbers
 export async function pageNumbers(
   file: File,
   o: {
-    position: string; numberFormat: string; startAt: number; pageRange: string; skipFirst: boolean;
+    position: string; numberFormat: string; startAt: number; pageRange: string;
+    // Pages left unnumbered at each end (true means 1, as the old toggle did).
+    skipFirst: number | boolean; skipLast?: number;
     fontSize: number; color: string; facing: boolean;
+    // Custom: {page} and {pages}, plus {filename} and {date}.
+    template?: string; numberStyle?: string; margin?: string; font?: string;
+    // Bates: prefix and a zero-padded counter. Pass the same counter to every
+    // file of a batch so the numbers run on.
+    batesPrefix?: string; batesDigits?: number; counter?: { next: number };
     // Translated templates: "Page {n}", "Page {n} of {total}", "{n} of {total}".
     labels?: { page: string; pageOf: string; nOf: string };
   },
 ): Promise<Output[]> {
   const doc = await loadPdf(file, file.name);
-  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const family = fontChoice(o.font);
   const pages = doc.getPages();
   const total = pages.length;
   const chosen = pageSet(o.pageRange, total);
-  if (o.skipFirst) chosen.delete(0);
-  const numbered = [...chosen].sort((a, b) => a - b);
+  const skipFirst = o.skipFirst === true ? 1 : Math.max(0, Number(o.skipFirst) || 0);
+  const skipLast = Math.max(0, Number(o.skipLast) || 0);
+  const numbered = [...chosen].filter((i) => i >= skipFirst && i < total - skipLast).sort((a, b) => a - b);
   const count = numbered.length;
   const labels = o.labels ?? { page: "Page {n}", pageOf: "Page {n} of {total}", nOf: "{n} of {total}" };
-  const fill = (tpl: string, n: number, total: number) => tpl.replace("{n}", String(n)).replace("{total}", String(total));
+  const style = o.numberStyle ?? "1";
+  const fill = (tpl: string, n: number, total: number) =>
+    tpl.replace("{n}", formatNumber(n, style)).replace("{total}", formatNumber(total, style));
+  const digits = Math.min(12, Math.max(1, Math.round(o.batesDigits ?? 6)));
+  const [mMin, mFrac] = MARGINS[o.margin ?? "normal"] ?? MARGINS.normal;
   const [vert, horiz] = o.position.split("-");
   for (let k = 0; k < numbered.length; k++) {
     const i = numbered[k];
     const page = pages[i];
-    const n = o.startAt + k;
+    const n = o.numberFormat === "bates" && o.counter ? o.counter.next++ : o.startAt + k;
     const last = o.startAt + count - 1;
     const text =
-      o.numberFormat === "pageN" ? fill(labels.page, n, last)
+      o.numberFormat === "bates" ? `${o.batesPrefix ?? ""}${String(n).padStart(digits, "0")}`
+      : o.numberFormat === "custom" ? fillVariables(o.template ?? "{page}", file).replaceAll("{page}", formatNumber(n, style)).replaceAll("{pages}", formatNumber(last, style))
+      : o.numberFormat === "pageN" ? fill(labels.page, n, last)
       : o.numberFormat === "nOfTotal" ? fill(labels.nOf, n, last)
       : o.numberFormat === "pageNOfTotal" ? fill(labels.pageOf, n, last)
-      : `${n}`;
+      : formatNumber(n, style);
     const { vw, vh } = visualFrame(page);
-    const margin = Math.max(18, Math.min(vw, vh) * 0.045);
+    // On a very small page the margin and the text shrink so the label stays on it.
+    const margin = Math.min(Math.max(mMin, Math.min(vw, vh) * mFrac), Math.min(vw, vh) * 0.1);
+    const size = Math.min(o.fontSize, (vh - 2 * margin) * 0.8);
     let h = horiz;
     // Facing pages: outer edge alternates.
     if (o.facing && h !== "center" && (n % 2 === 0)) h = h === "left" ? "right" : "left";
     const vx = h === "left" ? margin : h === "right" ? vw - margin : vw / 2;
-    const vy = vert === "top" ? vh - margin - o.fontSize * 0.75 : margin;
-    await drawLabel(doc, page, font, text, {
-      vx, vy, size: o.fontSize, color: o.color, anchor: h === "left" ? "left" : h === "right" ? "right" : "center",
+    const vy = vert === "top" ? vh - margin - size * 0.75 : margin;
+    await drawLabel(doc, page, family, text, {
+      vx, vy, size, color: o.color, anchor: h === "left" ? "left" : h === "right" ? "right" : "center", maxWidth: vw - 2 * margin,
     });
   }
   return [{ name: `${baseName(file.name)}-numbered.pdf`, blob: await save(doc) }];
@@ -170,16 +325,20 @@ export async function watermark(
   file: File,
   o: {
     markType: string; markText: string; markImage?: File; fontSize: number; color: string; imageScale: number;
-    position: string; mosaic: boolean; opacity: number; rotation: string; layer: string; pageRange: string;
+    position: string; mosaic: boolean; opacity: number; rotation: string | number; layer: string; pageRange: string;
+    // Font family, a white box behind the mark, and the gap between tiles (100 = default).
+    font?: string; markBox?: boolean; tileSpacing?: number;
   },
 ): Promise<Output[]> {
   const doc = await loadPdf(file, file.name);
-  const font = await doc.embedFont(StandardFonts.HelveticaBold);
+  const family = fontChoice(o.font);
   const pages = doc.getPages();
   const chosen = pageSet(o.pageRange, pages.length);
   const opacity = o.opacity / 100;
-  const angle = Number(o.rotation);
+  const angle = Number(o.rotation) || 0;
   const a = (angle * Math.PI) / 180;
+  const spacing = Math.min(4, Math.max(0.5, (o.tileSpacing ?? 100) / 100));
+  const markText = fillVariables(o.markText, file);
 
   let image: Awaited<ReturnType<PDFDocument["embedPng"]>> | null = null;
   let line: LaidOut | null = null;
@@ -189,8 +348,8 @@ export async function watermark(
     const img = await normaliseImage(o.markImage);
     image = img.kind === "png" ? await doc.embedPng(img.bytes) : await doc.embedJpg(img.bytes);
   } else {
-    line = await textLine(doc, font, o.markText, o.fontSize, true);
-    if (!line) textImg = await textToPng(o.markText, o.fontSize, o.color, "700 {s}px system-ui, sans-serif");
+    line = await textLine(doc, family, markText, o.fontSize, true);
+    if (!line) textImg = await textToPng(markText, o.fontSize, o.color, "700 {s}px system-ui, sans-serif");
   }
   const textImage = textImg ? await doc.embedPng(textImg.png) : null;
 
@@ -210,29 +369,45 @@ export async function watermark(
       mh = textImg.height;
     } else {
       mw = line!.width;
-      mh = font.heightAtSize(o.fontSize) * 0.72;
+      // About the capital height: Helvetica-Bold's box (0.925 em) × 0.72.
+      mh = o.fontSize * 0.666;
     }
+    // Text that wouldn't fit on the page, turned as it is, is drawn smaller.
+    const k = image ? 1 : Math.min(1,
+      (f.vw * 0.9) / (Math.abs(mw * Math.cos(a)) + Math.abs(mh * Math.sin(a))),
+      (f.vh * 0.9) / (Math.abs(mw * Math.sin(a)) + Math.abs(mh * Math.cos(a))));
+    mw *= k;
+    mh *= k;
 
     const draw = (cx: number, cy: number) => {
       // (cx, cy) is the visual centre of the mark. Rotate the bottom-left corner around it.
-      const ox = cx - (mw / 2) * Math.cos(a) + (mh / 2) * Math.sin(a);
-      const oy = cy - (mw / 2) * Math.sin(a) - (mh / 2) * Math.cos(a);
-      const [x, y] = f.map(ox, oy);
+      const corner = (dx: number, dy: number) => f.map(
+        cx + (dx - mw / 2) * Math.cos(a) - (dy - mh / 2) * Math.sin(a),
+        cy + (dx - mw / 2) * Math.sin(a) + (dy - mh / 2) * Math.cos(a),
+      );
+      const [x, y] = corner(0, 0);
       const rotate = degrees(f.rot + angle);
+      if (o.markBox && !image) {
+        const pad = Math.max(4, o.fontSize * 0.3) * k;
+        const [bx, by] = corner(-pad, -pad);
+        page.drawRectangle({ x: bx, y: by, width: mw + 2 * pad, height: mh + 2 * pad, rotate, color: rgb(1, 1, 1), opacity });
+      }
       if (image) page.drawImage(image, { x, y, width: mw, height: mh, opacity, rotate });
-      else if (textImage) page.drawImage(textImage, { x, y, width: mw, height: mh, opacity, rotate });
+      else if (textImage) asOneString(page, markText, 1, () => page.drawImage(textImage, { x, y, width: mw, height: mh, opacity, rotate }));
       else {
         const c = hexToRgb(o.color);
-        for (const run of line!.runs) {
-          const [rx, ry] = f.map(ox + run.x * Math.cos(a), oy + run.x * Math.sin(a));
-          page.drawText(run.text, { x: rx, y: ry, size: o.fontSize, font: run.font, color: rgb(c.r, c.g, c.b), opacity, rotate });
-        }
+        asOneString(page, markText, line!.runs.length, () => {
+          for (const run of line!.runs) {
+            const [rx, ry] = corner(run.x * k, 0);
+            page.drawText(run.text, { x: rx, y: ry, size: o.fontSize * k, font: run.font, color: rgb(c.r, c.g, c.b), opacity, rotate });
+          }
+        });
       }
     };
 
     if (o.mosaic) {
-      const stepX = mw * 1.6 + 40;
-      const stepY = mh * 3 + 40;
+      const stepX = (mw * 1.6 + 40) * spacing;
+      const stepY = (mh * 3 + 40) * spacing;
       let row = 0;
       for (let cy = stepY / 2; cy < f.vh + stepY; cy += stepY, row++)
         for (let cx = (row % 2 ? stepX / 2 : 0); cx < f.vw + stepX; cx += stepX) draw(cx, cy);
@@ -296,8 +471,6 @@ function dataUrlBytes(url: string) {
 }
 
 export async function applyItems(doc: PDFDocument, items: EditorItem[]) {
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const pages = doc.getPages();
   const form = items.some((i) => i.kind === "textField" || i.kind === "checkbox") ? doc.getForm() : null;
   for (const it of items) {
@@ -320,7 +493,7 @@ export async function applyItems(doc: PDFDocument, items: EditorItem[]) {
         const lines = (it.text ?? "").split("\n");
         for (let li = 0; li < lines.length; li++) {
           if (!lines[li]) continue;
-          await drawLabel(doc, page, it.bold ? bold : font, lines[li], {
+          await drawLabel(doc, page, "helvetica", lines[li], {
             vx, vy: vyTop - size * 0.86 - li * size * 1.25, size, color: it.color ?? "#111827", anchor: "left", bold: it.bold,
           });
         }
