@@ -119,7 +119,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "epexergasia-pdf", "pdf-forms": "formes-pdf", "unlock-pdf": "xekleidoma-pdf", "protect-pdf": "prostasia-pdf",
     "sign-pdf": "ypografi-pdf", "redact-pdf": "apokrypsi-stoicheion-pdf", "compare-pdf": "sygkrisi-pdf",
     "pdf-converter": "metatropeas-pdf", "reduce-pdf-size": "meiosi-megethous-pdf", "pdf-editor": "epexergastis-pdf", "pdf-security": "asfaleia-pdf",
-    "exam-photo-resizer": "fotografia-exetaseon", "summarize-pdf": "perilipsi-pdf", "chat-with-pdf": "synomilia-me-pdf", "translate-pdf": "metafrasi-pdf", "verify-pdf-signature": "elegchos-ypografis-pdf",
+    "exam-photo-resizer": "fotografia-gia-exetaseis", "summarize-pdf": "perilipsi-pdf", "chat-with-pdf": "synomilia-me-pdf", "translate-pdf": "metafrasi-pdf", "verify-pdf-signature": "elegchos-ypografon-pdf",
   },
   ca: {
     "merge-pdf": "unir-pdf", "split-pdf": "dividir-pdf", "extract-pages": "extreure-pagines-pdf", "remove-pages": "eliminar-pagines-pdf",
@@ -193,7 +193,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "pdf-duzenle", "pdf-forms": "pdf-formlari", "unlock-pdf": "pdf-kilidini-ac", "protect-pdf": "pdf-koru",
     "sign-pdf": "pdf-imzala", "redact-pdf": "pdf-karart", "compare-pdf": "pdf-karsilastir",
     "pdf-converter": "pdf-donusturucu", "reduce-pdf-size": "pdf-boyutunu-kucult", "pdf-editor": "pdf-editoru", "pdf-security": "pdf-guvenligi",
-    "exam-photo-resizer": "sinav-fotografi-boyutlandir", "summarize-pdf": "pdf-ozetle", "chat-with-pdf": "pdf-ile-sohbet", "translate-pdf": "pdf-cevir", "verify-pdf-signature": "pdf-imza-dogrula",
+    "exam-photo-resizer": "sinav-fotografi", "summarize-pdf": "pdf-ozetle", "chat-with-pdf": "pdf-ile-sohbet", "translate-pdf": "pdf-cevir", "verify-pdf-signature": "pdf-imzalarini-dogrula",
   },
   vi: {
     "merge-pdf": "gop-pdf", "split-pdf": "tach-pdf", "extract-pages": "trich-xuat-trang-pdf", "remove-pages": "xoa-trang-pdf",
@@ -203,7 +203,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "chinh-sua-pdf", "pdf-forms": "bieu-mau-pdf", "unlock-pdf": "mo-khoa-pdf", "protect-pdf": "bao-ve-pdf",
     "sign-pdf": "ky-pdf", "redact-pdf": "che-thong-tin-pdf", "compare-pdf": "so-sanh-pdf",
     "pdf-converter": "chuyen-doi-pdf", "reduce-pdf-size": "giam-dung-luong-pdf", "pdf-editor": "trinh-chinh-sua-pdf", "pdf-security": "bao-mat-pdf",
-    "exam-photo-resizer": "anh-thi-chinh-kich-thuoc", "summarize-pdf": "tom-tat-pdf", "chat-with-pdf": "tro-chuyen-voi-pdf", "translate-pdf": "dich-pdf", "verify-pdf-signature": "kiem-tra-chu-ky-pdf",
+    "exam-photo-resizer": "chinh-anh-du-thi", "summarize-pdf": "tom-tat-pdf", "chat-with-pdf": "tro-chuyen-voi-pdf", "translate-pdf": "dich-pdf", "verify-pdf-signature": "kiem-tra-chu-ky-pdf",
   },
   sw: {
     "merge-pdf": "unganisha-pdf", "split-pdf": "gawanya-pdf", "extract-pages": "toa-kurasa-pdf", "remove-pages": "ondoa-kurasa-pdf",
@@ -213,7 +213,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "hariri-pdf", "pdf-forms": "fomu-za-pdf", "unlock-pdf": "fungua-pdf", "protect-pdf": "linda-pdf",
     "sign-pdf": "tia-sahihi-pdf", "redact-pdf": "ficha-taarifa-pdf", "compare-pdf": "linganisha-pdf",
     "pdf-converter": "kigeuzi-cha-pdf", "reduce-pdf-size": "fanya-pdf-iwe-ndogo", "pdf-editor": "mhariri-wa-pdf", "pdf-security": "usalama-wa-pdf",
-    "exam-photo-resizer": "badili-ukubwa-wa-picha-ya-mtihani", "summarize-pdf": "fupisha-pdf", "chat-with-pdf": "ongea-na-pdf", "translate-pdf": "tafsiri-pdf", "verify-pdf-signature": "kagua-sahihi-ya-pdf",
+    "exam-photo-resizer": "badili-ukubwa-wa-picha-ya-mtihani", "summarize-pdf": "fupisha-pdf", "chat-with-pdf": "ongea-na-pdf", "translate-pdf": "tafsiri-pdf", "verify-pdf-signature": "kagua-sahihi-za-pdf",
   },
 };
 
