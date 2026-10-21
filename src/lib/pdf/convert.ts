@@ -2,13 +2,15 @@
 
 import type { PDFPageProxy } from "pdfjs-dist";
 import {
-  PDFDict, PDFDocument, PDFName, PDFRawStream, PDFNumber, PDFHexString, PDFString, decodePDFRawStream,
+  PDFDict, PDFDocument, PDFName, PDFRawStream, PDFRef, PDFNumber, PDFHexString, PDFString,
   concatTransformationMatrix, drawObject, popGraphicsState, pushGraphicsState,
 } from "pdf-lib";
 import {
-  baseName, bytesOf, canvasToBlob, closePdf, openPdf, pdfBlob, pdfjs, renderPage,
-  type Output, type Progress,
+  baseName, bytesOf, canvasToBlob, closePdf, fitScale, openPdf, pageSet, pdfBlob, pdfjs, renderPage,
+  type Output, type Progress, type Skipped,
 } from "./common";
+import { encodePng } from "./png";
+import { cmykToRgb, resample, type Pixels } from "./pixels";
 import { pageText, blocks, bodySizeOf, spans, dropChars, lineChars, type Line, type Run, type Span } from "./text";
 import { allLines, flow, grid, type Layout, type Table } from "./tables";
 import { documentLayout, figuresOf, type Figure, type PageLayout } from "./layout";
@@ -16,7 +18,7 @@ import { addInvisibleText } from "./textlayer";
 import { srgbProfile } from "./icc";
 import { loadPdf } from "./organize";
 import { openForEdit } from "./open";
-import { forFile, PdfError } from "./errors";
+import { forFile, PdfError, toPdfError } from "./errors";
 import { loadImage, pdfImageMatrix, pdfImages } from "./images";
 import { prepareDocx } from "./word";
 
@@ -148,73 +150,104 @@ function boxBlur(src: Float32Array, w: number, h: number, r: number) {
 }
 
 // ── PDF → images
-export async function pdfToImages(file: File, o: { dpi: string; format: string }, progress?: Progress): Promise<Output[]> {
+type ImageOptions = { dpi: string; customDpi?: string; format: string; pageRange?: string; transparent?: boolean };
+const IMAGE_TYPES = { jpg: "image/jpeg", png: "image/png", webp: "image/webp" } as const;
+const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+
+// Each chosen page as an image. A page too big to draw at the chosen dpi is
+// drawn at the most that fits, and its image notes the dpi it got
+// ("lowerDpi:50"); a page that still fails is left out and named in `skipped`.
+export async function pdfToImages(file: File, o: ImageOptions, progress?: Progress, signal?: AbortSignal): Promise<Output[]> {
   const doc = await openPdf(await file.arrayBuffer());
-  const scale = Number(o.dpi) / 72;
-  const png = o.format === "png";
-  const out: Output[] = [];
-  const pad = String(doc.numPages).length;
-  for (let i = 1; i <= doc.numPages; i++) {
-    const page = await doc.getPage(i);
-    const canvas = await renderPage(page, scale);
-    out.push({
-      name: `${baseName(file.name)}-${String(i).padStart(pad, "0")}.${png ? "png" : "jpg"}`,
-      blob: await canvasToBlob(canvas, png ? "image/png" : "image/jpeg", 0.92),
-    });
-    page.cleanup();
-    canvas.width = canvas.height = 0;
-    progress?.(i, doc.numPages);
+  try {
+    const dpi = o.dpi === "custom" ? Math.min(600, Math.max(72, Number(o.customDpi) || 150)) : Number(o.dpi) || 150;
+    const type = IMAGE_TYPES[o.format as keyof typeof IMAGE_TYPES] ?? IMAGE_TYPES.jpg;
+    // JPEG has no alpha: a clear background would come out black.
+    const background = o.transparent && type !== "image/jpeg" ? "rgba(0,0,0,0)" : "#ffffff";
+    const pages = [...pageSet(o.pageRange, doc.numPages)].sort((a, b) => a - b);
+    if (!pages.length) throw new PdfError("bad_ranges", file.name);
+    const out: Output[] = [];
+    const skipped: Skipped[] = [];
+    let first: unknown;
+    const pad = String(doc.numPages).length;
+    for (const [k, i] of pages.entries()) {
+      signal?.throwIfAborted();
+      let canvas: HTMLCanvasElement | undefined;
+      try {
+        const page = await doc.getPage(i + 1);
+        const scale = fitScale(page, dpi / 72);
+        canvas = await renderPage(page, scale, background, { signal });
+        page.cleanup();
+        // Safari writes PNG when asked for WebP: name the file by what it got.
+        const blob = await canvasToBlob(canvas, type, 0.92);
+        out.push({
+          name: `${baseName(file.name)}-${String(i + 1).padStart(pad, "0")}.${EXT[blob.type] ?? EXT[type]}`,
+          blob,
+          note: scale < dpi / 72 ? `lowerDpi:${Math.floor(scale * 72)}` : undefined,
+        });
+      } catch (e) {
+        if (signal?.aborted) throw signal.reason;
+        first ??= e;
+        skipped.push({ file: file.name, page: i + 1, code: toPdfError(e, file.name).code });
+      } finally {
+        if (canvas) canvas.width = canvas.height = 0;
+      }
+      progress?.(k + 1, pages.length);
+    }
+    if (!out.length) throw first;
+    if (skipped.length) out[0].skipped = skipped;
+    return out;
+  } finally {
+    await closePdf(doc);
   }
-  await closePdf(doc);
-  return out;
 }
 
-// Pulls embedded images out as they are stored: JPEGs byte for byte, others re-encoded as PNG.
-export async function extractImages(file: File): Promise<Output[]> {
+// Pulls out the pictures stored in the file, each once: JPEGs byte for byte,
+// the rest as PNG with their soft mask as alpha. Palettes, ICC profiles, PNG
+// predictors, 16-bit and CMYK samples are read as Compress reads them.
+export async function extractImages(file: File, signal?: AbortSignal): Promise<Output[]> {
   const { doc } = await openForEdit(await bytesOf(file), file.name);
+  const ctx = doc.context;
+  const { readImage, colourOf, filterNames, num } = await import("./optimize");
+  // Soft masks are other images' alpha, not pictures of their own.
+  const masks = new Set<string>();
+  for (const [, obj] of ctx.enumerateIndirectObjects()) {
+    const m = obj instanceof PDFRawStream ? obj.dict.get(PDFName.of("SMask")) : undefined;
+    if (m instanceof PDFRef) masks.add(m.toString());
+  }
+  const seen = new Set<string>();
   const out: Output[] = [];
   let n = 0;
-  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
-    if (!(obj instanceof PDFRawStream)) continue;
+  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
+    signal?.throwIfAborted();
+    if (!(obj instanceof PDFRawStream) || masks.has(ref.toString())) continue;
     const d = obj.dict;
-    if (d.get(PDFName.of("Subtype")) !== PDFName.of("Image")) continue;
-    const filter = d.get(PDFName.of("Filter"));
-    const filterName = filter instanceof PDFName ? filter.asString() : filter?.toString() ?? "";
-    const w = (d.get(PDFName.of("Width")) as PDFNumber)?.asNumber();
-    const h = (d.get(PDFName.of("Height")) as PDFNumber)?.asNumber();
+    if (d.get(PDFName.of("Subtype")) !== PDFName.of("Image") || d.lookup(PDFName.of("ImageMask"))) continue;
+    const w = num(d, "Width"), h = num(d, "Height");
     if (!w || !h || w * h < 64 * 64) continue; // skip icons and spacer pixels
-    if (filterName.includes("DCTDecode") && !filterName.includes("Flate")) {
-      n++;
-      out.push({ name: `${baseName(file.name)}-image-${n}.jpg`, blob: new Blob([obj.contents as BlobPart], { type: "image/jpeg" }) });
+    // The same picture stored twice (pasted on several pages) comes out once.
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", obj.contents as BufferSource))).join(",");
+    if (seen.has(hash)) continue;
+    seen.add(hash);
+    const smask = d.lookup(PDFName.of("SMask"));
+    const filters = filterNames(d);
+    if (filters.length === 1 && filters[0] === "/DCTDecode" && !(smask instanceof PDFRawStream)) {
+      out.push({ name: `${baseName(file.name)}-image-${++n}.jpg`, blob: new Blob([obj.contents as BlobPart], { type: "image/jpeg" }) });
       continue;
     }
-    const bpc = (d.get(PDFName.of("BitsPerComponent")) as PDFNumber)?.asNumber();
-    const cs = d.get(PDFName.of("ColorSpace"));
-    const csName = cs instanceof PDFName ? cs.asString() : "";
-    const channels = csName === "/DeviceRGB" ? 3 : csName === "/DeviceGray" ? 1 : 0;
-    const parms = d.get(PDFName.of("DecodeParms"));
-    if (bpc !== 8 || !channels || parms || !/Flate/.test(filterName)) continue;
-    let raw: Uint8Array;
-    try {
-      raw = decodePDFRawStream(obj).decode();
-    } catch {
-      continue;
+    const colour = colourOf(ctx, d.get(PDFName.of("ColorSpace")));
+    let px = colour && (await readImage(obj, w, h, colour).catch(() => null));
+    if (!px) continue; // Lab, Separation, JPX, JBIG2, CCITT: not readable here
+    if (px.ch === 4) px = cmykToRgb(px);
+    let alpha: Uint8Array | undefined;
+    if (smask instanceof PDFRawStream) {
+      const mw = num(smask.dict, "Width"), mh = num(smask.dict, "Height");
+      let m = mw && mh ? await readImage(smask, mw, mh, { n: 1, space: PDFName.of("DeviceGray") }).catch(() => null) : null;
+      if (m && (m.w !== w || m.h !== h)) m = resample(m, w, h);
+      alpha = m?.data;
     }
-    if (raw.length < w * h * channels) continue;
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d")!;
-    const img = ctx.createImageData(w, h);
-    for (let p = 0, q = 0; p < w * h; p++, q += channels) {
-      img.data[p * 4] = raw[q];
-      img.data[p * 4 + 1] = raw[q + (channels === 3 ? 1 : 0)];
-      img.data[p * 4 + 2] = raw[q + (channels === 3 ? 2 : 0)];
-      img.data[p * 4 + 3] = 255;
-    }
-    ctx.putImageData(img, 0, 0);
-    n++;
-    out.push({ name: `${baseName(file.name)}-image-${n}.png`, blob: await canvasToBlob(canvas, "image/png") });
+    const png = encodePng(px as Pixels & { ch: 1 | 3 }, alpha);
+    out.push({ name: `${baseName(file.name)}-image-${++n}.png`, blob: new Blob([png as BlobPart], { type: "image/png" }) });
   }
   if (!out.length) throw new PdfError("no_images", file.name);
   return out;

@@ -54,6 +54,15 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   const [ask, setAsk] = useState<Job | null>(null);
   const [resumed, setResumed] = useState<Job | null>(null);
   const run = useRef(0);
+  // The running job's controller: Cancel, a reset or leaving the page aborts it,
+  // which stops its engines and frees what they hold (src/lib/pdf/run.ts).
+  const abort = useRef<AbortController | null>(null);
+  const stop = () => {
+    run.current++;
+    abort.current?.abort();
+    abort.current = null;
+  };
+  useEffect(() => () => abort.current?.abort(), []);
   const files = useMemo(() => items.map((i) => i.file), [items]);
   // Rotate turns every page by the chosen angle, on top of each page's own turn.
   const turn = tool.id === "rotate" ? Number(options.angle) || 0 : 0;
@@ -168,7 +177,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   }, [items, tool.mode, drop]);
 
   const reset = () => {
-    run.current++;
+    stop();
     setItems([]);
     setPages([]);
     setSelected(new Set());
@@ -199,13 +208,15 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
     setStage(items.length || url ? "work" : "select");
   };
 
-  const execute = async (job: (p: Progress) => Promise<Output[]>) => {
-    const ticket = ++run.current;
+  const execute = async (job: (p: Progress, signal: AbortSignal) => Promise<Output[]>) => {
+    stop();
+    const ticket = run.current;
+    const controller = (abort.current = new AbortController());
     setError(null);
     setProgress({ value: 0 });
     setStage("busy");
     try {
-      const made = await job((done, total) => ticket === run.current && setProgress((p) => ({ ...p, value: total ? Math.min(1, done / total) : 0 })));
+      const made = await job((done, total) => ticket === run.current && setProgress((p) => ({ ...p, value: total ? Math.min(1, done / total) : 0 })), controller.signal);
       const out = tool.id === "protect" || tool.id === "unlock" ? made : await markUnrestricted(files, made);
       if (ticket !== run.current) return;
       if (!out.length) throw new Error(t("res.error"));
@@ -214,6 +225,8 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
       if (user) postJson("/api/history", { tool: tool.id, fileName: files[0]?.name ?? url }).catch(() => {});
     } catch (e) {
       if (ticket === run.current) fail(e);
+    } finally {
+      if (abort.current === controller) abort.current = null;
     }
   };
 
@@ -257,9 +270,9 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
         return convertOffice({ ...job, reloaded: true });
       }
     }
-    void execute(async (progress) => {
+    void execute(async (progress, signal) => {
       const { runTool } = await import("@/lib/pdf/run");
-      return runTool(tool.id, job.files, { ...job.options, fidelity: route === "print" ? "standard" : job.options.fidelity }, progress);
+      return runTool(tool.id, job.files, { ...job.options, fidelity: route === "print" ? "standard" : job.options.fidelity }, progress, undefined, signal);
     });
   };
 
@@ -319,9 +332,9 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
       });
       return;
     }
-    void execute(async (progress) => {
+    void execute(async (progress, signal) => {
       const { runTool } = await import("@/lib/pdf/run");
-      return runTool(tool.id, files, { ...options, url }, progress, { page: tOr("ws.page", "Page {n}"), pageOf: tOr("ws.processingPage", "Page {n} of {total}"), nOf: tOr("fmt.nOfTotal", "{n} of {total}") });
+      return runTool(tool.id, files, { ...options, url }, progress, { page: tOr("ws.page", "Page {n}"), pageOf: tOr("ws.processingPage", "Page {n} of {total}"), nOf: tOr("fmt.nOfTotal", "{n} of {total}") }, signal);
     });
   };
 
@@ -378,7 +391,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
           <div className="h-full rounded-full bg-ink transition-[width] duration-300" style={{ width: `${Math.max(4, progress.value * 100)}%` }} />
         </div>
         <p className="eyebrow mt-2.5">{Math.round(progress.value * 100)}%</p>
-        <button className="btn btn-quiet btn-sm mt-6" onClick={() => { run.current++; setStage("work"); }}>{t("ws.cancel")}</button>
+        <button className="btn btn-quiet btn-sm mt-6" onClick={() => { stop(); setStage("work"); }}>{t("ws.cancel")}</button>
       </div>
     );
   }

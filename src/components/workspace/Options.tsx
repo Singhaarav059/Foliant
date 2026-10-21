@@ -13,7 +13,7 @@ export function Options({
 }: { defs: OptionDef[]; values: Record<string, unknown>; onChange: (key: string, value: unknown) => void; restore?: boolean }) {
   const { t, tOr } = useI18n();
   const uid = useId();
-  const visible = defs.filter((d) => optionVisible(d, values));
+  const visible = defs.filter((d) => optionVisible(d, values, defs));
   if (!visible.length) return null;
 
   return (

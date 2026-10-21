@@ -6,8 +6,9 @@
 
 import { degrees } from "pdf-lib";
 import { openForEdit, shownRotation } from "./open";
-import type { PageViewport } from "pdfjs-dist";
-import { baseName, bytesOf, closePdf, openPdf, pdfBlob, pdfjs, renderPage, type Output, type Progress } from "./common";
+import type { PageViewport, PDFDocumentProxy } from "pdfjs-dist";
+import { abortable, baseName, bytesOf, closePdf, fitScale, openPdf, pdfBlob, pdfjs, renderPage, type Output, type Progress, type Skipped } from "./common";
+import { toPdfError } from "./errors";
 import { VENDOR, VENDOR_VERSION } from "../vendor";
 import { addInvisibleText, type Word } from "./textlayer";
 import { PADDLE_LANGS, paddlePage } from "./paddle";
@@ -17,6 +18,10 @@ import { deskew, estimateSkew, flattenBackground, grayOf, grayPng, looksSideways
 
 // Noise level (grey levels, Immerkær) above which a page gets a median filter.
 const NOISY = 4;
+// The most pixels a page is read at. Reading holds several copies of it (the
+// drawing, grey, cleaned and turned versions, Tesseract's own); 25 million is
+// a letter page at 1,500 dpi, so only posters and plans are read at less than asked.
+const OCR_PIXELS = 25e6;
 
 type Box = { x0: number; y0: number; x1: number; y1: number };
 type TessWord = { text: string; confidence: number; bbox: Box };
@@ -26,15 +31,19 @@ type TessPage = { confidence: number; blocks: { paragraphs: { lines: TessLine[] 
 export type Recognise = (image: Gray) => Promise<TessPage>;
 
 // Tests replace this with workers that read language data from disk.
+// `signal` terminates the workers, those still starting as soon as they're up.
 export const engine = {
-  async create(lang: string, count: number): Promise<{ recognise: Recognise; stop: () => Promise<void> }> {
+  async create(lang: string, count: number, signal?: AbortSignal): Promise<{ recognise: Recognise; stop: () => Promise<void> }> {
     const { createWorker, createScheduler } = await import("tesseract.js");
     // Engine and language data are served from /vendor (scripts/vendor.mjs),
     // never from the tesseract.js CDN defaults. Absolute URLs: the worker
     // resolves them against its own script URL.
     const vendor = new URL(VENDOR, location.origin).href;
     const scheduler = createScheduler();
-    const workers = await Promise.all(Array.from({ length: count }, () => createWorker(lang, undefined, {
+    const started: { terminate: () => Promise<unknown> }[] = [];
+    const stopStarted = () => started.forEach((w) => void w.terminate());
+    signal?.addEventListener("abort", stopStarted, { once: true });
+    const workers = await abortable(Promise.all(Array.from({ length: count }, () => createWorker(lang, undefined, {
       workerPath: `${vendor}tesseract/worker.min.js`,
       workerBlobURL: false,
       corePath: `${vendor}tesseract/`,
@@ -42,7 +51,12 @@ export const engine = {
       // tesseract.js caches language data in IndexedDB by this path; a new
       // vendor version mustn't reuse data cached for an old one.
       cachePath: `tessdata-${VENDOR_VERSION}`,
-    })));
+    }).then((w) => {
+      started.push(w);
+      if (signal?.aborted) void w.terminate();
+      return w;
+    }))), signal);
+    signal?.removeEventListener("abort", stopStarted);
     for (const w of workers) scheduler.addWorker(w);
     return {
       recognise: async (image) =>
@@ -119,9 +133,9 @@ export function toWord(text: string, corners: [number, number][], viewport: Page
 
 type OcrOptions = { ocrLang: string; dpi: string; ocrEngine?: string };
 
-export async function ocr(file: File, o: OcrOptions, progress?: Progress): Promise<Output[]> {
-  const r = await textLayer(await bytesOf(file), file.name, o, false, progress);
-  return [{ name: `${baseName(file.name)}-ocr.pdf`, blob: pdfBlob(r.bytes), note: r.note }];
+export async function ocr(file: File, o: OcrOptions, progress?: Progress, signal?: AbortSignal): Promise<Output[]> {
+  const r = await textLayer(await bytesOf(file), file.name, o, false, progress, signal);
+  return [{ name: `${baseName(file.name)}-ocr.pdf`, blob: pdfBlob(r.bytes), note: r.note, skipped: r.skipped }];
 }
 
 // For PDF to Word, Excel, PowerPoint and Markdown: scanned pages get the OCR
@@ -130,8 +144,8 @@ export async function ocr(file: File, o: OcrOptions, progress?: Progress): Promi
 // ocr()) and a picture covering at least half the page, so a cover page with
 // a logo and a title isn't. A PDF without such pages comes back as it was,
 // and Tesseract isn't loaded. `note` says how the reading went.
-export async function autoOcr(file: File, o: { ocrLang: string }, progress?: Progress): Promise<{ file: File; pages: number; note?: string }> {
-  const r = await textLayer(await bytesOf(file), file.name, { ocrLang: o.ocrLang, dpi: "200" }, true, progress);
+export async function autoOcr(file: File, o: { ocrLang: string }, progress?: Progress, signal?: AbortSignal): Promise<{ file: File; pages: number; note?: string }> {
+  const r = await textLayer(await bytesOf(file), file.name, { ocrLang: o.ocrLang, dpi: "200" }, true, progress, signal);
   if (!r.pages) return { file, pages: 0 };
   return { file: new File([r.bytes as BlobPart], file.name, { type: "application/pdf" }), pages: r.pages, note: r.note ?? "ocrUsed" };
 }
@@ -227,9 +241,21 @@ function alreadyThere(w: Word, text: Rect[]) {
 // cross-reference table says), so the text goes onto the pages that were
 // read. A conversion first checks for scans in the file as given, and only
 // opens it for writing when it has some, so a PDF without scans skips qpdf.
-async function textLayer(bytes: Uint8Array, name: string, o: OcrOptions, scansOnly: boolean, progress?: Progress) {
-  let opened = scansOnly ? null : await openForEdit(bytes, name);
+// A page that can't be drawn or read is left as it is and named in `skipped`.
+// `signal` stops everything at once: the Tesseract workers are terminated and
+// the pdf.js document closed, whatever they were in the middle of.
+async function textLayer(bytes: Uint8Array, name: string, o: OcrOptions, scansOnly: boolean, progress?: Progress, signal?: AbortSignal) {
+  const opened = scansOnly ? null : await openForEdit(bytes, name);
+  signal?.throwIfAborted();
   const src = await openPdf(opened?.bytes ?? bytes);
+  try {
+    return await readScans(src, bytes, name, opened, o, scansOnly, progress, signal);
+  } finally {
+    await closePdf(src);
+  }
+}
+
+async function readScans(src: PDFDocumentProxy, bytes: Uint8Array, name: string, opened: Awaited<ReturnType<typeof openForEdit>> | null, o: OcrOptions, scansOnly: boolean, progress?: Progress, signal?: AbortSignal) {
   const { OPS } = await pdfjs();
   const images = new Set<number>(IMAGE_OPS.map((k) => OPS[k]));
 
@@ -238,6 +264,7 @@ async function textLayer(bytes: Uint8Array, name: string, o: OcrOptions, scansOn
   const todo: number[] = [];
   const existingText = new Map<number, Rect[]>();
   for (let i = 1; i <= src.numPages; i++) {
+    signal?.throwIfAborted();
     const page = await src.getPage(i);
     const existing = await page.getTextContent();
     const chars = existing.items.reduce((s, it) => s + ("str" in it ? it.str.trim().length : 0), 0);
@@ -248,16 +275,9 @@ async function textLayer(bytes: Uint8Array, name: string, o: OcrOptions, scansOn
     todo.push(i);
     existingText.set(i, existing.items.flatMap((it) => ("str" in it && it.str.trim() ? [textRect(it.transform, it.width, it.height)] : [])));
   }
-  if (scansOnly && !todo.length) {
-    await closePdf(src);
-    return { bytes, pages: 0 };
-  }
-  try {
-    opened ??= await openForEdit(bytes, name);
-  } catch (e) {
-    await closePdf(src);
-    throw e;
-  }
+  if (scansOnly && !todo.length) return { bytes, pages: 0 };
+  opened ??= await openForEdit(bytes, name);
+  signal?.throwIfAborted();
   const doc = opened.doc;
   const pages = doc.getPages();
   const scale = Number(o.dpi) / 72;
@@ -271,9 +291,14 @@ async function textLayer(bytes: Uint8Array, name: string, o: OcrOptions, scansOn
   const count = accurate ? 1 : Math.max(1, Math.min(4, Math.floor(cores / 2), todo.length));
   let recognised = 0;
   let doubtfulPages = 0;
+  const skipped: Skipped[] = [];
   let done = src.numPages - todo.length;
   progress?.(done, src.numPages);
-  const ocrEngine = !todo.length ? null : accurate ? { recognise: paddlePage as Recognise, stop: async () => {} } : await engine.create(lang, count);
+  const ocrEngine = !todo.length ? null
+    : accurate ? { recognise: ((g) => paddlePage(g, signal)) as Recognise, stop: async () => {} }
+    : await engine.create(lang, count, signal);
+  // Work the workers are doing when the run is cancelled never finishes: stop waiting for it.
+  const recognise: Recognise = (g) => abortable(ocrEngine!.recognise(g), signal);
   try {
     // Render the next page while the workers read the last ones, holding at most count + 1 pages.
     let next = 0;
@@ -285,13 +310,27 @@ async function textLayer(bytes: Uint8Array, name: string, o: OcrOptions, scansOn
           progress?.(++done, src.numPages);
           continue;
         }
-        const page = await src.getPage(i);
-        const viewport = page.getViewport({ scale });
-        const canvas = await renderPage(page, scale);
-        const image = grayOf(canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height));
-        canvas.width = canvas.height = 0;
-        page.cleanup();
-        const { words, turns, confidence, doubtful } = await readPage(ocrEngine!.recognise, image);
+        let read: Awaited<ReturnType<typeof readPage>>, viewport: PageViewport;
+        try {
+          const page = await abortable(src.getPage(i), signal);
+          // A page too big to draw at this dpi is read at the most that fits.
+          viewport = page.getViewport({ scale: fitScale(page, scale, undefined, OCR_PIXELS) });
+          const canvas = await renderPage(page, viewport.scale, "#ffffff", { signal });
+          let image: Gray;
+          try {
+            image = grayOf(canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height));
+          } finally {
+            canvas.width = canvas.height = 0;
+            page.cleanup();
+          }
+          read = await readPage(recognise, image);
+        } catch (e) {
+          if (signal?.aborted) throw signal.reason;
+          skipped.push({ file: name, page: i, code: toPdfError(e, name).code });
+          progress?.(++done, src.numPages);
+          continue;
+        }
+        const { words, turns, confidence, doubtful } = read;
         if (words.length) recognised++;
         if (doubtful) doubtfulPages++;
         const text = existingText.get(i) ?? [];
@@ -303,8 +342,8 @@ async function textLayer(bytes: Uint8Array, name: string, o: OcrOptions, scansOn
     }));
   } finally {
     await ocrEngine?.stop();
-    await closePdf(src);
   }
+  signal?.throwIfAborted();
   const note = recognised === 0 ? "ocrNone" : doubtfulPages ? "ocrDoubtful" : undefined;
-  return { bytes: await doc.save({ useObjectStreams: true, addDefaultPage: false }), pages: todo.length, note };
+  return { bytes: await doc.save({ useObjectStreams: true, addDefaultPage: false }), pages: todo.length, note, skipped: skipped.length ? skipped : undefined };
 }
