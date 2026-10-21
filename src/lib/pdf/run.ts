@@ -84,7 +84,7 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
       const kb = o.targetKb === "custom" ? n(o.customKb) : n(o.targetKb);
       if (kb > 0) {
         const { compressToSize } = await import("./targetsize");
-        return each(files, progress, (f, p) => compressToSize(f, { targetBytes: kb * 1024, gray: b(o.allowGray) }, p));
+        return each(files, progress, (f, p) => compressToSize(f, { targetBytes: kb * 1024, gray: b(o.allowGray) }, p, signal), signal);
       }
       const { compress } = await import("./optimize");
       return each(files, progress, (f, p) => compress(f, { level: s(o.level) }, p, signal), signal);

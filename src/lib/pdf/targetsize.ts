@@ -41,7 +41,7 @@ export function settingsAt(t: number, gray: boolean): Settings {
 //   underTarget:{target}:{size}                    already fits, returned as it is
 //   target:{target}:{original}:{size}:{dpi}:{grey}  fits; dpi and grey (0/1) used
 //   targetMissed:{target}:{original}:{size}         can't fit; the smallest result
-export async function compressToSize(file: File, o: { targetBytes: number; gray: boolean }, progress?: Progress): Promise<Output[]> {
+export async function compressToSize(file: File, o: { targetBytes: number; gray: boolean }, progress?: Progress, signal?: AbortSignal): Promise<Output[]> {
   const original = await bytesOf(file);
   const target = Math.max(1, Math.floor(o.targetBytes));
   const name = `${baseName(file.name)}-${Math.round(target / 1024)}kb.pdf`;
@@ -52,7 +52,7 @@ export async function compressToSize(file: File, o: { targetBytes: number; gray:
   const total = STEPS + 2;
   let pass = 0;
   const run = async (t: number, gray: boolean) => {
-    const bytes = await shrink(file, settingsAt(t, gray), (d, n) => progress?.(pass + d / Math.max(1, n), total), cache);
+    const bytes = await shrink(file, settingsAt(t, gray), (d, n) => progress?.(pass + d / Math.max(1, n), total), cache, signal);
     progress?.(++pass, total);
     return bytes;
   };

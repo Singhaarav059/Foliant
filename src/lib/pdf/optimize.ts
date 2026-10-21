@@ -220,7 +220,7 @@ async function dedupe(doc: PDFDocument) {
 
 export async function compress(file: File, o: { level: string }, progress?: Progress, signal?: AbortSignal): Promise<Output[]> {
   const original = await bytesOf(file);
-  const out = await shrink(file, LEVELS[o.level as keyof typeof LEVELS] ?? LEVELS.recommended, progress);
+  const out = await shrink(file, LEVELS[o.level as keyof typeof LEVELS] ?? LEVELS.recommended, progress, undefined, signal);
   const stem = baseName(file.name);
   if (out.length >= original.length) {
     return [{ name: `${stem}-compressed.pdf`, blob: pdfBlob(original), note: "notSmaller" }];
@@ -230,7 +230,7 @@ export async function compress(file: File, o: { level: string }, progress?: Prog
 
 // One compress pass with the given settings: the new file's bytes, which
 // may be larger than the original.
-export async function shrink(file: File, settings: Settings, progress?: Progress, cache?: PixelCache): Promise<Uint8Array> {
+export async function shrink(file: File, settings: Settings, progress?: Progress, cache?: PixelCache, signal?: AbortSignal): Promise<Uint8Array> {
   const doc = await loadPdf(file, file.name);
   const { dpi, quality, maxSide, keepCmyk, gray: toGray = false, resampleBelow = 0.8 } = settings;
   const ctx = doc.context;
