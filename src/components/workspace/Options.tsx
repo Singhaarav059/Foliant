@@ -45,7 +45,11 @@ export function Options({
                 <div role="radiogroup" className="grid gap-1.5">
                   {d.choices.map((c) => {
                     const on = value === c;
-                    const [title, ...rest] = tOr(`choice.${d.key}.${c}`, c).split(":");
+                    // "Title: description". Chinese and Japanese strings use the fullwidth colon.
+                    const full = tOr(`choice.${d.key}.${c}`, c);
+                    const cut = full.search(/[:：]/);
+                    const title = cut < 0 ? full : full.slice(0, cut);
+                    const desc = cut < 0 ? "" : full.slice(cut + 1).trim();
                     return (
                       <button
                         key={c}
@@ -55,7 +59,7 @@ export function Options({
                         className={`rounded-lg border px-3 py-2.5 text-start text-[14px] transition-colors ${on ? "border-brand bg-[color-mix(in_oklab,var(--brand)_8%,var(--surface))]" : "border-line hover:border-line-strong"}`}
                       >
                         <span className={on ? "font-medium text-ink" : "text-ink-2"}>{title}</span>
-                        {rest.length > 0 && <span className="block text-[13px] text-muted">{rest.join(":").trim()}</span>}
+                        {desc && <span className="block text-[13px] text-muted">{desc}</span>}
                       </button>
                     );
                   })}
