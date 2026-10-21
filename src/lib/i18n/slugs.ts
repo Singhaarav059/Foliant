@@ -89,7 +89,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "redaktirovat-pdf", "pdf-forms": "formy-pdf", "unlock-pdf": "razblokirovat-pdf", "protect-pdf": "zashchitit-pdf",
     "sign-pdf": "podpisat-pdf", "redact-pdf": "skryt-dannye-pdf", "compare-pdf": "sravnit-pdf",
     "pdf-converter": "konverter-pdf", "reduce-pdf-size": "umenshit-razmer-pdf", "pdf-editor": "redaktor-pdf", "pdf-security": "bezopasnost-pdf",
-    "exam-photo-resizer": "foto-dlya-ekzamena", "summarize-pdf": "kratko-izlozhit-pdf", "chat-with-pdf": "chat-s-pdf", "translate-pdf": "perevesti-pdf", "verify-pdf-signature": "proverit-podpis-pdf",
+    "exam-photo-resizer": "foto-dlya-ekzamena", "summarize-pdf": "kratko-izlozhit-pdf", "chat-with-pdf": "chat-s-pdf", "translate-pdf": "perevesti-pdf", "verify-pdf-signature": "proverit-podpisi-pdf",
   },
   uk: {
     "merge-pdf": "obiednaty-pdf", "split-pdf": "rozdilyty-pdf", "extract-pages": "vytiahty-storinky-pdf", "remove-pages": "vydalyty-storinky-pdf",
@@ -99,7 +99,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "redahuvaty-pdf", "pdf-forms": "formy-pdf", "unlock-pdf": "rozblokuvaty-pdf", "protect-pdf": "zakhystyty-pdf",
     "sign-pdf": "pidpysaty-pdf", "redact-pdf": "prykhovaty-dani-pdf", "compare-pdf": "porivniaty-pdf",
     "pdf-converter": "konverter-pdf", "reduce-pdf-size": "zmenshyty-rozmir-pdf", "pdf-editor": "redaktor-pdf", "pdf-security": "bezpeka-pdf",
-    "exam-photo-resizer": "foto-dlia-ispytu", "summarize-pdf": "pidsumuvaty-pdf", "chat-with-pdf": "chat-z-pdf", "translate-pdf": "pereklasty-pdf", "verify-pdf-signature": "pereviryty-pidpys-pdf",
+    "exam-photo-resizer": "foto-dlia-ispytu", "summarize-pdf": "styslyi-vyklad-pdf", "chat-with-pdf": "chat-z-pdf", "translate-pdf": "pereklasty-pdf", "verify-pdf-signature": "pereviryty-pidpysy-pdf",
   },
   bg: {
     "merge-pdf": "obediniavane-na-pdf", "split-pdf": "razdeliane-na-pdf", "extract-pages": "izvlichane-na-stranitsi", "remove-pages": "premahvane-na-stranitsi",
@@ -109,7 +109,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "redaktirane-na-pdf", "pdf-forms": "pdf-formuliari", "unlock-pdf": "otkliuchvane-na-pdf", "protect-pdf": "zashtita-na-pdf",
     "sign-pdf": "podpisvane-na-pdf", "redact-pdf": "zalichavane-v-pdf", "compare-pdf": "sravniavane-na-pdf",
     "pdf-converter": "pdf-konvertor", "reduce-pdf-size": "namaliavane-na-razmera-na-pdf", "pdf-editor": "pdf-redaktor", "pdf-security": "sigurnost-na-pdf",
-    "exam-photo-resizer": "snimka-za-izpit", "summarize-pdf": "rezyume-na-pdf", "chat-with-pdf": "chat-s-pdf", "translate-pdf": "prevod-na-pdf", "verify-pdf-signature": "proverka-na-podpis-pdf",
+    "exam-photo-resizer": "snimka-za-izpit", "summarize-pdf": "rezyume-na-pdf", "chat-with-pdf": "chat-s-pdf", "translate-pdf": "prevod-na-pdf", "verify-pdf-signature": "proverka-na-podpisi-pdf",
   },
   el: {
     "merge-pdf": "sygchoneusi-pdf", "split-pdf": "diachorismos-pdf", "extract-pages": "exagogi-selidon-pdf", "remove-pages": "afairesi-selidon-pdf",
@@ -169,7 +169,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "edytuj-pdf", "pdf-forms": "formularze-pdf", "unlock-pdf": "odblokuj-pdf", "protect-pdf": "zabezpiecz-pdf",
     "sign-pdf": "podpisz-pdf", "redact-pdf": "utajnij-pdf", "compare-pdf": "porownaj-pdf",
     "pdf-converter": "konwerter-pdf", "reduce-pdf-size": "zmniejsz-rozmiar-pdf", "pdf-editor": "edytor-pdf", "pdf-security": "bezpieczenstwo-pdf",
-    "exam-photo-resizer": "zdjecie-do-egzaminu", "summarize-pdf": "stresc-pdf", "chat-with-pdf": "czat-z-pdf", "translate-pdf": "przetlumacz-pdf", "verify-pdf-signature": "sprawdz-podpis-pdf",
+    "exam-photo-resizer": "zdjecie-do-egzaminu", "summarize-pdf": "stresc-pdf", "chat-with-pdf": "czat-z-pdf", "translate-pdf": "przetlumacz-pdf", "verify-pdf-signature": "sprawdz-podpisy-pdf",
   },
   sv: {
     "merge-pdf": "sla-ihop-pdf", "split-pdf": "dela-pdf", "extract-pages": "extrahera-sidor-pdf", "remove-pages": "ta-bort-sidor-pdf",
@@ -179,7 +179,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "redigera-pdf", "pdf-forms": "pdf-formular", "unlock-pdf": "las-upp-pdf", "protect-pdf": "skydda-pdf",
     "sign-pdf": "signera-pdf", "redact-pdf": "maska-pdf", "compare-pdf": "jamfor-pdf",
     "pdf-converter": "pdf-konverterare", "reduce-pdf-size": "minska-pdf-storlek", "pdf-editor": "pdf-redigerare", "pdf-security": "pdf-sakerhet",
-    "exam-photo-resizer": "andra-storlek-pa-examensfoto", "summarize-pdf": "sammanfatta-pdf", "chat-with-pdf": "chatta-med-pdf", "translate-pdf": "oversatt-pdf", "verify-pdf-signature": "kontrollera-pdf-signatur",
+    "exam-photo-resizer": "anpassa-examensfoto", "summarize-pdf": "sammanfatta-pdf", "chat-with-pdf": "chatta-med-pdf", "translate-pdf": "oversatt-pdf", "verify-pdf-signature": "kontrollera-pdf-signaturer",
   },
   tr: {
     "merge-pdf": "pdf-birlestir", "split-pdf": "pdf-bol", "extract-pages": "pdf-sayfa-cikar", "remove-pages": "pdf-sayfa-sil",
