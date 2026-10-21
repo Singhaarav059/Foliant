@@ -7,7 +7,7 @@ import { loadPdf } from "./organize";
 import { prepareQpdf, runQpdf } from "./qpdf";
 import { PdfError } from "./errors";
 import { decodeJpeg, decodeJpegCmyk, encodeJpeg, jpegFrame, prepareJpeg } from "./jpeg";
-import { asGray, cmykToRgb, expandPalette, invert, palette, predictPng, resample, unpack, unpredictPng, type Pixels } from "./pixels";
+import { asGray, cmykToRgb, luma, expandPalette, invert, palette, predictPng, resample, unpack, unpredictPng, type Pixels } from "./pixels";
 import { placements } from "./placements";
 
 // ── Compress
@@ -21,6 +21,14 @@ const LEVELS = {
   recommended: { dpi: 150, quality: 70, maxSide: 1700, keepCmyk: false },
   light: { dpi: 220, quality: 82, maxSide: 2600, keepCmyk: true },
 } as const;
+
+// What one pass uses: a level above, or a point Compress to a size
+// (./targetsize.ts) tries. `gray` turns colour images grey; `resampleBelow`
+// is the scale under which an image is downsampled (default 0.8).
+export type Settings = { dpi: number; quality: number; maxSide: number; keepCmyk: boolean; gray?: boolean; resampleBelow?: number };
+
+// Decoded images kept between passes over the same file, up to `limit` bytes.
+export type PixelCache = { map: Map<string, Pixels | null>; bytes: number; limit: number };
 
 export function num(d: PDFDict, key: string) {
   const v = d.lookup(PDFName.of(key));
@@ -212,8 +220,19 @@ async function dedupe(doc: PDFDocument) {
 
 export async function compress(file: File, o: { level: string }, progress?: Progress, signal?: AbortSignal): Promise<Output[]> {
   const original = await bytesOf(file);
+  const out = await shrink(file, LEVELS[o.level as keyof typeof LEVELS] ?? LEVELS.recommended, progress);
+  const stem = baseName(file.name);
+  if (out.length >= original.length) {
+    return [{ name: `${stem}-compressed.pdf`, blob: pdfBlob(original), note: "notSmaller" }];
+  }
+  return [{ name: `${stem}-compressed.pdf`, blob: pdfBlob(out), note: `saved:${original.length}:${out.length}` }];
+}
+
+// One compress pass with the given settings: the new file's bytes, which
+// may be larger than the original.
+export async function shrink(file: File, settings: Settings, progress?: Progress, cache?: PixelCache): Promise<Uint8Array> {
   const doc = await loadPdf(file, file.name);
-  const { dpi, quality, maxSide, keepCmyk } = LEVELS[o.level as keyof typeof LEVELS] ?? LEVELS.recommended;
+  const { dpi, quality, maxSide, keepCmyk, gray: toGray = false, resampleBelow = 0.8 } = settings;
   const ctx = doc.context;
 
   dropUnreachable(doc);
@@ -251,11 +270,19 @@ export async function compress(file: File, o: { level: string }, progress?: Prog
     const colour = colourOf(ctx, d.get(PDFName.of("ColorSpace")));
     if (!colour) continue; // Lab, Separation, DeviceN, CalRGB: leave untouched
 
+    const key = ref.toString();
     let px: Pixels | null;
-    try {
-      px = await readImage(stream, w, h, colour);
-    } catch {
-      px = null;
+    if (cache?.map.has(key)) px = cache.map.get(key)!;
+    else {
+      try {
+        px = await readImage(stream, w, h, colour);
+      } catch {
+        px = null;
+      }
+      if (cache && (px?.data.length ?? 0) + cache.bytes <= cache.limit) {
+        cache.map.set(key, px);
+        cache.bytes += px?.data.length ?? 0;
+      }
     }
     if (!px) continue;
     if (px.ch === 4 && !keepCmyk) px = cmykToRgb(px);
@@ -266,7 +293,8 @@ export async function compress(file: File, o: { level: string }, progress?: Prog
       ? Math.min(1, Math.max((place.w / 72) * dpi / w, (place.h / 72) * dpi / h))
       : Math.min(1, maxSide / Math.max(w, h));
     // Shrinking by less than a fifth costs sharpness for little gain.
-    if (s < 0.8) px = resample(px, Math.max(1, Math.round(w * s)), Math.max(1, Math.round(h * s)));
+    if (s < resampleBelow) px = resample(px, Math.max(1, Math.round(w * s)), Math.max(1, Math.round(h * s)));
+    if (toGray && px.ch === 3) px = luma(px);
     const gray = asGray(px);
     if (gray) px = gray;
     const out: Pixels = px;
@@ -348,11 +376,7 @@ export async function compress(file: File, o: { level: string }, progress?: Prog
   } catch {
     /* keep pdf-lib output */
   }
-  const stem = baseName(file.name);
-  if (out.length >= original.length) {
-    return [{ name: `${stem}-compressed.pdf`, blob: pdfBlob(original), note: "notSmaller" }];
-  }
-  return [{ name: `${stem}-compressed.pdf`, blob: pdfBlob(out), note: `saved:${original.length}:${out.length}` }];
+  return out;
 }
 
 // ── Repair

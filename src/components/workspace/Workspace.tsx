@@ -32,7 +32,8 @@ type Job = { files: File[]; options: Record<string, unknown>; reloaded: boolean;
 
 const uid = () => crypto.randomUUID();
 
-export function Workspace({ toolId }: { toolId: ToolId }) {
+// `preset`: options to start from instead of the defaults (a landing page's, see src/lib/intents.ts).
+export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<string, unknown> }) {
   const tool = toolById(toolId);
   const { t, tOr } = useI18n();
   const problem = useProblem();
@@ -41,7 +42,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   // add-on, start the workspace pre-filled, when this tool takes them.
   const handed = () => (peekHandoff() ?? []).filter((f) => tool.accept.includes(fileExt(f.name)));
   const [items, setItems] = useState<Item[]>(() => handed().map((file) => ({ id: uid(), file })));
-  const [options, setOptions] = useState<Record<string, unknown>>(() => defaultOptions(tool));
+  const [options, setOptions] = useState<Record<string, unknown>>(() => ({ ...defaultOptions(tool), ...preset }));
   const [stage, setStage] = useState<Stage>(() => (handed().length ? "work" : "select"));
   const [progress, setProgress] = useState<{ value: number; label?: string }>({ value: 0 });
   const [outputs, setOutputs] = useState<Output[]>([]);

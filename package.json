@@ -43,6 +43,7 @@
     "test:docx-features": "node tests/docx-features.mjs",
     "test:ppt": "node tests/ppt.mjs",
     "test:compress": "node tests/compress.mjs",
+    "test:targetsize": "node tests/targetsize.mjs",
     "test:ocr": "node tests/ocr.mjs",
     "test:ocr-langs": "node tests/ocr-langs.mjs",
     "test:auto-ocr": "node tests/auto-ocr.mjs",
@@ -90,7 +91,8 @@
     "test:e2e:csp": "node tests/e2e/csp.mjs",
     "test:e2e:promise": "node tests/e2e/promise.mjs",
     "test:ai": "node tests/ai.mjs",
-    "test:e2e:ai": "node tests/e2e/ai.mjs"
+    "test:e2e:ai": "node tests/e2e/ai.mjs",
+    "test:e2e:exactsize": "node tests/e2e/exactsize.mjs chromium"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

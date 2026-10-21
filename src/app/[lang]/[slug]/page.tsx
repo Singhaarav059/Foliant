@@ -9,15 +9,17 @@ import { ToolIcon } from "@/components/ToolIcon";
 import { ToolContent, toolText } from "@/components/ToolContent";
 import { getDictionary, format, type Dict, type DictKey } from "@/lib/i18n/dictionary";
 import { hasLocale, LOCALE_CODES, type Locale } from "@/lib/i18n/locales";
-import { CATEGORIES, LIMITS, TOOLS, descKey, toolBySlug, type Tool } from "@/lib/tools";
+import { CATEGORIES, LIMITS, TOOLS, descKey, toolById, toolBySlug, type Tool } from "@/lib/tools";
 import { LEGAL, LEGAL_UPDATED } from "@/lib/legal";
 import { BRAND, OPERATOR } from "@/lib/brand";
 import { readLicenses, LICENSES_URL } from "@/lib/licenses";
 import { REPO_URL, STATIC } from "@/lib/mode";
 import { INFO, pageMetadata, type Info } from "@/lib/seo";
+import { INTENTS, intentBySlug } from "@/lib/intents";
+import { IntentPage, intentText } from "@/components/IntentPage";
 
 export function generateStaticParams() {
-  const slugs = [...TOOLS.map((t) => t.slug), ...INFO];
+  const slugs = [...TOOLS.map((t) => t.slug), ...INTENTS.map((i) => i.slug), ...INFO];
   return LOCALE_CODES.flatMap((lang) => slugs.map((slug) => ({ lang, slug })));
 }
 
@@ -47,6 +49,12 @@ export async function generateMetadata({ params }: PageProps<"/[lang]/[slug]">):
     const description = toolText(t, tool, "meta") || t[descKey(tool) as DictKey];
     return { title, description, ...pageMetadata({ lang, path: `/${slug}`, title, description, image: tool.slug }) };
   }
+  const intent = intentBySlug(slug);
+  if (intent) {
+    const title = intentText(t, intent, "title");
+    const description = intentText(t, intent, "meta");
+    return { title, description, ...pageMetadata({ lang, path: `/${slug}`, title, description, image: toolById(intent.tool).slug }) };
+  }
   if ((INFO as readonly string[]).includes(slug)) {
     const title = infoTitle(slug as Info, t);
     const description = infoDescription(slug as Info, t);
@@ -74,6 +82,8 @@ async function SlugContent({ params }: { params: PageProps<"/[lang]/[slug]">["pa
   const t = await getDictionary(lang);
   const tool = toolBySlug(slug);
   if (tool) return <ToolPage tool={tool} t={t} lang={lang} />;
+  const intent = intentBySlug(slug);
+  if (intent) return <IntentPage intent={intent} t={t} lang={lang} />;
   if ((INFO as readonly string[]).includes(slug)) return <InfoPage slug={slug as Info} t={t} lang={lang} />;
   notFound();
 }

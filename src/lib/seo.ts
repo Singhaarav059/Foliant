@@ -5,13 +5,14 @@ import { BRAND, SITE_URL } from "./brand";
 import { DEFAULT_LOCALE, LOCALE_CODES, type Locale } from "./i18n/locales";
 import { STATIC } from "./mode";
 import { TOOLS } from "./tools";
+import { INTENTS } from "./intents";
 
 // Pages under /{lang}/{slug} that aren't tools.
 export const INFO = ["features", "faq", "security", "about", "guide", "privacy", "terms", "cookies", "licenses"] as const;
 export type Info = (typeof INFO)[number];
 
 // Every page, as the path after /{lang}. Each exists in every language.
-export const PAGES = ["", "/workflows", ...TOOLS.map((t) => `/${t.slug}`), ...INFO.map((s) => `/${s}`)];
+export const PAGES = ["", "/workflows", ...TOOLS.map((t) => `/${t.slug}`), ...INTENTS.map((i) => `/${i.slug}`), ...INFO.map((s) => `/${s}`)];
 
 // The same page in every language, plus x-default for everyone else: English
 // for a page, the language picker at "/" for the home page. Paths are

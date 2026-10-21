@@ -2,7 +2,7 @@ import {
   Combine, Split, FileOutput, FileMinus, LayoutGrid, ScanLine, Shrink, Wrench, ScanText, ImagePlus, FileType,
   Presentation, Sheet, Globe, Images, FileText, MonitorPlay, Table, Archive, Hash, RotateCw, ListOrdered, Stamp,
   Crop, PenLine, TextCursorInput, LockOpen, Lock, Signature, SquareSlash, GitCompare, TextQuote, ShieldCheck,
-  MessagesSquare, Languages,
+  MessagesSquare, Languages, SquareUser,
   type LucideIcon,
 } from "lucide-react";
 import type { Tool } from "@/lib/tools";
@@ -11,7 +11,7 @@ const ICONS: Record<string, LucideIcon> = {
   Combine, Split, FileOutput, FileMinus, LayoutGrid, ScanLine, Shrink, Wrench, ScanText, ImagePlus, FileType,
   Presentation, Sheet, Globe, Images, FileText, MonitorPlay, Table, Archive, Hash, RotateCw, ListOrdered, Stamp,
   Crop, PenLine, TextCursorInput, LockOpen, Lock, Signature, SquareSlash, GitCompare, TextQuote, ShieldCheck,
-  MessagesSquare, Languages,
+  MessagesSquare, Languages, SquareUser,
 };
 
 // A quiet, monochrome tile. Tools are told apart by glyph, not colour.

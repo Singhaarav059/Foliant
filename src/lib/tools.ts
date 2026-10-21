@@ -53,7 +53,7 @@ export type Cond = { key: string; is: (string | boolean)[]; unset?: boolean };
 
 export type ToolId =
   | "merge" | "split" | "extract" | "remove" | "organize" | "scan"
-  | "compress" | "repair" | "ocr"
+  | "compress" | "repair" | "ocr" | "examKit"
   | "jpgToPdf" | "wordToPdf" | "pptToPdf" | "excelToPdf" | "htmlToPdf"
   | "pdfToJpg" | "pdfToWord" | "pdfToPpt" | "pdfToExcel" | "pdfToPdfa" | "pdfToMarkdown" | "summarize" | "chat" | "translate"
   | "rotate" | "pageNumbers" | "watermark" | "crop" | "edit" | "forms"
@@ -103,6 +103,9 @@ export const OCR_LANGS = [
   "tat", "tel", "tgk", "tha", "tir", "ton", "tur", "uig", "ukr", "urd", "uzb", "uzb_cyrl",
   "vie", "yid", "yor",
 ];
+
+// Compress to a size: the sizes offered, in KB.
+const TARGET_KB = ["100", "200", "300", "500", "1000", "custom"];
 
 // PDF to Word, Excel, PowerPoint and Markdown read scanned pages with OCR first (ocr.ts autoOcr).
 const AUTO_OCR: OptionDef[] = [
@@ -156,7 +159,28 @@ const ALL: Tool[] = [
   {
     id: "compress", slug: "compress-pdf", category: "optimize", icon: "Shrink", mode: "files",
     runtime: "browser", accept: PDF, multiple: true, chainable: true,
-    options: [{ key: "level", type: "select", choices: ["extreme", "recommended", "light"], default: "recommended" }],
+    options: [
+      // A size to get under, in KB of 1,024 bytes (src/lib/pdf/targetsize.ts), or "off" for a level.
+      { key: "targetKb", type: "select", choices: ["off", ...TARGET_KB], default: "off" },
+      { key: "customKb", type: "number", min: 10, max: 100000, default: 150, when: { key: "targetKb", is: ["custom"] } },
+      { key: "allowGray", type: "toggle", default: false, when: { key: "targetKb", is: TARGET_KB } },
+      { key: "level", type: "select", choices: ["extreme", "recommended", "light"], default: "recommended", when: { key: "targetKb", is: ["off"] } },
+    ],
+  },
+  {
+    // Photos and signatures at the pixel size and KB range application forms
+    // ask for (src/lib/pdf/examkit.ts). The presets are examples.
+    id: "examKit", slug: "exam-photo-resizer", category: "optimize", icon: "SquareUser", mode: "files",
+    runtime: "browser", accept: IMAGES, multiple: true, isNew: true,
+    options: [
+      { key: "examPreset", type: "select", choices: ["photo", "signature", "passport", "custom"], default: "photo" },
+      { key: "examWidth", type: "number", min: 10, max: 4000, default: 200, when: { key: "examPreset", is: ["custom"] } },
+      { key: "examHeight", type: "number", min: 10, max: 4000, default: 230, when: { key: "examPreset", is: ["custom"] } },
+      { key: "examMinKb", type: "number", min: 0, max: 5000, default: 10, when: { key: "examPreset", is: ["custom"] } },
+      { key: "examMaxKb", type: "number", min: 1, max: 5000, default: 50, when: { key: "examPreset", is: ["custom"] } },
+      { key: "examFit", type: "select", choices: ["crop", "pad"], default: "crop" },
+      { key: "examGray", type: "toggle", default: false },
+    ],
   },
   {
     id: "repair", slug: "repair-pdf", category: "optimize", icon: "Wrench", mode: "files",
