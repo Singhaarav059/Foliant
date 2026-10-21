@@ -25,8 +25,8 @@ export function useI18n() {
   const { locale, dict } = ctx;
   const t = useCallback(
     (key: DictKey | string, vars?: Record<string, string | number>) =>
-      format((dict as Record<string, string>)[key] ?? key, vars),
-    [dict],
+      format((dict as Record<string, string>)[key] ?? key, vars, locale),
+    [dict, locale],
   );
   // A key that may not exist (option choices like OCR language codes) falls back to its raw value.
   const tOr = useCallback(

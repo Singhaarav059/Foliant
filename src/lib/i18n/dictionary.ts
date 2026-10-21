@@ -39,7 +39,4 @@ export async function getDictionary(locale: Locale): Promise<Dict> {
 
 export type { Dict, DictKey };
 
-export function format(template: string, vars?: Record<string, string | number>) {
-  if (!vars) return template;
-  return template.replace(/\{(\w+)\}/g, (_, k) => (k in vars ? String(vars[k]) : `{${k}}`));
-}
+export { format } from "./format";
