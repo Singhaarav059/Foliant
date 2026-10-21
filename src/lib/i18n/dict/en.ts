@@ -1,5 +1,9 @@
 // English is the source of truth. Other languages override keys; any key a
 // language leaves out falls back to this file.
+//
+// A key ending in ".one" is the singular of the key before it. useI18n picks it
+// when {n} falls in the language's "one" plural category (Intl.PluralRules),
+// so "1 page" and "21 страница" read right; other counts use the plain key.
 const en = {
   // Navigation
   "nav.allTools": "All tools",
@@ -886,10 +890,12 @@ const en = {
   "ws.sortAz": "Sort A–Z",
   "ws.options": "Options",
   "ws.needMore": "Add at least {n} files.",
+  "ws.needMore.one": "Add at least {n} file.",
   "ws.wrongType": "{name} isn't a supported file type.",
   "ws.tooBig": "{name} is over the {mb} MB limit.",
   "ws.tooMany": "You can add up to {n} files at once.",
   "ws.pages": "{n} pages",
+  "ws.pages.one": "{n} page",
   "ws.page": "Page {n}",
   "ws.selected": "{n} selected",
   "ws.selectAll": "Select all",
@@ -981,6 +987,7 @@ const en = {
   "ed.redactMatchCase": "Match case",
   "ed.redactWholeWords": "Whole words only",
   "ed.redactFound": "{n} matches marked",
+  "ed.redactFound.one": "{n} match marked",
   "ed.redactPresets": "Quick marks",
   "ed.redactEmails": "Emails",
   "ed.redactPhones": "Phone numbers",
@@ -1002,6 +1009,7 @@ const en = {
   "cmp.removed": "Removed",
   "cmp.noChanges": "No text differences found.",
   "cmp.changes": "{n} changes",
+  "cmp.changes.one": "{n} change",
   "cmp.original": "Original",
   "cmp.revised": "Revised",
   "cmp.pageAdded": "Page {n} added",
