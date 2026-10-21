@@ -220,6 +220,10 @@ await suite(async ({ name, browser, test }) => {
       const stage = p.locator("main img").first();
       const textTool = p.getByRole("button", { name: t["ed.text"], exact: true });
       const selectTool = p.getByRole("button", { name: t["ed.select"], exact: true });
+      // The 20 clicks go 24 px apart down the page: scroll its top up to just
+      // under the sticky header and toolbar, so the last ones aren't below the window.
+      const top = (await stage.boundingBox()).y;
+      await p.evaluate((dy) => window.scrollBy({ top: dy, behavior: "instant" }), top - 160);
       const bad = [];
       for (let i = 0; i < 20; i++) {
         await textTool.click();

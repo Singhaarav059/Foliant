@@ -8,9 +8,11 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dict, open, pick, suite } from "./kit.mjs";
+import { format } from "../../src/lib/i18n/format.ts";
 
 const t = dict("en");
-const fill = (key, vars) => t[key].replace(/\{(\w+)\}/g, (_, k) => String(vars[k]));
+// The app's own formatter, for plural blocks ({n|one:…|other:…}).
+const fill = (key, vars) => format(t[key], vars);
 const dir = mkdtempSync(join(tmpdir(), "compare-"));
 
 async function pdf(name, pages) {
