@@ -48,10 +48,12 @@ const asMatrix = (a: unknown): M => {
   return [src[0], src[1], src[2], src[3], src[4], src[5]].map(Number) as M;
 };
 
+// Only the page content is walked: annotation appearances (form fields,
+// stamps) are drawn in their own space, and a field's border isn't a rule.
 export async function pageEdges(page: PDFPageProxy, rotation?: number): Promise<Edges> {
-  const { OPS } = await import("pdfjs-dist");
+  const { OPS, AnnotationMode } = await import("pdfjs-dist");
   const viewport = page.getViewport({ scale: 1, rotation });
-  const list = await page.getOperatorList();
+  const list = await page.getOperatorList({ annotationMode: AnnotationMode.DISABLE });
   const h: Edge[] = [];
   const v: Edge[] = [];
   const images: Rect[] = [];

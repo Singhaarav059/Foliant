@@ -160,6 +160,14 @@ async function placedGlyphs(page: PDFPageProxy): Promise<Placed[]> {
         if (a[0] && typeof a[0] === "object") gs.ctm = mul(asMatrix([a[0]]), gs.ctm);
         break;
       case OPS.paintFormXObjectEnd: gs = stack.pop() ?? gs; break;
+      // An annotation's appearance (a filled form field, a stamp): pdf.js
+      // passes [id, rect, transform, matrix], where `transform` maps the
+      // appearance box onto the rect and `matrix` is the appearance's own.
+      case OPS.beginAnnotation:
+        stack.push({ ...gs });
+        gs.ctm = mul(asMatrix([a[3]]), mul(asMatrix([a[2]]), gs.ctm));
+        break;
+      case OPS.endAnnotation: gs = stack.pop() ?? gs; break;
       case OPS.beginText: tm = [1, 0, 0, 1, 0, 0]; tlm = [1, 0, 0, 1, 0, 0]; break;
       case OPS.endText: out.push(null); break;
       case OPS.setFont: {

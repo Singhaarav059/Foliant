@@ -24,7 +24,7 @@ async function make(draw) {
   const text = (s, x, top, o = {}) => page.drawText(s, { x, y: H - top - 10, size: 10, font: o.bold ? bold : font });
   const line = (x0, y0, x1, y1, t = 0.8) => page.drawLine({ start: { x: x0, y: H - y0 }, end: { x: x1, y: H - y1 }, thickness: t, color: rgb(0, 0, 0) });
   const rect = (x, top, w, h, o = {}) => page.drawRectangle({ x, y: H - top - h, width: w, height: h, ...o });
-  draw({ text, line, rect });
+  draw({ text, line, rect, doc, page, font, H });
   return doc.save();
 }
 
@@ -88,6 +88,25 @@ const fixtures = {
         .forEach((r, i) => r.forEach((c, k) => text(c, xs[k] + 6, ys[i] + 6, { bold: i === 0 })));
     });
   },
+  // Bordered form fields above a real 2x2 table. A field's appearance is an
+  // annotation drawn in its own coordinates, not page content: read as page
+  // content, the boxes all land on the page origin and stack into cells.
+  async formFieldAndTable() {
+    return make(({ text, line, doc, page, font, H }) => {
+      const form = doc.getForm();
+      [["Name", 240, "Ada Lovelace"], ["Email", 160, ""], ["Phone", 120, ""]].forEach(([label, width, value], i) => {
+        const field = form.createTextField(label.toLowerCase());
+        if (value) field.setText(value);
+        field.addToPage(page, { x: 120, y: H - 82 - i * 30, width, height: 22, borderColor: rgb(0, 0, 0), borderWidth: 1, font });
+        text(label, 60, 66 + i * 30);
+      });
+      const xs = [60, 240, 420];
+      const ys = [180, 204, 228];
+      for (const y of ys) line(xs[0], y, xs[2], y);
+      for (const x of xs) line(x, ys[0], x, ys[2]);
+      [["Item", "Qty"], ["Pens", "10"]].forEach((r, i) => r.forEach((c, k) => text(c, xs[k] + 6, ys[i] + 6)));
+    });
+  },
 };
 
 // ── Expectations
@@ -115,6 +134,18 @@ const expect = {
     const t = only(L, 1);
     eq(`${t.rows}x${t.cols}`, "3x3", "size");
     eq(grid(t)[2].map((c) => c?.text).join("|"), "Paper|5|4.00", "row 2");
+  },
+  formFieldAndTable: (L) => {
+    const t = only(L, 1);
+    eq(`${t.rows}x${t.cols}`, "2x2", "size");
+    eq(grid(t).map((r) => r.map((c) => c?.text).join("|")).join("/"), "Item|Qty/Pens|10", "cells");
+    const corner = t.cells.find((c) => Math.min(c.x, L.width - c.x - c.w) < 40 && Math.min(c.y, L.height - c.y - c.h) < 40);
+    if (corner) throw new Error(`cell near a page corner at ${Math.round(corner.x)},${Math.round(corner.y)}`);
+    // The filled value reads where the field shows it: inside its box, beside "Name".
+    const value = L.lines.flatMap((l) => l.runs).find((r) => r.text.includes("Ada Lovelace"));
+    if (!value) throw new Error("field value missing from the text");
+    if (!(value.x > 120 && value.x < 360 && value.y > 60 && value.y + value.h < 82))
+      throw new Error(`field value at ${Math.round(value.x)},${Math.round(value.y)}, outside its field`);
   },
 };
 

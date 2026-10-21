@@ -145,4 +145,29 @@ await test("scan with a short label up the margin: Word keeps the page as seen",
   eq(Number(extent?.[1]) < Number(extent?.[2]), true, `picture upright (${extent?.[0]})`);
 });
 
+await test("turned page with a filled form field: the value reads forwards inside its field", async () => {
+  // Rotate 90 with the field turned to match, as a form filled in landscape
+  // would be; pdf-lib turns the text inside the field's appearance.
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const page = doc.addPage([W, H]);
+  page.setRotation(degrees(90));
+  const field = doc.getForm().createTextField("name");
+  field.setText("Ada Lovelace");
+  field.addToPage(page, { x: 288, y: 120, width: 240, height: 22, font, rotate: degrees(90), borderWidth: 1 });
+  const pdf = await (await openPdf(new Uint8Array(await doc.save()))).getPage(1);
+  const text = await pageText(pdf, { upright: true });
+  const value = text.items.find((r) => r.text.includes("Lovelace"));
+  eq(value?.text.trim(), "Ada Lovelace", "value as one forward run");
+  // The field as seen: its widget rect (pdf-lib turns it about its corner) in the page's view.
+  const [rect] = (await pdf.getAnnotations()).map((a) => a.rect);
+  const view = pdf.getViewport({ scale: 1, rotation: text.rotation });
+  const [x0, y0] = view.convertToViewportPoint(rect[0], rect[1]);
+  const [x1, y1] = view.convertToViewportPoint(rect[2], rect[3]);
+  const box = { x0: Math.min(x0, x1), x1: Math.max(x0, x1), y0: Math.min(y0, y1), y1: Math.max(y0, y1) };
+  eq(box.x1 - box.x0 > box.y1 - box.y0, true, `field reads across the page as seen (${JSON.stringify(box)})`);
+  const inside = value.x >= box.x0 && value.x + value.w <= box.x1 && value.y >= box.y0 && value.y + value.h <= box.y1;
+  eq(inside, true, `value at ${Math.round(value.x)},${Math.round(value.y)} inside field ${JSON.stringify(box)}`);
+});
+
 process.exit(results.failed ? 1 : 0);
