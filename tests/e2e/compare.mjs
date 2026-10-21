@@ -3,8 +3,8 @@
 // view.
 //
 //   node tests/e2e/compare.mjs [chromium] [firefox] [webkit]   (see kit.mjs)
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { PDFDocument, PDFName, StandardFonts, rgb } from "pdf-lib";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dict, open, pick, suite } from "./kit.mjs";
@@ -27,6 +27,7 @@ const PAGES = [
   "Hiring plans for next year include four engineers and two designers",
 ];
 const original = await pdf("original.pdf", PAGES);
+const oneWord = await pdf("one-word.pdf", [PAGES[0], PAGES[1].replace("eight", "nine"), PAGES[2]]);
 const inserted = await pdf("inserted.pdf", ["Cover letter from the finance team summarising this edition", ...PAGES]);
 
 // Pages with no text at all, like scans or drawings, that differ.
@@ -93,6 +94,30 @@ await suite(async ({ browser, test }) => {
     const captions = await page.locator("main figcaption").allInnerTexts();
     if (!captions[0].includes(fill("ws.page", { n: 1 })) || !captions[1].includes(fill("ws.page", { n: 2 }))) throw new Error(captions.join(" | "));
     return captions.map((c) => c.split("·").at(-1).trim()).join(" ↔ ");
+  });
+
+  // The differences as files: the revised PDF with one highlight over the
+  // changed word, and a report with one change.
+  await test("one word changed: an annotated PDF and a report to download", async () => {
+    await open(page, "/en/compare-pdf");
+    await pick(page, [original, oneWord]);
+    await page.getByText(fill("cmp.changes", { n: 1 })).waitFor({ timeout: 15000 });
+    const download = async (name) => {
+      const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 30000 }), page.getByRole("button", { name: t[name], exact: true }).click()]);
+      const path = join(dir, `${name}-${dl.suggestedFilename()}`);
+      await dl.saveAs(path);
+      return { path, name: dl.suggestedFilename() };
+    };
+    const copy = await download("cmp.exportPdf");
+    const doc = await PDFDocument.load(readFileSync(copy.path));
+    const subtypes = doc.getPages().flatMap((p) => (p.node.Annots()?.asArray() ?? []).map((r) => doc.context.lookup(r).get(PDFName.of("Subtype")).toString()));
+    if (copy.name !== "one-word-changes.pdf") throw new Error(`named ${copy.name}`);
+    if (subtypes.join() !== "/Highlight") throw new Error(`annotations: ${subtypes.join() || "none"}`);
+    const report = await download("cmp.exportReport");
+    const html = readFileSync(report.path, "utf8");
+    const sections = (html.match(/<section data-change/g) ?? []).length;
+    if (sections !== 1 || !html.includes("<del>eight</del>") || !html.includes("<ins>nine</ins>")) throw new Error(`report: ${sections} changes`);
+    return `${copy.name}: 1 highlight; ${report.name}: 1 change`;
   });
 
   await ctx.close();

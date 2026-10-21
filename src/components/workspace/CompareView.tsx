@@ -2,13 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
 import { useI18n } from "../I18n";
 import { PdfThumb } from "../PdfThumb";
 import type { PageDiff } from "@/lib/pdf/compare";
 
 // Loads the comparison code ahead of use (src/lib/offline.ts).
 export const prepareCompare = () => import("@/lib/pdf/compare");
+
+function save(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
+  const link = Object.assign(document.createElement("a"), { href: url, download: name });
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
 
 // Errors from src/lib/pdf/compare.ts say which file failed.
 const sideOf = (e: unknown, a: File, b: File) => ((e as { side?: string }).side === "b" ? b : a);
@@ -23,6 +32,8 @@ export function CompareView({ a, b, onError }: { a: File; b: File; onError: (e: 
   const [rows, setRows] = useState<PageDiff[] | null>(null);
   const [row, setRow] = useState(0);
   const [overlay, setOverlay] = useState<{ key: string; url: string } | null>(null);
+  const [exporting, setExporting] = useState<"report" | "pdf" | null>(null);
+  const [exportFailed, setExportFailed] = useState(false);
   const holder = useRef<HTMLDivElement>(null);
   const [holderWidth, setHolderWidth] = useState(800);
   // The latest handler, without rerunning the diff when it changes.
@@ -68,6 +79,21 @@ export function CompareView({ a, b, onError }: { a: File; b: File; onError: (e: 
   const changed = rows?.filter((d) => d.status !== "same") ?? [];
   // Scans and drawings have no text, so every page would read as unchanged.
   const noText = !!rows && rows.every((d) => d.changes.every((c) => !c.value.trim()));
+  // The differences as a file: the revised PDF with highlights, or an HTML report.
+  const exportAs = async (kind: "report" | "pdf") => {
+    if (!rows || exporting) return;
+    setExporting(kind);
+    setExportFailed(false);
+    try {
+      const { annotatedCopy, changeReport } = await import("@/lib/pdf/compare-export");
+      const out = kind === "pdf" ? await annotatedCopy(b, rows, t) : changeReport(a, b, rows, t);
+      save(out.blob, out.name);
+    } catch {
+      setExportFailed(true);
+    } finally {
+      setExporting(null);
+    }
+  };
   const title = (d: PageDiff) =>
     d.a === null ? t("cmp.pageAdded", { n: d.b! + 1 })
     : d.b === null ? t("cmp.pageRemoved", { n: d.a + 1 })
@@ -86,11 +112,19 @@ export function CompareView({ a, b, onError }: { a: File; b: File; onError: (e: 
           ))}
         </div>
         {rows && !noText && <span className="tabular text-[14px] text-muted">{t("cmp.changes", { n: changed.length })}</span>}
+        {rows && !noText && changed.length > 0 && (["pdf", "report"] as const).map((kind) => (
+          <button key={kind} className="btn btn-quiet btn-sm" disabled={!!exporting} onClick={() => void exportAs(kind)}>
+            {exporting === kind ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+            {t(kind === "pdf" ? "cmp.exportPdf" : "cmp.exportReport")}
+          </button>
+        ))}
         <span className="ms-auto flex items-center gap-3 text-[13px]">
           <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-sm bg-[#dc2626]" />{t("cmp.removed")}</span>
           <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-sm bg-[#2563eb]" />{t("cmp.added")}</span>
         </span>
       </div>
+
+      {exportFailed && <p role="alert" className="mb-4 rounded-lg border border-line bg-surface p-3 text-[14px] text-ink-2">{t("cmp.exportFailed")}</p>}
 
       {view === "text" && (
         !rows ? <div className="h-40 animate-pulse rounded-xl bg-surface-2" /> :

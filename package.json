@@ -85,7 +85,9 @@
     "test:formsdetect": "node tests/formsdetect.mjs",
     "test:e2e:forms": "node tests/e2e/forms.mjs",
     "test:textedit": "node tests/textedit.mjs",
-    "test:e2e:textedit": "node tests/e2e/textedit.mjs"
+    "test:e2e:textedit": "node tests/e2e/textedit.mjs",
+    "test:e2e:csp": "node tests/e2e/csp.mjs",
+    "test:e2e:promise": "node tests/e2e/promise.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
