@@ -72,7 +72,7 @@ function sfntOf(version: number, tables: Table[]): Uint8Array {
 }
 
 // WOFF 1.0 → plain OpenType/TrueType (what a PDF embeds).
-function woffToSfnt(w: Uint8Array): Uint8Array {
+export function woffToSfnt(w: Uint8Array): Uint8Array {
   const v = new DataView(w.buffer, w.byteOffset, w.byteLength);
   const tables = Array.from({ length: v.getUint16(12) }, (_, i) => {
     const e = 44 + i * 20;
@@ -153,7 +153,7 @@ function loadFace(family: string, bold: boolean, italic: boolean): Promise<Face>
 }
 
 // Which stand-in, by the font's name and descriptor flags.
-function pickFamily(name: string, flags: number) {
+export function pickFamily(name: string, flags: number) {
   if (/courier|mono|consol|typewriter/i.test(name) || flags & 1) return "cousine";
   if (/calibri/i.test(name)) return "carlito";
   if (/cambria/i.test(name)) return "caladea";

@@ -2,13 +2,15 @@
 
 import {
   PDFDocument, PDFPage, PDFFont, StandardFonts, rgb, degrees, BlendMode, PDFArray, PDFName,
-  PDFCheckBox, PDFDropdown, PDFRadioGroup, PDFTextField, PDFOptionList,
+  PDFCheckBox, PDFDropdown, PDFRadioGroup, PDFTextField, PDFOptionList, PDFSignature, PDFString,
   PDFHexString, PDFOperator, PDFOperatorNames as Ops, PDFRawStream, decodePDFRawStream,
 } from "pdf-lib";
 import { baseName, hexToRgb, isWinAnsi, normaliseImage, pageSet, pdfBlob, textToPng, type Output } from "./common";
 import { loadPdf } from "./organize";
 import { PdfError } from "./errors";
 import { FAMILIES, fontCovering, layoutText, type Family, type LaidOut } from "./fonts";
+import { addField } from "./forms";
+import { dateFormatOf, isFieldKind, type DateFormat, type FieldKind } from "./formsmeta";
 
 // ── Visual ↔ user space
 // Users place things on the page as they see it. A page may carry /Rotate and
@@ -448,7 +450,7 @@ export async function crop(file: File, rects: Map<number, FracRect> | FracRect):
 export type EditorItem = {
   id: string;
   page: number;
-  kind: "text" | "image" | "rect" | "ellipse" | "line" | "path" | "highlight" | "whiteout" | "textField" | "checkbox";
+  kind: "text" | "image" | "rect" | "ellipse" | "line" | "path" | "highlight" | "whiteout" | "textEdit" | FieldKind;
   // Visual fractions of the page, top-left origin.
   x: number; y: number; w: number; h: number;
   color?: string;
@@ -459,7 +461,17 @@ export type EditorItem = {
   text?: string;
   image?: string; // data URL
   points?: [number, number][]; // fractions, for path and line
-  name?: string; // form field name
+  // Form fields (see forms.ts).
+  name?: string;
+  options?: string[];
+  required?: boolean;
+  multiple?: boolean;
+  multiline?: boolean;
+  dateFormat?: DateFormat;
+  tooltip?: string;
+  // textEdit: the page's own text object it changes (see listText), and where
+  // its box was, so x and y say how far it moved. `text` "" deletes it.
+  source?: { index: number; was: string; x: number; y: number; font?: string; angle?: number };
 };
 
 function dataUrlBytes(url: string) {
@@ -472,7 +484,7 @@ function dataUrlBytes(url: string) {
 
 export async function applyItems(doc: PDFDocument, items: EditorItem[]) {
   const pages = doc.getPages();
-  const form = items.some((i) => i.kind === "textField" || i.kind === "checkbox") ? doc.getForm() : null;
+  const form = items.some((i) => isFieldKind(i.kind)) ? doc.getForm() : null;
   for (const it of items) {
     const page = pages[it.page];
     if (!page) continue;
@@ -533,41 +545,191 @@ export async function applyItems(doc: PDFDocument, items: EditorItem[]) {
         page.drawSvgPath(d, { x: ox, y: oy, borderColor: c, borderWidth: it.stroke ?? 2, rotate, borderLineCap: 1 });
         break;
       }
-      case "textField": {
-        const field = form!.createTextField(uniqueName(form!, it.name || "text"));
-        field.addToPage(page, { x, y, width: w, height: h, rotate, borderColor: rgb(0.6, 0.64, 0.7), borderWidth: 1 });
-        break;
-      }
-      case "checkbox": {
-        const field = form!.createCheckBox(uniqueName(form!, it.name || "check"));
-        field.addToPage(page, { x, y, width: w, height: h, rotate, borderColor: rgb(0.4, 0.44, 0.5), borderWidth: 1 });
-        break;
-      }
+      default:
+        if (isFieldKind(it.kind)) await addField(doc, form!, page, f, { ...it, kind: it.kind }, { vx, vy: vyTop - h, w, h });
     }
   }
 }
 
-function uniqueName(form: ReturnType<PDFDocument["getForm"]>, base: string) {
-  const names = new Set(form.getFields().map((f) => f.getName()));
-  let n = base.replace(/[.\s]+/g, "_");
-  let k = 2;
-  while (names.has(n)) n = `${base}_${k++}`;
-  return n;
+// Changes to the page's own text go first (PDFium), then what was added on top (pdf-lib).
+export async function editPdf(file: File, items: EditorItem[], suffix: string): Promise<Output[]> {
+  const edits = items.filter((i) => i.kind === "textEdit" && i.source);
+  const added = items.filter((i) => i.kind !== "textEdit");
+  const name = `${baseName(file.name)}-${suffix}.pdf`;
+  if (!edits.length) {
+    const doc = await loadPdf(file, file.name);
+    await applyItems(doc, added);
+    return [{ name, blob: await save(doc) }];
+  }
+  const { bytes, note } = await applyTextEdits(file, edits);
+  if (!added.length) return [{ name, blob: pdfBlob(bytes), note }];
+  const doc = await loadPdf(new File([bytes as BlobPart], file.name, { type: "application/pdf" }), file.name);
+  await applyItems(doc, added);
+  return [{ name, blob: await save(doc), note }];
 }
 
-export async function editPdf(file: File, items: EditorItem[], suffix: string): Promise<Output[]> {
-  const doc = await loadPdf(file, file.name);
-  await applyItems(doc, items);
-  return [{ name: `${baseName(file.name)}-${suffix}.pdf`, blob: await save(doc) }];
+export { moveLayer } from "./layers";
+
+// ── The page's own text (PDFium text objects)
+
+// A text object as the editor shows it: box in visual fractions (top-left
+// origin), size in points as seen, angle in degrees counter-clockwise on screen.
+export type TextBox = { index: number; text: string; font: string; size: number; box: FracRect; angle: number; color: string; bold: boolean; italic: boolean };
+
+type PageGeom = import("./pdfium").PageGeom;
+
+// visualFrame for a page PDFium read, and its inverse.
+function frameOf(g: PageGeom) {
+  const rect = (b: PageGeom["media"]) => ({ x: b.x0, y: b.y0, width: b.x1 - b.x0, height: b.y1 - b.y0 });
+  const media = rect(g.media);
+  const crop = g.crop ? rect(g.crop) : media;
+  const f = visualFrame({ getMediaBox: () => media, getCropBox: () => crop, getRotation: () => ({ angle: g.rotate }) } as unknown as PDFPage);
+  const [ox, oy] = f.map(0, 0);
+  const [ax, ay] = f.map(1, 0);
+  const [bx, by] = f.map(0, 1);
+  const u = [ax - ox, ay - oy], v = [bx - ox, by - oy];
+  const det = u[0] * v[1] - u[1] * v[0];
+  // User-space vector → visual vector.
+  const back = (x: number, y: number): [number, number] => [(x * v[1] - y * v[0]) / det, (u[0] * y - u[1] * x) / det];
+  return { ...f, u, v, toVisual: (x: number, y: number) => back(x - ox, y - oy), back };
+}
+
+// Fractions of the page moved on screen → points moved in user space.
+function moveDelta(g: PageGeom, [fx, fy]: [number, number]): [number, number] {
+  const f = frameOf(g);
+  const dvx = fx * f.vw, dvy = -fy * f.vh;
+  return [dvx * f.u[0] + dvy * f.v[0], dvx * f.u[1] + dvy * f.v[1]];
+}
+
+const fileBytes = async (file: File) => new Uint8Array(await file.arrayBuffer());
+
+export async function listText(file: File, page: number): Promise<TextBox[]> {
+  const { textObjects } = await import("./pdfium");
+  const { geom, objects } = await textObjects(await fileBytes(file), page);
+  const f = frameOf(geom);
+  const hex = (n: number) => Math.round(n).toString(16).padStart(2, "0");
+  return objects.map((o) => {
+    const b = o.bounds;
+    const corners = [[b.x0, b.y0], [b.x1, b.y0], [b.x0, b.y1], [b.x1, b.y1]].map(([x, y]) => f.toVisual(x, y));
+    const xs = corners.map((c) => c[0]), ys = corners.map((c) => c[1]);
+    const [a, bb] = o.matrix;
+    const dir = f.back(a, bb);
+    return {
+      index: o.index, text: o.text, font: o.font, bold: o.bold, italic: o.italic,
+      size: o.size * Math.hypot(a, bb),
+      box: { x: Math.min(...xs) / f.vw, y: 1 - Math.max(...ys) / f.vh, w: (Math.max(...xs) - Math.min(...xs)) / f.vw, h: (Math.max(...ys) - Math.min(...ys)) / f.vh },
+      angle: (Math.atan2(dir[1], dir[0]) * 180) / Math.PI,
+      color: `#${hex(o.fill[0])}${hex(o.fill[1])}${hex(o.fill[2])}`,
+    };
+  });
+}
+
+// Bundled fonts for new text an object's own font can't show: the
+// metric-compatible stand-in for the font (Arimo, Tinos, Cousine, Carlito,
+// Caladea) where it has the glyph, else a Noto slice (CJK, and scripts the
+// stand-in lacks).
+type Kit = { hasGlyphForCodePoint(cp: number): boolean };
+const fallbackFaces = new Map<string, Promise<{ sfnt: Uint8Array; kit: Kit } | null>>();
+const STAND_INS = { arimo: "Arimo", tinos: "Tinos", cousine: "Cousine", carlito: "Carlito", caladea: "Caladea" } as const;
+const NOTO = { jp: "Noto Sans JP", kr: "Noto Sans KR", sc: "Noto Sans SC", tc: "Noto Sans TC", arabic: "Noto Sans Arabic", thai: "Noto Sans Thai", devanagari: "Noto Sans Devanagari" } as const;
+const notoName = (file: string) => {
+  const key = Object.keys(NOTO).find((k) => file.startsWith(`noto-sans-${k}-`)) as keyof typeof NOTO | undefined;
+  return key ? NOTO[key] : "Noto Sans";
+};
+
+function fallbackFace(key: string, woff: () => Promise<Uint8Array | null>) {
+  let p = fallbackFaces.get(key);
+  if (!p) {
+    p = (async () => {
+      const [{ woffToSfnt }, { default: fontkit }] = await Promise.all([import("./pdfa"), import("@pdf-lib/fontkit")]);
+      const w = await woff();
+      if (!w) return null;
+      const sfnt = woffToSfnt(w);
+      return { sfnt, kit: fontkit.create(sfnt) as unknown as Kit };
+    })();
+    p.catch(() => fallbackFaces.delete(key));
+    fallbackFaces.set(key, p);
+  }
+  return p;
+}
+
+const fallbackRuns: import("./pdfium").Fallback = async (text, like) => {
+  const [{ pdfaFonts, pickFamily }, faces, { notoFaceFor }] = await Promise.all([import("./pdfa"), import("../office/faces"), import("./fonts")]);
+  // The stand-in by name first (a Tinos or Liberation Serif subset), then by pdfa.ts's rules.
+  const named = (Object.keys(STAND_INS) as (keyof typeof STAND_INS)[]).find((k) => new RegExp(k, "i").test(like.name));
+  const liberation = /liberation.?mono/i.test(like.name) ? "cousine" : /liberation.?serif/i.test(like.name) ? "tinos" : /liberation.?sans/i.test(like.name) ? "arimo" : undefined;
+  const family = named ?? liberation ?? (pickFamily(like.name, like.flags) as keyof typeof STAND_INS);
+  // CJK forms by the replaced font's name.
+  const prefer = /JP|Japan|Mincho|Gothic|Meiryo|Hiragino|YuGo|YuMin|Osaka/i.test(like.name) ? "jp"
+    : /KR|Korea|Malgun|Batang|Gulim|Dotum|Gungsuh/i.test(like.name) ? "kr"
+    : /TC|Hant|HK|MingLiU|Taiwan/i.test(like.name) ? "tc"
+    : /SC|Hans|SimSun|SimHei|YaHei|GB|Song|Kai/i.test(like.name) ? "sc" : undefined;
+  type Pick = { key: string; name: string; face: { sfnt: Uint8Array; kit: Kit } };
+  const pick = async (cp: number): Promise<Pick | null> => {
+    for (const subset of faces.subsetsOf(family)) {
+      if (!faces.inSubset(subset, cp)) continue;
+      const file = faces.fontFile(family, like.bold, like.italic, subset);
+      const face = await fallbackFace(file, () => pdfaFonts.load(file)).catch(() => null);
+      if (face?.kit.hasGlyphForCodePoint(cp)) return { key: file, name: STAND_INS[family], face };
+    }
+    const noto = await notoFaceFor(cp, text, like.bold, prefer).catch(() => null);
+    if (!noto) return null;
+    const face = await fallbackFace(noto.file, async () => noto.bytes);
+    return face?.kit.hasGlyphForCodePoint(cp) ? { key: noto.file, name: notoName(noto.file), face } : null;
+  };
+  const runs: (Pick & { text: string })[] = [];
+  for (const ch of Array.from(text)) {
+    const cp = ch.codePointAt(0)!;
+    const last = runs[runs.length - 1];
+    if (last && last.face.kit.hasGlyphForCodePoint(cp)) {
+      last.text += ch;
+      continue;
+    }
+    const p = await pick(cp);
+    if (!p) return null;
+    if (last && last.key === p.key) last.text += ch;
+    else runs.push({ ...p, text: ch });
+  }
+  return runs.map((r) => ({ text: r.text, key: r.key, name: r.name, font: async () => r.face.sfnt }));
+};
+
+// Whether new text for a text object keeps its font, for the editor to say
+// before saving. `fallback` names the bundled fonts used instead (null: none can).
+export async function textFonts(file: File, page: number, index: number, text: string):
+  Promise<{ kept: true; font: string } | { kept: false; font: string; fallback: string | null } | { unsupported: true }> {
+  const { textFontCheck } = await import("./pdfium");
+  const r = await textFontCheck(await fileBytes(file), page, index, text, fallbackRuns);
+  if ("unsupported" in r || r.kept) return r;
+  return { kept: false, font: r.font, fallback: r.fallback ? r.fallback.join(", ") : null };
+}
+
+async function applyTextEdits(file: File, edits: EditorItem[]) {
+  const { editTextObjects } = await import("./pdfium");
+  const changes = edits.map((e) => ({
+    page: e.page, index: e.source!.index, was: e.source!.was, text: (e.text ?? "").replace(/\s*\n\s*/g, " "),
+    move: [e.x - e.source!.x, e.y - e.source!.y] as [number, number],
+  }));
+  let out;
+  try {
+    out = await editTextObjects(await fileBytes(file), changes, fallbackRuns, moveDelta);
+  } catch (e) {
+    throw new PdfError("damaged", file.name, e);
+  }
+  if (out.results.some((r) => r.error)) throw new PdfError("text_edit_failed", file.name, out.results.filter((r) => r.error));
+  const swaps = [...new Set(out.results.filter((r) => r.fallback).map((r) => `${r.font} → ${r.fallback!.join(", ")}`))];
+  return { bytes: out.bytes, note: swaps.length ? `textFallback:${swaps.join("; ")}` : undefined };
 }
 
 // ── Forms
 export type FieldInfo = {
   name: string;
-  type: "text" | "checkbox" | "dropdown" | "radio" | "list" | "other";
+  type: "text" | "checkbox" | "dropdown" | "radio" | "list" | "date" | "signature" | "other";
   value: string | boolean | string[];
   options?: string[];
   multiline?: boolean;
+  required?: boolean;
+  tooltip?: string;
+  dateFormat?: DateFormat;
   page: number;
   rect?: { x: number; y: number; w: number; h: number }; // visual fractions
 };
@@ -591,13 +753,20 @@ export async function readFields(file: File): Promise<FieldInfo[]> {
       // Approximate for unrotated pages; rotated pages fall back to the side list.
       if (f.rot === 0) rect = { x: (r.x - box.x) / f.vw, y: 1 - (r.y - box.y + r.height) / f.vh, w: r.width / f.vw, h: r.height / f.vh };
     }
-    const name = field.getName();
-    if (field instanceof PDFTextField) return { name, type: "text", value: field.getText() ?? "", multiline: field.isMultiline(), page, rect };
-    if (field instanceof PDFCheckBox) return { name, type: "checkbox", value: field.isChecked(), page, rect };
-    if (field instanceof PDFDropdown) return { name, type: "dropdown", value: field.getSelected()[0] ?? "", options: field.getOptions(), page, rect };
-    if (field instanceof PDFOptionList) return { name, type: "list", value: field.getSelected(), options: field.getOptions(), page, rect };
-    if (field instanceof PDFRadioGroup) return { name, type: "radio", value: field.getSelected() ?? "", options: field.getOptions(), page, rect };
-    return { name, type: "other", value: "", page, rect };
+    const tu = field.acroField.dict.lookup(PDFName.of("TU"));
+    const tooltip = tu instanceof PDFString || tu instanceof PDFHexString ? tu.decodeText() : undefined;
+    const base = { name: field.getName(), page, rect, required: field.isRequired(), tooltip };
+    if (field instanceof PDFTextField) {
+      const dateFormat = dateFormatOf(tooltip);
+      if (dateFormat) return { ...base, type: "date", value: field.getText() ?? "", dateFormat };
+      return { ...base, type: "text", value: field.getText() ?? "", multiline: field.isMultiline() };
+    }
+    if (field instanceof PDFCheckBox) return { ...base, type: "checkbox", value: field.isChecked() };
+    if (field instanceof PDFDropdown) return { ...base, type: "dropdown", value: field.getSelected()[0] ?? "", options: field.getOptions() };
+    if (field instanceof PDFOptionList) return { ...base, type: "list", value: field.getSelected(), options: field.getOptions() };
+    if (field instanceof PDFRadioGroup) return { ...base, type: "radio", value: field.getSelected() ?? "", options: field.getOptions() };
+    if (field instanceof PDFSignature) return { ...base, type: "signature", value: "" };
+    return { ...base, type: "other", value: "" };
   });
 }
 

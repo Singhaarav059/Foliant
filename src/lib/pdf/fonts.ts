@@ -225,3 +225,18 @@ export async function fontCovering(doc: PDFDocument, text: string): Promise<PDFF
   }
   return null;
 }
+
+// The bundled slice with a glyph for `cp`, as a WOFF file, for text another
+// engine draws (PDFium, in edit.ts). `text` is the whole text, which says
+// which CJK forms to prefer, unless `prefer` names them (from the font the
+// text replaces).
+export async function notoFaceFor(cp: number, text: string, bold = false, prefer?: "sc" | "tc" | "jp" | "kr"): Promise<{ file: string; bytes: Uint8Array } | null> {
+  const m = await loadManifest();
+  let faces = faceOrder(m, text, bold ? 700 : 400);
+  if (prefer) {
+    const first = m[prefer].filter((f) => f.weight === (bold ? 700 : 400));
+    faces = [...first, ...faces.filter((f) => !first.includes(f))];
+  }
+  const face = await faceFor(faces, cp);
+  return face ? { file: face.file, bytes: await fontBytes(face.file) } : null;
+}

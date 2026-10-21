@@ -227,6 +227,9 @@ function groupCells(rects: Rect[]): Rect[][] {
   return [...groups.values()];
 }
 
+// Every ruled cell on the page, grouped by the table (or lone box) it belongs to.
+export const ruledCells = (raw: Edges) => groupCells(cells(crossings(mergeEdges(raw))));
+
 // ── Text into cells
 
 // Splits a run where `inside` changes its answer (cell borders, link areas),

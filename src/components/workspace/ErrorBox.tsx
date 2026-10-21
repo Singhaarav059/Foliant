@@ -32,6 +32,7 @@ const MESSAGES: Record<ErrorCode, [key: string, fix?: Fix]> = {
   bad_sheets: ["err.badSheets"],
   empty_document: ["err.emptyDocument"],
   missing_image: ["err.missingImage"],
+  text_edit_failed: ["err.textEdit"],
   download_failed: ["err.download"],
   office_isolation: ["ws.officeReload"],
   office_memory: ["ws.officeMemory"],
