@@ -11,6 +11,7 @@
 
 import { baseName, type Output, type Progress } from "@/lib/pdf/common";
 import { VENDOR } from "@/lib/vendor";
+import { exportPdf, type Convert } from "./export";
 
 type Converter = InstanceType<typeof import("@matbee/libreoffice-converter/browser").WorkerBrowserConverter>;
 type Manifest = { version: string; files: Record<"soffice.wasm" | "soffice.data", { parts: string[]; size: number }> };
@@ -117,14 +118,19 @@ function load(progress?: Progress): Promise<Office> {
 export const officeAvailable = () =>
   typeof crossOriginIsolated !== "undefined" && crossOriginIsolated && typeof SharedArrayBuffer !== "undefined";
 
-export async function officeToPdf(file: File, progress?: Progress): Promise<Output> {
+// `options` are the tool's export options (export.ts): page range, images,
+// PDF/A, bookmarks, tagging, and sheet or slide choices.
+export async function officeToPdf(file: File, progress?: Progress, options: Record<string, unknown> = {}): Promise<Output> {
   if (!officeAvailable()) throw new OfficeError("office_isolation", "This page isn't cross-origin isolated");
   const current = load(progress);
   const { converter, died } = await current;
   const input = new Uint8Array(await file.arrayBuffer());
-  let result;
+  const limit = officeLimits.convertMs + (input.length / 1e6) * officeLimits.perMbMs;
+  const convert: Convert = async (data, outputFormat, name, filterOptions) =>
+    (await settle(converter.convert(data, { outputFormat, filterOptions }, name), died, limit)).data;
+  let pdf;
   try {
-    result = await settle(converter.convert(input, { outputFormat: "pdf" }, file.name), died, officeLimits.convertMs + (input.length / 1e6) * officeLimits.perMbMs);
+    pdf = await exportPdf(convert, input, file.name, options);
   } catch (e) {
     // A LibreOffice that hung or died is no use to the next job: that one starts afresh.
     if (isStalled(e)) {
@@ -133,5 +139,5 @@ export async function officeToPdf(file: File, progress?: Progress): Promise<Outp
     }
     throw e;
   }
-  return { name: `${baseName(file.name)}.pdf`, blob: new Blob([result.data as BlobPart], { type: "application/pdf" }) };
+  return { name: `${baseName(file.name)}.pdf`, blob: new Blob([pdf as BlobPart], { type: "application/pdf" }) };
 }

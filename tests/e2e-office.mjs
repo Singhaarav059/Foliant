@@ -2,8 +2,9 @@
 // with the default options, on a host that sends no isolation headers and in
 // a browser that has never seen the site: the first conversion asks once for
 // the LibreOffice download, reloads the page by itself to become
-// cross-origin isolated, and picks the job up again. Desktop Chromium by
-// default; BROWSER=webkit or firefox tries another engine.
+// cross-origin isolated, and picks the job up again. Then the export options
+// chosen in the page change the PDF. Desktop Chromium by default;
+// BROWSER=webkit or firefox tries another engine.
 //
 //   npm run build:static
 //   node tests/e2e-office.mjs [dir=out]
@@ -13,11 +14,15 @@
 // instead. CHROME_PATH runs an installed Chrome instead of Playwright's Chromium.
 import pw from "playwright-core";
 import { createServer } from "node:http";
-import { existsSync, mkdtempSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { PDFDocument, PDFName } from "pdf-lib";
+import ExcelJS from "exceljs";
+import PptxGenJS from "pptxgenjs";
+import { Document, Packer, Paragraph, HeadingLevel, PageBreak } from "docx";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const downloads = mkdtempSync(join(tmpdir(), "e2e-office-"));
@@ -75,9 +80,21 @@ async function pdfText(path) {
   const bytes = new Uint8Array(readFileSync(path));
   if (Buffer.from(bytes.subarray(0, 5)).toString("latin1") !== "%PDF-") throw new Error(`not a PDF: starts with ${JSON.stringify(Buffer.from(bytes.subarray(0, 8)).toString("latin1"))}`);
   const doc = await getDocument({ data: bytes, verbosity: 0 }).promise;
-  let text = "";
-  for (let i = 1; i <= doc.numPages; i++) text += (await (await doc.getPage(i)).getTextContent()).items.map((t) => t.str).join(" ") + "\n";
-  return { text, producer: String((await doc.getMetadata()).info?.Producer ?? "") };
+  const pages = [];
+  for (let i = 1; i <= doc.numPages; i++) pages.push((await (await doc.getPage(i)).getTextContent()).items.map((t) => t.str).join(" "));
+  const text = pages.map((p) => p + "\n").join("");
+  return { text, pages, producer: String((await doc.getMetadata()).info?.Producer ?? "") };
+}
+// What the PDF's catalog says about it: bookmarks, tags, PDF/A.
+async function catalog(path) {
+  const pdf = await PDFDocument.load(readFileSync(path), { updateMetadata: false });
+  const md = pdf.catalog.lookup(PDFName.of("Metadata"));
+  const xmp = md ? Buffer.from(md.getContents()).toString("utf8") : "";
+  return {
+    outline: Boolean(pdf.catalog.get(PDFName.of("Outlines"))),
+    tagged: Boolean(pdf.catalog.get(PDFName.of("StructTreeRoot"))),
+    pdfa: (xmp.match(/pdfaid:part(?:>|=")(\d)/) ?? [])[1],
+  };
 }
 // Waits for the result to download, failing at once if an error message or a
 // print preview shows instead.
@@ -133,6 +150,79 @@ await test("Excel → PDF afterwards: one click, no questions", async () => {
   if (!text.includes("Hosting")) throw new Error(`text was ${JSON.stringify(text.slice(0, 80))}`);
   if (!/LibreOffice/.test(producer)) throw new Error(`written by ${producer}`);
   return '"Hosting" found';
+});
+
+// Fixtures for the export options, made here.
+const made = (name, bytes) => {
+  const path = join(downloads, name);
+  writeFileSync(path, bytes);
+  return path;
+};
+const sections = [];
+for (const [i, title] of ["Overview", "Budget", "Timeline"].entries()) {
+  if (i) sections.push(new Paragraph({ children: [new PageBreak()] }));
+  sections.push(new Paragraph({ text: title, heading: HeadingLevel.HEADING_1, outlineLevel: 0 }), new Paragraph(`Section ${i + 1}`));
+}
+const report = made("sections.docx", await Packer.toBuffer(new Document({ sections: [{ children: sections }] })));
+const book = new ExcelJS.Workbook();
+for (const name of ["Wide", "Second"]) {
+  const ws = book.addWorksheet(name);
+  ws.columns = Array.from({ length: 30 }, () => ({ width: 14 }));
+  for (let r = 0; r < 60; r++) ws.addRow(Array.from({ length: 30 }, (_, c) => `${name}R${r}C${c}`));
+}
+const wide = made("wide.xlsx", new Uint8Array(await book.xlsx.writeBuffer()));
+const deck = new PptxGenJS();
+deck.addSlide().addText("Opening slide", { x: 1, y: 1, w: 8, h: 1 });
+const backup = deck.addSlide();
+backup.addText("Backup slide", { x: 1, y: 1, w: 8, h: 1 });
+backup.hidden = true;
+deck.addSlide().addText("Closing slide", { x: 1, y: 1, w: 8, h: 1 }).addNotes("Thank the team");
+const slides = made("deck.pptx", new Uint8Array(await deck.write({ outputType: "arraybuffer" })));
+const convert = async (path, choose) => {
+  await page.locator("input[type=file]").first().setInputFiles(path);
+  await choose();
+  return download(() => page.getByRole("button", { name: "Convert to PDF", exact: true }).click(), 300000);
+};
+
+await test("Word → PDF options: pages, PDF/A, tags, bookmarks", async () => {
+  await open("/en/word-to-pdf");
+  const path = await convert(report, async () => {
+    await page.getByLabel("Pages (blank for all)").fill("2-3");
+    await page.getByLabel("PDF/A for archiving").selectOption("2b");
+    await page.getByLabel("Tagged PDF for screen readers").check({ force: true });
+  });
+  const { pages } = await pdfText(path);
+  const info = await catalog(path);
+  if (pages.length !== 2 || !pages[0].includes("Budget")) throw new Error(`pages ${JSON.stringify(pages)}`);
+  if (info.pdfa !== "2" || !info.tagged || !info.outline) throw new Error(`catalog ${JSON.stringify(info)}`);
+  await open("/en/word-to-pdf");
+  const plain = await convert(report, () => page.getByLabel("Bookmarks from headings").uncheck({ force: true }));
+  if ((await catalog(plain)).outline) throw new Error("bookmarks when turned off");
+  return `pages 2-3, PDF/A-${info.pdfa}, tagged, bookmarks on and then off`;
+});
+
+await test("Excel → PDF options: fit to page width, chosen sheet", async () => {
+  await open("/en/excel-to-pdf");
+  const path = await convert(wide, async () => {
+    await page.getByRole("radio", { name: /Fit to page width/ }).click();
+    await page.getByLabel("Sheets (blank for all)").fill("Second");
+  });
+  const { pages } = await pdfText(path);
+  const rows = (p, c) => [...p.matchAll(new RegExp(`(\\w+R\\d+)C${c}\\b`, "g"))].map((m) => m[1]).join();
+  if (pages.some((p) => /Wide/.test(p) || rows(p, 0) !== rows(p, 29))) throw new Error(`pages ${JSON.stringify(pages.map((p) => p.slice(0, 40)))}`);
+  if (!pages.join(" ").includes("SecondR59C29")) throw new Error("last cell missing");
+  return `${pages.length} page(s), every row whole, only "Second"`;
+});
+
+await test("PowerPoint → PDF options: hidden slides and notes pages", async () => {
+  await open("/en/powerpoint-to-pdf");
+  const path = await convert(slides, async () => {
+    await page.getByRole("radio", { name: /Slides, then notes pages/ }).click();
+    await page.getByLabel("Include hidden slides").check({ force: true });
+  });
+  const { pages } = await pdfText(path);
+  if (pages.length !== 6 || !pages[1].includes("Backup slide") || !pages[5].includes("Thank the team")) throw new Error(`pages ${JSON.stringify(pages)}`);
+  return "3 slides with the hidden one, then 3 notes pages";
 });
 
 await browser.close();
