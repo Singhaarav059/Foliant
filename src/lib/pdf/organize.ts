@@ -8,6 +8,7 @@ import { baseName, bytesOf, parseRanges, pdfBlob, type Output, type Progress } f
 import { PdfError } from "./errors";
 import { openForEdit, shownRotation } from "./open";
 import { prepareQpdf } from "./qpdf";
+import { rangeLabel } from "./split-plan";
 
 // Opens a file as readers do (see open.ts). Throws a PdfError: encrypted
 // only when it needs an open password, damaged, not_pdf or no_pages.
@@ -264,7 +265,7 @@ function ownResources(src: PDFDocument, leaf: PDFPageLeaf, page: PDFPageLeaf): P
   return out;
 }
 
-// Split by size copies each page again for every trial part.
+// Split by size copies each page twice: once to weigh it, once into its part.
 const namesOf = new WeakMap<PDFPageLeaf, Set<string> | null>();
 
 // Every name (/Im1, /F2 …) in a page's content streams, decoded; undefined
@@ -453,21 +454,7 @@ function outlineOf(s: Source): OutlineItem[] {
   const { doc } = s;
   const ctx = doc.context;
   const index = new Map(doc.getPages().map((p, i) => [p.ref, i] as const));
-  const names = doc.catalog.lookupMaybe(N("Names"), PDFDict);
-  let dests: Map<string, PDFObject> | undefined;
-  // A destination: an array, or a name to look up (old style in /Dests,
-  // new style in the Dests name tree), either possibly wrapped in { D }.
-  const destOf = (o: PDFObject | undefined, depth = 0): PDFArray | undefined => {
-    const d = o && ctx.lookup(o);
-    if (depth > 3 || !d) return undefined;
-    if (d instanceof PDFArray) return d;
-    if (d instanceof PDFDict) return destOf(d.get(N("D")), depth + 1);
-    if (d instanceof PDFName) return destOf(doc.catalog.lookupMaybe(N("Dests"), PDFDict)?.get(d), depth + 1);
-    const key = textOf(d);
-    if (key === undefined) return undefined;
-    dests ??= new Map(nameTree(doc, names?.get(N("Dests"))).map(([k, v]) => [k.decodeText(), v] as const));
-    return destOf(dests.get(key), depth + 1);
-  };
+  const destOf = destinations(doc);
   const seen = new Set<PDFDict>();
   // `anchor`: whether the nearest bookmark above with a page has it kept.
   const walk = (first: PDFObject | undefined, depth = 0, anchor?: boolean): OutlineItem[] => {
@@ -498,6 +485,25 @@ function outlineOf(s: Source): OutlineItem[] {
     return items;
   };
   return walk(doc.catalog.lookupMaybe(N("Outlines"), PDFDict)?.get(N("First")));
+}
+
+// A destination: an array, or a name to look up (old style in /Dests, new
+// style in the Dests name tree), either possibly wrapped in { D }.
+function destinations(doc: PDFDocument) {
+  const ctx = doc.context;
+  let dests: Map<string, PDFObject> | undefined;
+  const destOf = (o: PDFObject | undefined, depth = 0): PDFArray | undefined => {
+    const d = o && ctx.lookup(o);
+    if (depth > 3 || !d) return undefined;
+    if (d instanceof PDFArray) return d;
+    if (d instanceof PDFDict) return destOf(d.get(N("D")), depth + 1);
+    if (d instanceof PDFName) return destOf(doc.catalog.lookupMaybe(N("Dests"), PDFDict)?.get(d), depth + 1);
+    const key = textOf(d);
+    if (key === undefined) return undefined;
+    dests ??= new Map(nameTree(doc, doc.catalog.lookupMaybe(N("Names"), PDFDict)?.get(N("Dests"))).map(([k, v]) => [k.decodeText(), v] as const));
+    return destOf(dests.get(key), depth + 1);
+  };
+  return destOf;
 }
 
 // Writes bookmarks as the document's outline. A closed one's count is negative.
@@ -544,34 +550,52 @@ async function subset(src: PDFDocument, indices: number[]) {
   return out;
 }
 
-export async function split(
-  file: File,
-  opts: { splitMode: string; ranges: string; every: number; maxMb: number; mergeRanges: boolean },
-  progress?: Progress,
-): Promise<Output[]> {
+export type SplitOptions = {
+  splitMode: string;
+  ranges: string;
+  every: number;
+  // The size limit, in sizeUnit ("KB" or "MB"). maxMb is the older form.
+  maxSize?: number;
+  sizeUnit?: string;
+  maxMb?: number;
+  mergeRanges: boolean;
+  // Compress a part that is still over the size limit (one page larger than it).
+  allowCompression?: boolean;
+  // Split by bookmarks at this level and the ones above it (1 = top level only).
+  bookmarkLevel?: number;
+};
+
+export async function split(file: File, opts: SplitOptions, progress?: Progress): Promise<Output[]> {
   const { doc: src, note } = await loadNoting(file);
   const total = src.getPageCount();
   const stem = baseName(file.name);
-  let groups: number[][];
+  const named = (pages: number[], blob: Blob, name = `${stem}-${rangeLabel(pages)}.pdf`): Output => ({ name, blob });
 
+  if (opts.splitMode === "size") {
+    const unit = opts.maxSize === undefined ? 1024 * 1024 : opts.sizeUnit === "KB" ? 1024 : 1024 * 1024;
+    const limit = Math.max(1024, (opts.maxSize ?? opts.maxMb ?? 5) * unit);
+    const parts = await sizeParts(src, limit, progress);
+    const outputs: Output[] = [];
+    for (const part of parts) {
+      let blob = part.blob;
+      if (blob.size > limit && opts.allowCompression) blob = await squeeze(blob, limit, file.name);
+      outputs.push(named(part.pages, blob));
+    }
+    return note(outputs);
+  }
+
+  let groups: number[][];
+  let names: (string | undefined)[] = [];
   if (opts.splitMode === "every") {
     const n = Math.max(1, Math.floor(opts.every));
     groups = [];
     for (let i = 0; i < total; i += n) groups.push(Array.from({ length: Math.min(n, total - i) }, (_, k) => i + k));
-  } else if (opts.splitMode === "size") {
-    // Grow each part page by page until the next page would push it over the limit.
-    const limit = opts.maxMb * 1024 * 1024;
-    groups = [];
-    let current: number[] = [];
-    for (let i = 0; i < total; i++) {
-      const trial = await (await subset(src, [...current, i])).save({ useObjectStreams: true });
-      if (trial.byteLength > limit && current.length) {
-        groups.push(current);
-        current = [i];
-      } else current.push(i);
-      progress?.(i + 1, total * 2);
-    }
-    if (current.length) groups.push(current);
+  } else if (opts.splitMode === "bookmarks") {
+    const starts = bookmarkStarts(src, Math.max(1, Math.floor(opts.bookmarkLevel ?? 1)));
+    if (!starts.length) throw new PdfError("no_bookmarks", file.name);
+    const bounds = starts[0].page > 0 ? [{ page: 0, title: undefined }, ...starts] : starts;
+    groups = bounds.map((b, i) => Array.from({ length: (bounds[i + 1]?.page ?? total) - b.page }, (_, k) => b.page + k));
+    names = fileNames(bounds.map((b) => b.title));
   } else {
     groups = parseRanges(opts.ranges, total);
     if (!groups.length) throw new PdfError("bad_ranges", file.name);
@@ -582,12 +606,128 @@ export async function split(
   }
   const outputs: Output[] = [];
   for (let g = 0; g < groups.length; g++) {
-    const pages = groups[g];
-    const label = pages.length === 1 ? `${pages[0] + 1}` : `${pages[0] + 1}-${pages[pages.length - 1] + 1}`;
-    outputs.push({ name: `${stem}-${label}.pdf`, blob: await save(await subset(src, pages)) });
+    outputs.push(named(groups[g], await save(await subset(src, groups[g])), names[g]));
     progress?.(g + 1, groups.length);
   }
   return note(outputs);
+}
+
+// Split by size in one pass. Each page is copied once into a trial part and
+// weighed by the objects its copy adds, so what it shares with the part's
+// earlier pages (a font, a logo) counts once; the part ends before the page
+// that would take it over the limit. Each part is then saved once. Weights
+// are what the objects take before compression, so the saved part is
+// usually smaller: the ratio of the two so far scales the next part's
+// budget. A part that still comes out over the limit gives pages back from
+// its end and is saved again. A page larger than the limit on its own is a
+// part of its own.
+async function sizeParts(src: PDFDocument, limit: number, progress?: Progress) {
+  const total = src.getPageCount();
+  const parts: { pages: number[]; blob: Blob }[] = [];
+  let saved = 0, weighed = 0;
+  for (let start = 0; start < total; ) {
+    const ratio = weighed ? Math.min(4, Math.max(0.25, saved / weighed)) : 1;
+    const weights = await weigh(src, start, limit / ratio);
+    let count = weights.length;
+    for (;;) {
+      const pages = Array.from({ length: count }, (_, k) => start + k);
+      const blob = await save(await subset(src, pages));
+      if (blob.size <= limit || count === 1) {
+        parts.push({ pages, blob });
+        saved += blob.size;
+        weighed += weights[count - 1];
+        break;
+      }
+      count = Math.max(1, Math.min(count - 1, Math.floor((count * limit * 0.95) / blob.size)));
+    }
+    start += count;
+    progress?.(start, total);
+  }
+  return parts;
+}
+
+// The running weight of the pages from `start` on, copied one by one into a
+// trial part, up to the first page that takes it past `budget` (and at least
+// one page). A file's own structure (catalog, page tree, cross-references)
+// starts it off.
+async function weigh(src: PDFDocument, start: number, budget: number) {
+  const total = src.getPageCount();
+  const trial = await PDFDocument.create();
+  const ctx = trial.context;
+  const take = pageCopier(src, trial, Array.from({ length: total - start }, (_, k) => start + k));
+  const weights: number[] = [];
+  let weight = 1024;
+  for (let i = start; i < total; i++) {
+    const before = ctx.largestObjectNumber;
+    const page = take(i);
+    let added = sizeOf(page.node) + 40;
+    for (let n = before + 1; n <= ctx.largestObjectNumber; n++) {
+      const obj = ctx.lookup(PDFRef.of(n));
+      if (obj) added += sizeOf(obj) + 40;
+    }
+    if (weights.length && weight + added > budget) break;
+    weight += added;
+    weights.push(weight);
+  }
+  return weights;
+}
+
+// An object's size as written, streams by their stored (encoded) bytes.
+const sizeOf = (obj: PDFObject) =>
+  obj instanceof PDFRawStream ? obj.dict.sizeInBytes() + obj.contents.length : obj.sizeInBytes();
+
+// A part over the size limit, compressed: at the recommended level, then at
+// the strongest, until it fits. The smallest result is kept.
+async function squeeze(blob: Blob, limit: number, name: string) {
+  const { compress } = await import("./optimize");
+  let best = blob;
+  for (const level of ["recommended", "extreme"]) {
+    const [out] = await compress(new File([best], name, { type: "application/pdf" }), { level });
+    if (out && out.blob.size < best.size) best = out.blob;
+    if (best.size <= limit) break;
+  }
+  return best;
+}
+
+// Where each part starts when a file is split by its bookmarks: the pages
+// bookmarks down to `level` point at, in page order. A page several
+// bookmarks point at (a part and its first chapter) is named after the
+// deepest of them.
+function bookmarkStarts(doc: PDFDocument, level: number) {
+  const ctx = doc.context;
+  const index = new Map(doc.getPages().map((p, i) => [p.ref, i] as const));
+  const destOf = destinations(doc);
+  const found = new Map<number, { page: number; title: string; depth: number }>();
+  const seen = new Set<PDFDict>();
+  const walk = (first: PDFObject | undefined, depth: number) => {
+    if (depth > Math.min(level, MAX_OUTLINE_DEPTH)) return;
+    for (let o = first && ctx.lookup(first); o instanceof PDFDict && !seen.has(o); o = ctx.lookup(o.get(N("Next")) ?? PDFNull)) {
+      seen.add(o);
+      const action = o.lookupMaybe(N("A"), PDFDict);
+      const dest = destOf(o.get(N("Dest")) ?? (action?.get(N("S")) === N("GoTo") ? action.get(N("D")) : undefined));
+      const target = dest?.get(0);
+      const page = target instanceof PDFRef ? index.get(target) : undefined;
+      if (page !== undefined && (found.get(page)?.depth ?? 0) < depth) found.set(page, { page, title: textOf(o.lookup(N("Title"))) ?? "", depth });
+      walk(o.get(N("First")), depth + 1);
+    }
+  };
+  walk(doc.catalog.lookupMaybe(N("Outlines"), PDFDict)?.get(N("First")), 1);
+  return [...found.values()].sort((a, b) => a.page - b.page);
+}
+
+// File names from bookmark titles: characters file systems refuse become
+// spaces, and a name that's taken gets a number ("Notes (2).pdf"). No title
+// leaves the part to its page numbers.
+function fileNames(titles: (string | undefined)[]) {
+  const taken = new Set<string>();
+  return titles.map((title) => {
+    const clean = (title ?? "").replace(/[\x00-\x1f\x7f/\\:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().replace(/[. ]+$/, "").slice(0, 120).trim();
+    if (!clean) return undefined;
+    let name = clean;
+    for (let k = 2; taken.has(name.toLowerCase()); k++) name = `${clean} (${k})`;
+    taken.add(name.toLowerCase());
+    return `${name}.pdf`;
+  });
 }
 
 // One entry per output page. `file` indexes the input list; `blank` inserts an empty page.

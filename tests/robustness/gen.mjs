@@ -648,6 +648,18 @@ if (want("book-links.pdf")) {
   }
   toc.node.set(PDFName.of("Annots"), ctx.obj(chapters.map((p, i) => ctx.register(ctx.obj({ Type: "Annot", Subtype: "Link", Rect: [72, 700 - i * 12, 300, 710 - i * 12], Border: [0, 0, 0], Dest: [p.ref, PDFName.of("Fit")] })))));
   for (const p of chapters) p.node.set(PDFName.of("Annots"), ctx.obj([ctx.register(ctx.obj({ Type: "Annot", Subtype: "Link", Rect: [72, 60, 200, 80], Border: [0, 0, 0], Dest: [toc.ref, PDFName.of("Fit")] }))]));
+  // A bookmark per chapter, each with one for its photo underneath.
+  const outline = ctx.nextRef();
+  const marks = chapters.map(() => ctx.nextRef());
+  chapters.forEach((p, i) => {
+    const photo = ctx.register(ctx.obj({ Title: PDFHexString.fromText(`Photo ${i + 1}`), Parent: marks[i], Dest: [p.ref, PDFName.of("XYZ"), 72, 640, null] }));
+    ctx.assign(marks[i], ctx.obj({
+      Title: PDFHexString.fromText(`Chapter ${i + 1}`), Parent: outline, Dest: [p.ref, PDFName.of("Fit")], First: photo, Last: photo, Count: -1,
+      ...(i ? { Prev: marks[i - 1] } : {}), ...(i < marks.length - 1 ? { Next: marks[i + 1] } : {}),
+    }));
+  });
+  ctx.assign(outline, ctx.obj({ Type: "Outlines", First: marks[0], Last: marks[marks.length - 1], Count: marks.length }));
+  doc.catalog.set(PDFName.of("Outlines"), outline);
   await put("book-links.pdf", await doc.save(), { words: ["CONTENTS", "CHAPTER1", "CHAPTER20"], imagesPerPage: 1 });
 }
 

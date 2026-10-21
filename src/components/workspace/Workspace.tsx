@@ -7,6 +7,7 @@ import { useUser, postJson } from "../User";
 import { Dropzone, useFileIntake } from "./Dropzone";
 import { FileBoard, type Item } from "./FileBoard";
 import { Options } from "./Options";
+import { useSplitHints } from "./splitHints";
 import { PageBoard, type PageItem } from "./PageBoard";
 import { Editor, prepareEditor } from "./Editor";
 import { Scanner } from "./Scanner";
@@ -68,6 +69,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
   const turn = tool.id === "rotate" ? Number(options.angle) || 0 : 0;
   // Office → PDF in the static build, which has a fidelity choice.
   const office = tool.options.some((o) => o.key === "fidelity");
+  const notes = useSplitHints(tool, files[0], options, setOptions);
 
   useEffect(() => {
     if (tool.runtime === "browser") return;
@@ -503,7 +505,7 @@ export function Workspace({ toolId }: { toolId: ToolId }) {
         <div className="min-w-0">{board}</div>
         <aside className="card h-max p-5 lg:sticky lg:top-[88px]">
           <p className="mb-5 text-[14px] font-medium">{t("ws.options")}</p>
-          <Options restore defs={tool.options} values={options} onChange={(k, v) => setOptions((o) => ({ ...o, [k]: v }))} />
+          <Options restore defs={tool.options} values={options} notes={notes} onChange={(k, v) => setOptions((o) => ({ ...o, [k]: v }))} />
           <button className="btn btn-primary btn-lg mt-6 hidden w-full lg:inline-flex" onClick={start}>
             {t(`tool.${tool.id}.action`)} <ArrowRight size={18} className="rtl:rotate-180" />
           </button>

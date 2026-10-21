@@ -33,6 +33,7 @@
     "test:organize": "node tests/organize.mjs",
     "test:plural": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/plural.mjs",
     "test:pageboard": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/pageboard.mjs",
+    "test:split": "node tests/split.mjs",
     "test:protect": "node tests/protect.mjs",
     "test:pades": "node tests/pades.mjs",
     "test:layout": "node tests/layout.mjs",

@@ -135,6 +135,7 @@ try {
       const { split } = await load("organize");
       const opts = variant === "size" ? { splitMode: "size", ranges: "", every: 1, maxMb: 1, mergeRanges: false }
         : variant === "ranges" ? { splitMode: "ranges", ranges: "1-2, 3-4", every: 1, maxMb: 5, mergeRanges: false }
+        : variant === "bookmarks" ? { splitMode: "bookmarks", ranges: "", every: 1, maxMb: 5, mergeRanges: false, bookmarkLevel: 1 }
         : { splitMode: "every", ranges: "", every: 1, maxMb: 5, mergeRanges: false };
       const outs = await split(f, opts);
       let pages = 0, text = "", unreadable = 0;

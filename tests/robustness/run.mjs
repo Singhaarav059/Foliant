@@ -78,6 +78,7 @@ for (const f of ["base.pdf", "book-links.pdf", "odd-boxes.pdf", "annots.pdf", "a
 }
 for (const v of ["at", "dashdash", "dash", "unicode", "long", "space", "empty"]) cases.push(["protect", "base.pdf", v]);
 for (const f of ["base.pdf", "pages-1500.pdf"]) cases.push(["split", f, "size"], ["split", f, "ranges"]);
+for (const f of ["base.pdf", "book-links.pdf"]) cases.push(["split", f, "bookmarks"]);
 for (const v of ["hindi", "cjk", "under", "mosaic"]) for (const f of ["base.pdf", "odd-boxes.pdf"]) cases.push(["watermark", f, v]);
 for (const f of ["base.pdf", "odd-boxes.pdf"]) cases.push(["redact", f, "labels"]);
 cases.push(["excel", "base.pdf", "colonname"], ["redact", "huge-page.pdf", "huge"]);

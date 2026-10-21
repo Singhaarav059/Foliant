@@ -69,7 +69,11 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
     }
     case "split": {
       const { split } = await import("./organize");
-      return split(files[0], { splitMode: s(o.splitMode), ranges: s(o.ranges), every: n(o.every), maxMb: n(o.maxMb), mergeRanges: b(o.mergeRanges) }, progress);
+      return split(files[0], {
+        splitMode: s(o.splitMode), ranges: s(o.ranges), every: n(o.every), mergeRanges: b(o.mergeRanges),
+        ...(o.maxSize === undefined ? { maxMb: n(o.maxMb) } : { maxSize: n(o.maxSize), sizeUnit: s(o.sizeUnit) }),
+        allowCompression: b(o.allowCompression), bookmarkLevel: n(o.bookmarkLevel),
+      }, progress);
     }
     case "rotate": {
       const { rotateAll } = await import("./organize");
