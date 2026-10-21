@@ -39,6 +39,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "editar-pdf", "pdf-forms": "formularios-pdf", "unlock-pdf": "desbloquear-pdf", "protect-pdf": "proteger-pdf",
     "sign-pdf": "firmar-pdf", "redact-pdf": "censurar-pdf", "compare-pdf": "comparar-pdf",
     "pdf-converter": "convertidor-pdf", "reduce-pdf-size": "reducir-tamano-pdf", "pdf-editor": "editor-pdf", "pdf-security": "seguridad-pdf",
+    "exam-photo-resizer": "foto-para-examen", "summarize-pdf": "resumir-pdf", "chat-with-pdf": "chatear-con-pdf", "translate-pdf": "traducir-pdf", "verify-pdf-signature": "verificar-firma-pdf",
   },
   fr: {
     "merge-pdf": "fusionner-pdf", "split-pdf": "diviser-pdf", "extract-pages": "extraire-pages-pdf", "remove-pages": "supprimer-pages-pdf",
@@ -48,6 +49,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "modifier-pdf", "pdf-forms": "formulaires-pdf", "unlock-pdf": "deverrouiller-pdf", "protect-pdf": "proteger-pdf",
     "sign-pdf": "signer-pdf", "redact-pdf": "caviarder-pdf", "compare-pdf": "comparer-pdf",
     "pdf-converter": "convertisseur-pdf", "reduce-pdf-size": "reduire-taille-pdf", "pdf-editor": "editeur-pdf", "pdf-security": "securite-pdf",
+    "exam-photo-resizer": "photo-pour-concours", "summarize-pdf": "resumer-pdf", "chat-with-pdf": "discuter-avec-pdf", "translate-pdf": "traduire-pdf", "verify-pdf-signature": "verifier-signature-pdf",
   },
   de: {
     "merge-pdf": "pdf-zusammenfuegen", "split-pdf": "pdf-teilen", "extract-pages": "pdf-seiten-extrahieren", "remove-pages": "pdf-seiten-entfernen",
@@ -57,6 +59,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "pdf-bearbeiten", "pdf-forms": "pdf-formulare", "unlock-pdf": "pdf-entsperren", "protect-pdf": "pdf-schuetzen",
     "sign-pdf": "pdf-unterschreiben", "redact-pdf": "pdf-schwaerzen", "compare-pdf": "pdf-vergleichen",
     "pdf-converter": "pdf-konverter", "reduce-pdf-size": "pdf-verkleinern", "pdf-security": "pdf-sicherheit",
+    "exam-photo-resizer": "pruefungsfoto-anpassen", "summarize-pdf": "pdf-zusammenfassen", "chat-with-pdf": "mit-pdf-chatten", "translate-pdf": "pdf-uebersetzen", "verify-pdf-signature": "pdf-signatur-pruefen",
   },
   it: {
     "merge-pdf": "unire-pdf", "split-pdf": "dividere-pdf", "extract-pages": "estrarre-pagine-pdf", "remove-pages": "rimuovere-pagine-pdf",
@@ -66,6 +69,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "modificare-pdf", "pdf-forms": "moduli-pdf", "unlock-pdf": "sbloccare-pdf", "protect-pdf": "proteggere-pdf",
     "sign-pdf": "firmare-pdf", "redact-pdf": "oscurare-pdf", "compare-pdf": "confrontare-pdf",
     "pdf-converter": "convertitore-pdf", "reduce-pdf-size": "ridurre-dimensione-pdf", "pdf-editor": "editor-pdf", "pdf-security": "sicurezza-pdf",
+    "exam-photo-resizer": "foto-per-concorsi", "summarize-pdf": "riassumere-pdf", "chat-with-pdf": "chattare-con-pdf", "translate-pdf": "tradurre-pdf", "verify-pdf-signature": "verificare-firma-pdf",
   },
   pt: {
     "merge-pdf": "juntar-pdf", "split-pdf": "dividir-pdf", "extract-pages": "extrair-paginas-pdf", "remove-pages": "remover-paginas-pdf",
@@ -75,6 +79,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "editar-pdf", "pdf-forms": "formularios-pdf", "unlock-pdf": "desbloquear-pdf", "protect-pdf": "proteger-pdf",
     "sign-pdf": "assinar-pdf", "redact-pdf": "ocultar-dados-pdf", "compare-pdf": "comparar-pdf",
     "pdf-converter": "conversor-pdf", "reduce-pdf-size": "reduzir-tamanho-pdf", "pdf-editor": "editor-pdf", "pdf-security": "seguranca-pdf",
+    "exam-photo-resizer": "foto-para-concurso", "summarize-pdf": "resumir-pdf", "chat-with-pdf": "conversar-com-pdf", "translate-pdf": "traduzir-pdf", "verify-pdf-signature": "verificar-assinatura-pdf",
   },
   ru: {
     "merge-pdf": "obedinit-pdf", "split-pdf": "razdelit-pdf", "extract-pages": "izvlech-stranitsy-pdf", "remove-pages": "udalit-stranitsy-pdf",
@@ -84,6 +89,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "redaktirovat-pdf", "pdf-forms": "formy-pdf", "unlock-pdf": "razblokirovat-pdf", "protect-pdf": "zashchitit-pdf",
     "sign-pdf": "podpisat-pdf", "redact-pdf": "skryt-dannye-pdf", "compare-pdf": "sravnit-pdf",
     "pdf-converter": "konverter-pdf", "reduce-pdf-size": "umenshit-razmer-pdf", "pdf-editor": "redaktor-pdf", "pdf-security": "bezopasnost-pdf",
+    "exam-photo-resizer": "foto-dlya-ekzamena", "summarize-pdf": "kratko-izlozhit-pdf", "chat-with-pdf": "chat-s-pdf", "translate-pdf": "perevesti-pdf", "verify-pdf-signature": "proverit-podpis-pdf",
   },
   uk: {
     "merge-pdf": "obiednaty-pdf", "split-pdf": "rozdilyty-pdf", "extract-pages": "vytiahty-storinky-pdf", "remove-pages": "vydalyty-storinky-pdf",
@@ -93,6 +99,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "redahuvaty-pdf", "pdf-forms": "formy-pdf", "unlock-pdf": "rozblokuvaty-pdf", "protect-pdf": "zakhystyty-pdf",
     "sign-pdf": "pidpysaty-pdf", "redact-pdf": "prykhovaty-dani-pdf", "compare-pdf": "porivniaty-pdf",
     "pdf-converter": "konverter-pdf", "reduce-pdf-size": "zmenshyty-rozmir-pdf", "pdf-editor": "redaktor-pdf", "pdf-security": "bezpeka-pdf",
+    "exam-photo-resizer": "foto-dlia-ispytu", "summarize-pdf": "pidsumuvaty-pdf", "chat-with-pdf": "chat-z-pdf", "translate-pdf": "pereklasty-pdf", "verify-pdf-signature": "pereviryty-pidpys-pdf",
   },
   bg: {
     "merge-pdf": "obediniavane-na-pdf", "split-pdf": "razdeliane-na-pdf", "extract-pages": "izvlichane-na-stranitsi", "remove-pages": "premahvane-na-stranitsi",
@@ -102,6 +109,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "redaktirane-na-pdf", "pdf-forms": "pdf-formuliari", "unlock-pdf": "otkliuchvane-na-pdf", "protect-pdf": "zashtita-na-pdf",
     "sign-pdf": "podpisvane-na-pdf", "redact-pdf": "zalichavane-v-pdf", "compare-pdf": "sravniavane-na-pdf",
     "pdf-converter": "pdf-konvertor", "reduce-pdf-size": "namaliavane-na-razmera-na-pdf", "pdf-editor": "pdf-redaktor", "pdf-security": "sigurnost-na-pdf",
+    "exam-photo-resizer": "snimka-za-izpit", "summarize-pdf": "rezyume-na-pdf", "chat-with-pdf": "chat-s-pdf", "translate-pdf": "prevod-na-pdf", "verify-pdf-signature": "proverka-na-podpis-pdf",
   },
   el: {
     "merge-pdf": "sygchoneusi-pdf", "split-pdf": "diachorismos-pdf", "extract-pages": "exagogi-selidon-pdf", "remove-pages": "afairesi-selidon-pdf",
@@ -111,6 +119,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "epexergasia-pdf", "pdf-forms": "formes-pdf", "unlock-pdf": "xekleidoma-pdf", "protect-pdf": "prostasia-pdf",
     "sign-pdf": "ypografi-pdf", "redact-pdf": "apokrypsi-stoicheion-pdf", "compare-pdf": "sygkrisi-pdf",
     "pdf-converter": "metatropeas-pdf", "reduce-pdf-size": "meiosi-megethous-pdf", "pdf-editor": "epexergastis-pdf", "pdf-security": "asfaleia-pdf",
+    "exam-photo-resizer": "fotografia-exetaseon", "summarize-pdf": "perilipsi-pdf", "chat-with-pdf": "synomilia-me-pdf", "translate-pdf": "metafrasi-pdf", "verify-pdf-signature": "elegchos-ypografis-pdf",
   },
   ca: {
     "merge-pdf": "unir-pdf", "split-pdf": "dividir-pdf", "extract-pages": "extreure-pagines-pdf", "remove-pages": "eliminar-pagines-pdf",
@@ -120,6 +129,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "editar-pdf", "pdf-forms": "formularis-pdf", "unlock-pdf": "desbloquejar-pdf", "protect-pdf": "protegir-pdf",
     "sign-pdf": "signar-pdf", "redact-pdf": "censurar-pdf", "compare-pdf": "comparar-pdf",
     "pdf-converter": "convertidor-pdf", "reduce-pdf-size": "reduir-mida-pdf", "pdf-editor": "editor-pdf", "pdf-security": "seguretat-pdf",
+    "exam-photo-resizer": "foto-per-a-examens", "summarize-pdf": "resumir-pdf", "chat-with-pdf": "xatejar-amb-pdf", "translate-pdf": "traduir-pdf", "verify-pdf-signature": "verificar-signatura-pdf",
   },
   nl: {
     "merge-pdf": "pdf-samenvoegen", "split-pdf": "pdf-splitsen", "extract-pages": "paginas-extraheren", "remove-pages": "paginas-verwijderen",
@@ -129,6 +139,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "pdf-bewerken", "pdf-forms": "pdf-formulieren", "unlock-pdf": "pdf-ontgrendelen", "protect-pdf": "pdf-beveiligen",
     "sign-pdf": "pdf-ondertekenen", "redact-pdf": "pdf-zwartlakken", "compare-pdf": "pdf-vergelijken",
     "reduce-pdf-size": "pdf-verkleinen", "pdf-security": "pdf-beveiliging",
+    "exam-photo-resizer": "examenfoto-aanpassen", "summarize-pdf": "pdf-samenvatten", "chat-with-pdf": "chatten-met-pdf", "translate-pdf": "pdf-vertalen", "verify-pdf-signature": "pdf-handtekening-controleren",
   },
   id: {
     "merge-pdf": "gabungkan-pdf", "split-pdf": "pisahkan-pdf", "extract-pages": "ekstrak-halaman-pdf", "remove-pages": "hapus-halaman-pdf",
@@ -138,6 +149,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "pdf-forms": "formulir-pdf", "unlock-pdf": "buka-kunci-pdf", "protect-pdf": "lindungi-pdf",
     "sign-pdf": "tanda-tangan-pdf", "redact-pdf": "sensor-pdf", "compare-pdf": "bandingkan-pdf",
     "pdf-converter": "konverter-pdf", "reduce-pdf-size": "perkecil-ukuran-pdf", "pdf-editor": "editor-pdf", "pdf-security": "keamanan-pdf",
+    "exam-photo-resizer": "ubah-ukuran-foto-ujian", "summarize-pdf": "ringkas-pdf", "chat-with-pdf": "chat-dengan-pdf", "translate-pdf": "terjemahkan-pdf", "verify-pdf-signature": "periksa-tanda-tangan-pdf",
   },
   ms: {
     "merge-pdf": "gabung-pdf", "split-pdf": "pisah-pdf", "extract-pages": "ekstrak-halaman-pdf", "remove-pages": "buang-halaman-pdf",
@@ -147,6 +159,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "pdf-forms": "borang-pdf", "unlock-pdf": "buka-kunci-pdf", "protect-pdf": "lindungi-pdf",
     "sign-pdf": "tandatangan-pdf", "redact-pdf": "sunting-keluar-pdf", "compare-pdf": "banding-pdf",
     "pdf-converter": "penukar-pdf", "reduce-pdf-size": "kecilkan-saiz-pdf", "pdf-editor": "editor-pdf", "pdf-security": "keselamatan-pdf",
+    "exam-photo-resizer": "saiz-semula-foto-peperiksaan", "summarize-pdf": "ringkaskan-pdf", "chat-with-pdf": "sembang-dengan-pdf", "translate-pdf": "terjemah-pdf", "verify-pdf-signature": "semak-tandatangan-pdf",
   },
   pl: {
     "merge-pdf": "polacz-pdf", "split-pdf": "podziel-pdf", "extract-pages": "wyodrebnij-strony-pdf", "remove-pages": "usun-strony-pdf",
@@ -156,6 +169,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "edytuj-pdf", "pdf-forms": "formularze-pdf", "unlock-pdf": "odblokuj-pdf", "protect-pdf": "zabezpiecz-pdf",
     "sign-pdf": "podpisz-pdf", "redact-pdf": "utajnij-pdf", "compare-pdf": "porownaj-pdf",
     "pdf-converter": "konwerter-pdf", "reduce-pdf-size": "zmniejsz-rozmiar-pdf", "pdf-editor": "edytor-pdf", "pdf-security": "bezpieczenstwo-pdf",
+    "exam-photo-resizer": "zdjecie-do-egzaminu", "summarize-pdf": "stresc-pdf", "chat-with-pdf": "czat-z-pdf", "translate-pdf": "przetlumacz-pdf", "verify-pdf-signature": "sprawdz-podpis-pdf",
   },
   sv: {
     "merge-pdf": "sla-ihop-pdf", "split-pdf": "dela-pdf", "extract-pages": "extrahera-sidor-pdf", "remove-pages": "ta-bort-sidor-pdf",
@@ -165,6 +179,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "redigera-pdf", "pdf-forms": "pdf-formular", "unlock-pdf": "las-upp-pdf", "protect-pdf": "skydda-pdf",
     "sign-pdf": "signera-pdf", "redact-pdf": "maska-pdf", "compare-pdf": "jamfor-pdf",
     "pdf-converter": "pdf-konverterare", "reduce-pdf-size": "minska-pdf-storlek", "pdf-editor": "pdf-redigerare", "pdf-security": "pdf-sakerhet",
+    "exam-photo-resizer": "andra-storlek-pa-examensfoto", "summarize-pdf": "sammanfatta-pdf", "chat-with-pdf": "chatta-med-pdf", "translate-pdf": "oversatt-pdf", "verify-pdf-signature": "kontrollera-pdf-signatur",
   },
   tr: {
     "merge-pdf": "pdf-birlestir", "split-pdf": "pdf-bol", "extract-pages": "pdf-sayfa-cikar", "remove-pages": "pdf-sayfa-sil",
@@ -178,6 +193,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "pdf-duzenle", "pdf-forms": "pdf-formlari", "unlock-pdf": "pdf-kilidini-ac", "protect-pdf": "pdf-koru",
     "sign-pdf": "pdf-imzala", "redact-pdf": "pdf-karart", "compare-pdf": "pdf-karsilastir",
     "pdf-converter": "pdf-donusturucu", "reduce-pdf-size": "pdf-boyutunu-kucult", "pdf-editor": "pdf-editoru", "pdf-security": "pdf-guvenligi",
+    "exam-photo-resizer": "sinav-fotografi-boyutlandir", "summarize-pdf": "pdf-ozetle", "chat-with-pdf": "pdf-ile-sohbet", "translate-pdf": "pdf-cevir", "verify-pdf-signature": "pdf-imza-dogrula",
   },
   vi: {
     "merge-pdf": "gop-pdf", "split-pdf": "tach-pdf", "extract-pages": "trich-xuat-trang-pdf", "remove-pages": "xoa-trang-pdf",
@@ -187,6 +203,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "chinh-sua-pdf", "pdf-forms": "bieu-mau-pdf", "unlock-pdf": "mo-khoa-pdf", "protect-pdf": "bao-ve-pdf",
     "sign-pdf": "ky-pdf", "redact-pdf": "che-thong-tin-pdf", "compare-pdf": "so-sanh-pdf",
     "pdf-converter": "chuyen-doi-pdf", "reduce-pdf-size": "giam-dung-luong-pdf", "pdf-editor": "trinh-chinh-sua-pdf", "pdf-security": "bao-mat-pdf",
+    "exam-photo-resizer": "anh-thi-chinh-kich-thuoc", "summarize-pdf": "tom-tat-pdf", "chat-with-pdf": "tro-chuyen-voi-pdf", "translate-pdf": "dich-pdf", "verify-pdf-signature": "kiem-tra-chu-ky-pdf",
   },
   sw: {
     "merge-pdf": "unganisha-pdf", "split-pdf": "gawanya-pdf", "extract-pages": "toa-kurasa-pdf", "remove-pages": "ondoa-kurasa-pdf",
@@ -196,6 +213,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "edit-pdf": "hariri-pdf", "pdf-forms": "fomu-za-pdf", "unlock-pdf": "fungua-pdf", "protect-pdf": "linda-pdf",
     "sign-pdf": "tia-sahihi-pdf", "redact-pdf": "ficha-taarifa-pdf", "compare-pdf": "linganisha-pdf",
     "pdf-converter": "kigeuzi-cha-pdf", "reduce-pdf-size": "fanya-pdf-iwe-ndogo", "pdf-editor": "mhariri-wa-pdf", "pdf-security": "usalama-wa-pdf",
+    "exam-photo-resizer": "badili-ukubwa-wa-picha-ya-mtihani", "summarize-pdf": "fupisha-pdf", "chat-with-pdf": "ongea-na-pdf", "translate-pdf": "tafsiri-pdf", "verify-pdf-signature": "kagua-sahihi-ya-pdf",
   },
 };
 
