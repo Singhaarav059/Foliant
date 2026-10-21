@@ -447,7 +447,7 @@ await test("PDF/A-1b: a shading pattern whose graphics state fades renders the p
 });
 
 await test("render options show in a workflow step, where no preflight runs", async () => {
-  // Node strips tools.ts's types itself; its imports (mode.ts, plain JavaScript, the locale list and the OCR languages) need extensions.
+  // Node strips tools.ts's types itself; its imports (mode.ts, plain JavaScript, the locale and OCR language lists) need extensions.
   const dir = mkdtempSync(join(tmpdir(), "tools-"));
   writeFileSync(join(dir, "mode.mjs"), readFileSync(join(root, "src/lib/mode.ts")));
   writeFileSync(join(dir, "locales.mjs"), stripTypeScriptTypes(readFileSync(join(root, "src/lib/i18n/locales.ts"), "utf8")));

@@ -80,6 +80,7 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
       {first?.note === "notSmaller" && <p className="mt-2 text-[15px] text-muted">{t("res.notSmaller")}</p>}
       {first?.note?.startsWith("textFallback:") && <p className="mt-2 text-[15px] text-muted">{t("res.textFallback", { fonts: first.note.slice(13) })}</p>}
       {first?.note === "rebuilt" && <p className="mt-2 text-[15px] text-muted">{t("res.rebuilt")}</p>}
+      {first?.note?.startsWith("translate:") && <p className="mt-2 text-[15px] text-muted">{t(first.note === "translate:builtin" ? "res.translateBuiltin" : "res.translateModel")}</p>}
       {first?.note === "ocrNone" && <p className="mt-2 text-[15px] text-muted">{t("res.ocrNone")}</p>}
       {first?.note === "ocrDoubtful" && <p className="mt-2 text-[15px] text-muted">{t("res.ocrDoubtful")}</p>}
       {first?.note === "ocrUsed" && <p className="mt-2 text-[15px] text-muted">{t("res.ocrUsed")}</p>}
@@ -94,7 +95,7 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
       {pdfaLevel && <p className="mt-2 text-[15px] text-muted">{t("res.pdfaDowngraded", { level: pdfaLevel })}</p>}
       {summary && (
         <p className="mt-2 text-[15px] text-muted">
-          {t(outputs.every((o) => o.note?.startsWith("summary:builtin")) ? "res.summaryBuiltin" : "res.summaryExtractive")}
+          {t(outputs.every((o) => o.note?.startsWith("summary:model")) ? "res.summaryModel" : outputs.every((o) => o.note?.startsWith("summary:builtin")) ? "res.summaryBuiltin" : "res.summaryExtractive")}
           {outputs.some((o) => o.note?.endsWith(":noLang")) && <> {t("res.summaryNoLang")}</>}
         </p>
       )}

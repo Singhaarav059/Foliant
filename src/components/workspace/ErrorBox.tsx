@@ -27,6 +27,7 @@ const MESSAGES: Record<ErrorCode, [key: string, fix?: Fix]> = {
   page_too_large: ["err.pageTooLarge"],
   out_of_memory: ["err.outOfMemory"],
   no_text: ["err.noText", "ocr"],
+  no_translator: ["err.noTranslator"],
   no_images: ["err.noImages"],
   bad_ranges: ["err.badRanges"],
   bad_sheets: ["err.badSheets"],

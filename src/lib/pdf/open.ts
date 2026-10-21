@@ -63,6 +63,7 @@ export async function openForEdit(input: Uint8Array, name = "file.pdf"): Promise
     } catch (e) {
       throw isEncrypted(e) ? new PdfError("encrypted", name, e) : toPdfError(e, name, input.subarray(0, 1024));
     }
+    if (bytes !== input) decodeNames(doc);
   }
   let count: number;
   try {
@@ -134,4 +135,38 @@ export async function rebuilt(bytes: Uint8Array): Promise<Uint8Array> {
   node.set(PDFName.of("Kids"), ctx.obj(kids));
   doc.catalog.set(PDFName.of("Pages"), root);
   return doc.save({ useObjectStreams: false, addDefaultPage: false, updateFieldAppearances: false });
+}
+
+// qpdf writes the escapes in names in lower case (/text#2fcsv), and pdf-lib
+// only decodes upper case, so it would keep "#2f" as text and write it back
+// as /text#232fcsv. A '#' can't be part of a decoded name, so any left is
+// an escape: decode it.
+const HEX = /#([0-9a-fA-F]{2})/g;
+const decoded = (n: PDFName) => {
+  const v = n.decodeText();
+  return v.includes("#") ? PDFName.of(v.replace(HEX, (_, h: string) => String.fromCharCode(parseInt(h, 16)))) : n;
+};
+function decodeNames(doc: PDFDocument) {
+  const seen = new Set<unknown>();
+  const fix = (o: unknown): unknown => {
+    if (o instanceof PDFName) return decoded(o);
+    if (seen.has(o)) return o;
+    seen.add(o);
+    const dict = o instanceof PDFDict ? o : (o as { dict?: unknown })?.dict instanceof PDFDict ? ((o as { dict: PDFDict }).dict) : null;
+    if (dict) {
+      for (const [k, v] of dict.entries()) {
+        const k2 = decoded(k), v2 = fix(v);
+        if (k2 !== k) dict.delete(k);
+        if (k2 !== k || v2 !== v) dict.set(k2, v2 as never);
+      }
+    } else if (o instanceof PDFArray) {
+      for (let i = 0; i < o.size(); i++) {
+        const v = o.get(i), v2 = fix(v);
+        if (v2 !== v) o.set(i, v2 as never);
+      }
+    }
+    return o;
+  };
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) fix(obj);
+  fix(doc.context.trailerInfo.Root);
 }

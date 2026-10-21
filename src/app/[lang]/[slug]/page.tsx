@@ -42,8 +42,9 @@ export async function generateMetadata({ params }: PageProps<"/[lang]/[slug]">):
   const t = await getDictionary(lang);
   const tool = toolBySlug(slug);
   if (tool) {
-    const title = toolText(t, tool, "title");
-    const description = toolText(t, tool, "meta");
+    // Tools without their own search title and description use their name and summary.
+    const title = toolText(t, tool, "title") || t[`tool.${tool.id}.name` as DictKey];
+    const description = toolText(t, tool, "meta") || t[descKey(tool) as DictKey];
     return { title, description, ...pageMetadata({ lang, path: `/${slug}`, title, description, image: tool.slug }) };
   }
   if ((INFO as readonly string[]).includes(slug)) {

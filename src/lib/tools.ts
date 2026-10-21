@@ -30,7 +30,8 @@ export const CATEGORIES: { id: CategoryId }[] = [
 //  compare – two files side by side
 //  check   – a report on the file's signatures, nothing to download
 //  url     – a web address instead of a file
-export type ToolMode = "files" | "pages" | "editor" | "scan" | "compare" | "check" | "url";
+//  chat    – questions about one file, answered with page citations
+export type ToolMode = "files" | "pages" | "editor" | "scan" | "compare" | "check" | "url" | "chat";
 
 export type OptionDef =
   | { key: string; type: "select"; choices: string[]; default: string; when?: Cond }
@@ -54,7 +55,7 @@ export type ToolId =
   | "merge" | "split" | "extract" | "remove" | "organize" | "scan"
   | "compress" | "repair" | "ocr"
   | "jpgToPdf" | "wordToPdf" | "pptToPdf" | "excelToPdf" | "htmlToPdf"
-  | "pdfToJpg" | "pdfToWord" | "pdfToPpt" | "pdfToExcel" | "pdfToPdfa" | "pdfToMarkdown" | "summarize"
+  | "pdfToJpg" | "pdfToWord" | "pdfToPpt" | "pdfToExcel" | "pdfToPdfa" | "pdfToMarkdown" | "summarize" | "chat" | "translate"
   | "rotate" | "pageNumbers" | "watermark" | "crop" | "edit" | "forms"
   | "unlock" | "protect" | "sign" | "verify" | "redact" | "compare";
 
@@ -74,6 +75,8 @@ export type Tool = {
   isNew?: boolean;
   // The dictionary key of its description, when not tool.<id>.desc (see descKey).
   desc?: string;
+  // On-device AI models it can use (src/lib/ai/models.json), offered for download beside its options.
+  ai?: string[];
 };
 
 const PDF = ["pdf"];
@@ -253,10 +256,26 @@ const ALL: Tool[] = [
   {
     // src/lib/ai/summarize.ts: the browser's built-in AI when already on the device, else extractive.
     id: "summarize", slug: "summarize-pdf", category: "convertFrom", icon: "TextQuote", mode: "files",
-    runtime: "browser", accept: PDF, multiple: true, isNew: true,
+    runtime: "browser", accept: PDF, multiple: true, isNew: true, ai: ["small", "large"],
     options: [
       { key: "summaryLength", type: "select", choices: ["short", "medium", "long"], default: "medium" },
       { key: "summaryLang", type: "select", choices: ["same", ...LOCALE_CODES], default: "same" },
+    ],
+  },
+  {
+    // src/lib/ai/chat.ts: answers from the PDF's own text, citing pages; better with a model.
+    id: "chat", slug: "chat-with-pdf", category: "convertFrom", icon: "MessagesSquare", mode: "chat",
+    runtime: "browser", accept: PDF, multiple: false, isNew: true, ai: ["light", "small", "large"],
+    // Scanned pages are read like the PDF conversions read them.
+    options: AUTO_OCR,
+  },
+  {
+    // src/lib/ai/translate.ts: the browser's built-in Translator, else the large model.
+    id: "translate", slug: "translate-pdf", category: "convertFrom", icon: "Languages", mode: "files",
+    runtime: "browser", accept: PDF, multiple: true, isNew: true, ai: ["large"],
+    options: [
+      { key: "translateLang", type: "select", choices: [...LOCALE_CODES], default: "es" },
+      { key: "translateFormat", type: "select", choices: ["pdf", "md"], default: "pdf" },
     ],
   },
   // ── Edit

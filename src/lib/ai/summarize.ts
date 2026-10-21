@@ -1,10 +1,12 @@
 "use client";
 
-// Summarize PDF, light version. The browser's built-in Summarizer writes the
-// summary when its model is already on the device (desktop Chrome); otherwise
-// the document's own key sentences are picked (./extractive.ts). Another
-// output language uses the browser's built-in Translator the same way. Nothing
-// is ever downloaded or sent: a model that is "downloadable" is left alone.
+// Summarize PDF. A language model the visitor downloaded from this site
+// (./engine.ts) writes the summary when they picked one; otherwise the
+// browser's built-in Summarizer does when its model is already on the device
+// (desktop Chrome); otherwise the document's own key sentences are picked
+// (./extractive.ts). Another output language uses the browser's built-in
+// Translator the same way. Nothing is sent anywhere, and the browser's own
+// models are never downloaded: one that is "downloadable" is left alone.
 
 import { baseName, closePdf, openPdf, pdfjs, type Output, type Progress } from "../pdf/common";
 import { PdfError } from "../pdf/errors";
@@ -127,9 +129,36 @@ async function translate(md: string, from: string | undefined, to: string): Prom
   }
 }
 
+// How many key points a language model writes for each length.
+const POINTS: Record<Length, number> = { short: 3, medium: 5, long: 8 };
+
+// A language model's summary, written from the extractive long summary (the
+// document's key sentences) so it stays with what the document says and
+// fits a small model's context. The small model writes English only.
+async function modelSummary(doc: Doc, length: Length, lang: string | undefined, out: string | undefined, aiModel: string): Promise<{ md: string; inOut: boolean } | null> {
+  if (aiModel !== "small" && aiModel !== "large") return null;
+  // The small model reads English only.
+  if (aiModel === "small" && lang && !lang.startsWith("en")) return null;
+  const { status, generator } = await import("./engine");
+  if (!(await status()).stored[aiModel]) return null;
+  const write = out ?? lang ?? "en";
+  const inOut = aiModel === "large" || write.startsWith("en");
+  const language = new Intl.DisplayNames(["en"], { type: "language" }).of(inOut ? write : "en") ?? "English";
+  const facts = summarize(doc, "long", lang).replace(/^#+ .*$/gm, "").replace(/^- /gm, "").trim();
+  const text = await generator(aiModel)(
+    [
+      { role: "system", content: `You summarise documents. Write exactly ${POINTS[length]} key points as a Markdown list, one line each starting with "- ". Use only facts from the user's text. Write in ${language}.` },
+      { role: "user", content: facts },
+    ],
+    { maxNewTokens: 60 * POINTS[length] },
+  );
+  const points = text.split("\n").map((l) => l.trim()).filter((l) => /^([-*•]|\d+[.)])\s+\S/.test(l)).map((l) => l.replace(/^([-*•]|\d+[.)])\s+/, "- "));
+  return points.length ? { md: points.join("\n"), inOut: inOut && !!out } : null;
+}
+
 const same = (a: string | undefined, b: string) => !!a && a.split("-")[0].toLowerCase() === b.split("-")[0].toLowerCase() && !(b === "zh-Hant" && a === "zh");
 
-export async function summarizePdf(file: File, o: { summaryLength: string; summaryLang: string }, progress?: Progress): Promise<Output[]> {
+export async function summarizePdf(file: File, o: { summaryLength: string; summaryLang: string; aiModel?: string }, progress?: Progress): Promise<Output[]> {
   const length = (LENGTHS.includes(o.summaryLength as Length) ? o.summaryLength : "medium") as Length;
   const doc = await readDoc(file, progress);
   const text = doc.units.map((u) => u.text).join("\n");
@@ -138,10 +167,11 @@ export async function summarizePdf(file: File, o: { summaryLength: string; summa
   const target = o.summaryLang && o.summaryLang !== "same" ? languageTag(o.summaryLang) : undefined;
   const wanted = target && !same(lang, target) ? target : undefined;
 
-  const builtin = await builtinSummary(doc, text, length, lang, wanted);
+  const model = o.aiModel ? await modelSummary(doc, length, lang, wanted, o.aiModel).catch(() => null) : null;
+  const builtin = model ?? (await builtinSummary(doc, text, length, lang, wanted));
   let md = builtin?.md ?? summarize(doc, length, lang);
   if (!md.trim()) throw new PdfError("no_text", file.name);
-  let note = `summary:${builtin ? "builtin" : "extractive"}`;
+  let note = `summary:${model ? "model" : builtin ? "builtin" : "extractive"}`;
   if (wanted && !builtin?.inOut) {
     const t = await translate(md, lang, wanted);
     if (t) md = t;

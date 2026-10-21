@@ -207,6 +207,74 @@ console.log(`vendor: ${fontFiles} font slices`);
   console.log(`vendor: LibreOffice ${pkgVersion}, ${Object.values(manifest.files).reduce((n, f) => n + f.parts.length, 0)} parts`);
 }
 
+// On-device AI (src/lib/ai/): ONNX Runtime Web as Transformers.js pins it,
+// in its WebGPU build (which also runs on the CPU). The 27 MB .wasm is
+// gzipped to fit one file under the host's limit; the browser unzips it.
+// (Its "exports" hide package.json; the main file is in dist/.)
+const aiOrt = join(dirname(dirname(require.resolve("@huggingface/transformers"))), "node_modules", "onnxruntime-web");
+{
+  const aiOut = join(out, "ai");
+  mkdirSync(aiOut, { recursive: true });
+  copyFileSync(join(aiOrt, "dist", "ort-wasm-simd-threaded.asyncify.mjs"), join(aiOut, "ort-wasm-simd-threaded.asyncify.mjs"));
+  writeFileSync(join(aiOut, "ort-wasm-simd-threaded.asyncify.wasm.gz"), gzipSync(readFileSync(join(aiOrt, "dist", "ort-wasm-simd-threaded.asyncify.wasm")), { level: 9 }));
+  console.log("vendor: AI runtime");
+}
+
+// AI model weights, pinned by revision and SHA-256 in src/lib/ai/models.json.
+// They aren't on npm, so they're downloaded once from Hugging Face into
+// node_modules/.cache and checked. The site serves them from
+// public/vendor/models/<model>-<revision>/ (outside the hashed folder, so a
+// library update doesn't make visitors download them again), every file cut
+// into parts under the host's file limit, with parts.json listing each
+// part's hash. Visitors fetch them only after opting in (src/lib/ai/store.ts).
+// NOPLOAD_AI_MODELS picks which go in: "all" (default), "none", or a comma
+// list of model ids (CI uses "light").
+const aiModels = [];
+{
+  const { partBytes, models } = JSON.parse(readFileSync(join(process.cwd(), "src", "lib", "ai", "models.json"), "utf8"));
+  const wanted = (process.env.NOPLOAD_AI_MODELS ?? "all").split(",").map((s) => s.trim());
+  const modelsRoot = join(root, "models");
+  mkdirSync(modelsRoot, { recursive: true });
+  const sha = (buf) => createHash("sha256").update(buf).digest("hex");
+  // A pinned file from the cache, downloaded and checked first if need be.
+  const pinned = async (repo, revision, file, [hash, size]) => {
+    const cached = join(process.cwd(), "node_modules", ".cache", "nopload-models", repo, revision, file);
+    if (!existsSync(cached)) {
+      const url = `https://huggingface.co/${repo}/resolve/${revision}/${file}`;
+      console.log(`vendor: downloading ${url} (${(size / 1048576).toFixed(1)} MiB)`);
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`vendor: ${url}: HTTP ${res.status}`);
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length !== size || sha(buf) !== hash) throw new Error(`vendor: ${url} doesn't match its pinned size and SHA-256`);
+      mkdirSync(dirname(cached), { recursive: true });
+      writeFileSync(cached + ".part", buf);
+      renameSync(cached + ".part", cached);
+    }
+    const buf = readFileSync(cached);
+    if (buf.length !== size || sha(buf) !== hash) throw new Error(`vendor: ${cached} is corrupt; delete it and install again`);
+    return buf;
+  };
+  for (const [id, m] of Object.entries(models)) {
+    if (!wanted.includes("all") && !wanted.includes(id)) continue;
+    const dir = join(modelsRoot, `${id}-${m.revision.slice(0, 12)}`);
+    const parts = {};
+    for (const [file, pin] of Object.entries(m.files)) {
+      const buf = await pinned(m.repo, m.revision, file, pin);
+      mkdirSync(dirname(join(dir, file)), { recursive: true });
+      parts[file] = [];
+      for (let i = 0; i === 0 || i < buf.length; i += partBytes) {
+        const chunk = buf.subarray(i, i + partBytes);
+        writeFileSync(join(dir, `${file}.${String(parts[file].length).padStart(2, "0")}`), chunk);
+        parts[file].push(sha(chunk));
+      }
+    }
+    writeFileSync(join(dir, "parts.json"), JSON.stringify(parts));
+    const licenseText = m.licenseFile ? (await pinned(m.licenseFile[0], m.licenseFile[1], m.licenseFile[2], m.licenseFile.slice(3))).toString("utf8").trim() : null;
+    aiModels.push({ id, ...m, licenseText });
+  }
+  console.log(`vendor: AI models: ${aiModels.map((m) => m.id).join(", ") || "none"}`);
+}
+
 // Licences of everything the browser gets, for the licences page
 // (/{lang}/licenses), in public/vendor/licenses/<hash>/. <component>.txt
 // holds the licence and notice files of each package above, plus those of the
@@ -300,6 +368,11 @@ const licOut = join(licRoot, "staging");
       name: "LibreOffice", file: "libreoffice.txt", packages: [["@matbee/libreoffice-converter"]],
       includes: [["LibreOffice", "MPL-2.0", `https://git.libreoffice.org/core${loCommit ? `/+/${loCommit}` : ""}`, ["MPL-2.0.txt"]]],
     },
+    // On-device AI: the runtime, with ONNX Runtime Web as Transformers.js pins it.
+    {
+      name: "Transformers.js", file: "transformers.txt", packages: [["@huggingface/transformers"], ["onnxruntime-web", [], aiOrt]],
+      includes: [["ONNX Runtime", "MIT", "https://github.com/microsoft/onnxruntime"]],
+    },
     // LGPL-3.0: the source of the exact versions compiled in, their copyright
     // notices, and (§4(b)) the GNU GPL-3.0 text as well as the LGPL's.
     // libheif-wasm/LICENSE is libheif's own COPYING (LGPL-3.0, GPL-3.0, MIT).
@@ -319,8 +392,8 @@ const licOut = join(licRoot, "staging");
   const json = { components: [], libraries: [], librariesFile: "libraries.txt" };
   for (const c of components) {
     const parts = [];
-    const packages = c.packages.map(([name, extra]) => {
-      const p = info(name);
+    const packages = c.packages.map(([name, extra, from]) => {
+      const p = info(name, from);
       listed.add(p.name);
       parts.push(section(`${p.name} ${p.version} (${licence(p)}), ${source(p)}`, text(p, extra)));
       return { name: p.name, version: p.version, license: licence(p), source: source(p) };
@@ -334,6 +407,12 @@ const licOut = join(licRoot, "staging");
   }
   // The site's own font, which Next serves from /_next.
   writeFileSync(join(licOut, "geist.txt"), section("Geist (OFL-1.1), https://github.com/vercel/geist-font", readFileSync(join(process.cwd(), "src/app/fonts/LICENSE-Geist.txt"), "utf8").trim()));
+  // AI models in this build: their licence, and where they come from.
+  if (aiModels.length) {
+    const file = "ai-models.txt";
+    writeFileSync(join(licOut, file), aiModels.map((m) => section(`${m.name} (${m.license}), ${m.upstream}, ONNX weights from https://huggingface.co/${m.repo}/tree/${m.revision}`, m.licenseText ?? committed(`${m.license}.txt`))).join("\n"));
+    json.components.push({ name: "On-device AI models", file, packages: [], includes: aiModels.map((m) => ({ name: m.name, license: m.license, source: m.upstream })) });
+  }
   json.components.push({ name: "Geist", file: "geist.txt", packages: [], includes: [{ name: "Geist", license: "OFL-1.1", source: "https://github.com/vercel/geist-font" }] });
 
   // Libraries in the page code: the dependency tree of every runtime
@@ -368,6 +447,8 @@ writeFileSync(
 export const VENDOR_VERSION = "${version}";
 export const VENDOR = "/vendor/${version}/";
 export const LICENSES = "/vendor/licenses/${licVersion}/";
+// The AI models this build serves (src/lib/ai/models.json), under /vendor/models/.
+export const AI_MODELS: string[] = ${JSON.stringify(aiModels.map((m) => m.id))};
 `,
 );
 console.log(`vendor: public/vendor/${version}/, public/vendor/licenses/${licVersion}/`);

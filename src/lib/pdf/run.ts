@@ -132,8 +132,12 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
       return each(files, progress, (f, p) => withOcr(f, o, p, (g, q) => pdfToMarkdown(g, { pageBreaks: b(o.pageBreaks) }, q), signal), signal);
     }
     case "summarize": {
-      const { summarizePdf } = await import("@/lib/ai/summarize");
-      return each(files, progress, (f, p) => summarizePdf(f, { summaryLength: s(o.summaryLength), summaryLang: s(o.summaryLang) }, p));
+      const { summarizePdf } = await import("../ai/summarize");
+      return each(files, progress, (f, p) => summarizePdf(f, { summaryLength: s(o.summaryLength), summaryLang: s(o.summaryLang), aiModel: s(o.aiModel) }, p));
+    }
+    case "translate": {
+      const { translatePdf } = await import("../ai/translate");
+      return each(files, progress, (f, p) => translatePdf(f, { translateLang: s(o.translateLang), translateFormat: s(o.translateFormat), aiModel: s(o.aiModel) }, p));
     }
     case "pageNumbers": {
       const { pageNumbers } = await import("./edit");
@@ -253,6 +257,8 @@ export async function prepare(id: ToolId): Promise<unknown> {
       return Promise.all([(await import("./convert")).prepare("ppt"), import("./ocr")]);
     case "summarize":
       return (await import("@/lib/ai/summarize")).prepare();
+    case "translate":
+      return import("../ai/translate");
     case "pageNumbers":
     case "watermark":
       return import("./edit");

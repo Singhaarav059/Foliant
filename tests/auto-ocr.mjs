@@ -279,4 +279,41 @@ await test("pages checked for scans are let go before OCR starts", async () => {
   eq(atStart, 0, "pages still holding their operator lists");
 });
 
+// Chat with PDF reads scanned pages the same way (src/lib/ai/chat.ts readDocument).
+const chat = await load("../ai/chat");
+const chatOptions = (extra = {}) => ({ ...options("chat"), ...extra });
+
+await test("chat: a scanned page is read by auto-OCR and cited", async () => {
+  const before = asked.length;
+  const { pages, note } = await chat.readDocument(fixture("scanned.pdf"), chatOptions());
+  eq(asked.length, before + 1, "OCR started once");
+  eq(pages[0].text.replace(/\s+/g, " ").includes(SCANNED), true, `page 1: ${pages[0].text}`);
+  eq(note, "ocrUsed", "note");
+  const answer = await chat.askLight(pages, "What is the total due?");
+  eq(answer.pages[0], 1, "cites page 1");
+  eq(answer.parts.map((x) => x.text).join(" ").includes("1,250.00"), true, "the amount");
+});
+
+await test("chat: OCR off reads only the text the PDF has; a text PDF never starts OCR", async () => {
+  const before = asked.length;
+  const off = await chat.readDocument(fixture("scanned.pdf"), chatOptions({ ocr: "off" }));
+  eq(off.pages[0].text.trim(), "", "no text without OCR");
+  eq(off.note, undefined, "no note");
+  const text = await chat.readDocument(fixture("report.pdf"), chatOptions());
+  eq(text.pages[0].text.includes("Revenue grew 12 percent"), true, "report text");
+  eq(text.note, undefined, "no note");
+  eq(asked.length, before, "OCR never started");
+});
+
+await test("chat: OCR that can't start leaves the text the PDF has, and says so", async () => {
+  broken = true;
+  try {
+    const { pages, note } = await chat.readDocument(fixture("scanned.pdf"), chatOptions());
+    eq(pages.length, 1, "pages");
+    eq(note, "ocrSkipped", "note");
+  } finally {
+    broken = false;
+  }
+});
+
 process.exit(results.failed ? 1 : 0);

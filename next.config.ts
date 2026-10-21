@@ -66,6 +66,10 @@ const nextConfig: NextConfig = {
       fs: { browser: "./src/lib/empty.ts" },
       path: { browser: "./src/lib/empty.ts" },
       crypto: { browser: "./src/lib/empty.ts" },
+      // Transformers.js (src/lib/ai/worker.ts) imports ONNX Runtime's build that
+      // bundles its 27 MB .wasm, over the host's file limit. This build takes
+      // the .wasm at run time instead, from /vendor (scripts/vendor.mjs).
+      "onnxruntime-web/webgpu": "./node_modules/@huggingface/transformers/node_modules/onnxruntime-web/dist/ort.webgpu.min.mjs",
     },
   },
   ...(STATIC
