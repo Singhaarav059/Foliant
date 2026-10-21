@@ -19,8 +19,7 @@
 import * as asn1js from "asn1js";
 import * as pkijs from "pkijs";
 import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFRef, PDFString, type PDFContext, type PDFObject } from "pdf-lib";
-import { PdfError } from "./errors";
-import { loadPdf } from "./organize";
+import { PdfError, toPdfError } from "./errors";
 import { baseName, bytesOf, pdfBlob, type Output } from "./common";
 
 // A private key that never leaves WebCrypto (imported as non-extractable)
@@ -135,9 +134,23 @@ const cloneArray = (ctx: PDFContext, a: PDFObject | undefined) => {
 
 const PLACEHOLDER_RANGE = "[0 ********** ********** **********]";
 
+// The file as it is, never rewritten (loadPdf may decrypt or repair it with
+// qpdf, which renumbers objects): the signature is an update appended to
+// these exact bytes, so its objects must keep their numbers.
+async function openAsIs(input: Uint8Array, name: string) {
+  let doc: PDFDocument;
+  try {
+    doc = await PDFDocument.load(input, { updateMetadata: false });
+  } catch (e) {
+    throw toPdfError(e, name, input.subarray(0, 1024));
+  }
+  if (!doc.getPageCount()) throw new PdfError("no_pages", name);
+  return doc;
+}
+
 // Signs a PDF. Returns the original bytes with the signature appended.
 export async function signPdf(input: Uint8Array, signer: Signer, info: SignInfo = {}, name = "file.pdf"): Promise<Uint8Array> {
-  let doc = await loadPdf(pdfBlob(input), name);
+  let doc = await openAsIs(input, name);
   let prev = lastXref(input);
   if (!prev) {
     // The file's own cross-reference data can't be built on. Without

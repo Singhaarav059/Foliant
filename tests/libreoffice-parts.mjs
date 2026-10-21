@@ -33,10 +33,12 @@ execFileSync(join(root, "node_modules/.bin/tsc"), [
   "--skipLibCheck", "--noCheck", "--rootDir", "src/lib/office", "src/lib/office/libreoffice.ts",
 ], { cwd: root, stdio: "inherit" });
 
-// Stand-ins for the module's imports: the vendor path, baseName, and the
-// converter, which records what it was given (read before the loader revokes the URLs).
+// Stand-ins for the module's imports: the vendor path, baseName, the export
+// options (a plain PDF export here), and the converter, which records what it was given (read before the loader revokes the URLs).
 writeFileSync(join(out, "vendor.mjs"), `export const VENDOR = "/vendor/test/";`);
-writeFileSync(join(out, "common.mjs"), `export const baseName = (n) => n.replace(/\\.[^.]+$/, "");`);
+writeFileSync(join(out, "common.mjs"), `export const baseName = (n) => n.replace(/\\.[^.]+$/, "");
+export const abortable = (work) => work;`);
+writeFileSync(join(out, "export.mjs"), `export const exportPdf = (convert, data, name) => convert(data, "pdf", name);`);
 writeFileSync(join(out, "converter.mjs"), `
 import { resolveObjectURL } from "node:buffer";
 export class WorkerBrowserConverter {
@@ -52,6 +54,7 @@ const map = {
   "@/lib/vendor": ${JSON.stringify(pathToFileURL(join(out, "vendor.mjs")).href)},
   "@/lib/pdf/common": ${JSON.stringify(pathToFileURL(join(out, "common.mjs")).href)},
   "@matbee/libreoffice-converter/browser": ${JSON.stringify(pathToFileURL(join(out, "converter.mjs")).href)},
+  "./export": ${JSON.stringify(pathToFileURL(join(out, "export.mjs")).href)},
 };
 export async function resolve(spec, ctx, next) {
   return map[spec] ? { url: map[spec], shortCircuit: true } : next(spec, ctx);

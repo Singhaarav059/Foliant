@@ -50,9 +50,10 @@ await test("several PDFs only go to tools that take several files", () => {
   for (const id of ["split", "sign", "redact"]) if (got.includes(id)) throw new Error(`offers ${id}`);
 });
 
-await test("photos go to JPG to PDF, by extension or by type", () => {
-  eq(ids([file("IMG_1.HEIC")]).join(), "jpgToPdf", "heic");
-  eq(ids([file("shared", "image/jpeg"), file("b.png")]).join(), "jpgToPdf", "image without an extension");
+// The exam photo kit takes photos too.
+await test("photos go to the exam photo kit and JPG to PDF, by extension or by type", () => {
+  eq(ids([file("IMG_1.HEIC")]).join(), "examKit,jpgToPdf", "heic");
+  eq(ids([file("shared", "image/jpeg"), file("b.png")]).join(), "examKit,jpgToPdf", "image without an extension");
 });
 
 await test("a Word file goes to Word to PDF", () => eq(ids([file("brief.docx")]).join(), "wordToPdf", "docx"));
