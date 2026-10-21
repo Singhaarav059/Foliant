@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { hasLocale, matchLocale } from "@/lib/i18n/locales";
+import { movedTo } from "@/lib/i18n/slugs";
 
 // Every page lives under a locale prefix. Requests without one are sent to
 // the visitor's saved or preferred language.
@@ -7,6 +8,13 @@ export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const first = pathname.split("/")[1] ?? "";
   if (hasLocale(first)) {
+    // Tools' old English addresses in other languages: /es/merge-pdf → /es/unir-pdf.
+    const moved = movedTo(pathname.split("/")[2] ?? "", first);
+    if (moved && pathname.split("/").length === 3) {
+      const url = request.nextUrl.clone();
+      url.pathname = moved;
+      return NextResponse.redirect(url, 301);
+    }
     // Remember the language in use, so a bare "/" later returns to it.
     if (request.cookies.get("locale")?.value === first) return;
     const res = NextResponse.next();

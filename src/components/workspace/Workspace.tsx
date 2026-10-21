@@ -32,7 +32,7 @@ type Job = { files: File[]; options: Record<string, unknown>; reloaded: boolean;
 
 const uid = () => crypto.randomUUID();
 
-// `preset`: options to start from instead of the defaults (a landing page's, see src/lib/intents.ts).
+// `preset`: options to start from instead of the defaults (a landing page's, see src/lib/landings.ts).
 export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<string, unknown> }) {
   const tool = toolById(toolId);
   const { t, tOr } = useI18n();

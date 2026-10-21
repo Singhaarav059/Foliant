@@ -1,6 +1,6 @@
 // The local stand-in for Cloudflare Pages (scripts/serve-static.mjs) that the
-// end-to-end tests and CI's host checks run against: pages, 404s and the
-// _headers rules, and a malformed request gets a 400 without taking the
+// end-to-end tests and CI's host checks run against: pages, 404s, the
+// _headers rules and static _redirects, and a malformed request gets a 400 without taking the
 // server down for every later test.
 //
 //   node tests/serve-static.mjs
@@ -34,6 +34,8 @@ writeFileSync(join(out, "en.html"), "english");
 writeFileSync(join(out, "en", "404.html"), "english 404");
 writeFileSync(join(out, "404.html"), "404");
 writeFileSync(join(out, "_headers"), "/*\n  Cross-Origin-Opener-Policy: same-origin\n/en/*\n  X-Lang: en\n/en/:part/own/*\n  ! X-Lang\n  X-Lang: own\n");
+writeFileSync(join(out, "en", "old.html"), "left behind");
+writeFileSync(join(out, "_redirects"), "/en/old /en 301\n");
 
 // Port 0: the system picks a free one, and the server says which.
 const server = spawn(process.execPath, [join(root, "scripts/serve-static.mjs"), out, "0"], { stdio: ["ignore", "pipe", "pipe"] });
@@ -78,6 +80,13 @@ await test("a rule can detach a header and set its own", async () => {
   const r = await get("/en/x/own/no-such-file");
   eq(r.headers["x-lang"], "own", "X-Lang");
   eq(r.headers["cross-origin-opener-policy"], "same-origin", "COOP kept");
+});
+
+await test("_redirects wins over a file at the old address, as on Cloudflare Pages", async () => {
+  const r = await get("/en/old");
+  eq(r.status, 301, "status");
+  eq(r.headers.location, "/en", "Location");
+  eq(r.headers["cross-origin-opener-policy"], "same-origin", "COOP");
 });
 
 for (const path of ["//", "/%E0%A4%A"]) {

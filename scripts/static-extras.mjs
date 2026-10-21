@@ -9,16 +9,22 @@
 //   that ignore _headers.
 // - .nojekyll: GitHub Pages otherwise runs Jekyll, which drops every path
 //   that starts with "_", including all of _next/.
+// - _redirects: 301s from the old English tool addresses (/es/merge-pdf) to
+//   the localized ones (/es/unir-pdf, src/lib/i18n/slugs.ts), read from the
+//   sitemap: a page whose English translation is a tool's English slug, at
+//   another slug. Each old address also gets a small page that refreshes to
+//   the new one and names it as canonical, for hosts without _redirects
+//   (Cloudflare Pages follows _redirects before serving the file).
 // - sw-manifest.json: what the service worker (public/sw.js) precaches for
 //   offline use: the app shell every page loads, plus the full list of build
 //   files so it can drop old ones. sw.js gets this build's id, so a deploy
 //   installs a fresh worker.
 // Then it fails the build if a page loads anything from another site, or if
 // the site wouldn't deploy to Cloudflare Pages' free plan (20,000 files,
-// 25 MiB per file), with some headroom.
+// 25 MiB per file, 2,000 static redirects), with some headroom for files.
 // Usage: node scripts/static-extras.mjs [dir=out]
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -42,6 +48,33 @@ const rules = [
 ];
 writeFileSync(join(out, "_headers"), rules.map(([path, lines]) => [path, ...lines.map((l) => `  ${l}`)].join("\n")).join("\n\n") + "\n");
 writeFileSync(join(out, ".nojekyll"), "");
+
+// Old address → new one, both paths, from the sitemap's <url> entries.
+const MAX_REDIRECTS = 2000;
+const toolSlugs = new Set([...readFileSync(join(root, "src/lib/tools.ts"), "utf8").matchAll(/\bslug: "([a-z0-9-]+)"/g)].map((m) => m[1]));
+const moved = [];
+const sitemapFile = join(out, "sitemap.xml");
+for (const [, url] of existsSync(sitemapFile) ? readFileSync(sitemapFile, "utf8").matchAll(/<url>([\s\S]*?)<\/url>/g) : []) {
+  const loc = url.match(/<loc>([^<]+)<\/loc>/)?.[1];
+  const en = url.match(/<xhtml:link\b[^>]*hreflang="en"[^>]*href="([^"]+)"/)?.[1];
+  if (!loc || !en) continue;
+  const [, lang, slug] = new URL(loc).pathname.split("/");
+  const old = new URL(en).pathname.split("/")[2];
+  if (lang !== "en" && slug && toolSlugs.has(old) && old !== slug) moved.push({ from: `/${lang}/${old}`, to: `/${lang}/${slug}`, canonical: loc, lang });
+}
+const redirectProblems = [];
+for (const { from, to, canonical, lang } of moved) {
+  const file = join(out, `${from.slice(1)}.html`);
+  if (existsSync(file)) {
+    redirectProblems.push(`${relative(out, file)} is a page; it can't also redirect to ${to}`);
+    continue;
+  }
+  const attr = (s) => s.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, `<!doctype html><html lang="${attr(lang)}"><head><meta charset="utf-8"><title>${attr(to)}</title><link rel="canonical" href="${attr(canonical)}"><meta http-equiv="refresh" content="0; url=${attr(to)}"></head><body><a href="${attr(to)}">${attr(to)}</a></body></html>\n`);
+}
+if (moved.length) writeFileSync(join(out, "_redirects"), moved.map((m) => `${m.from} ${m.to} 301\n`).join(""));
+if (moved.length > MAX_REDIRECTS) redirectProblems.push(`${moved.length} redirects; Cloudflare Pages takes ${MAX_REDIRECTS} static ones`);
 
 const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)]));
 const urlOf = (file) => "/" + relative(out, file).split(sep).join("/");
@@ -102,6 +135,7 @@ if (!source.includes('const BUILD = "dev";')) throw new Error("public/sw.js: BUI
 writeFileSync(sw, source.replace('const BUILD = "dev";', `const BUILD = "${build}";`));
 
 const kb = (urls) => Math.round([...urls].reduce((n, u) => n + readFileSync(join(out, u)).length, 0) / 1024);
+console.log(`static: ${moved.length} old addresses redirect to localized ones`);
 console.log(`static: wrote out/_headers, out/.nojekyll and out/sw-manifest.json (shell: ${shell.size} files, ${kb(shell)} KB; build ${build})`);
 
 const MAX_FILES = 18000;
@@ -113,6 +147,7 @@ const mib = (n) => `${(n / 1024 / 1024).toFixed(1)} MiB`;
 console.log(`static: ${all.length} files, ${mib(sizes.reduce((a, b) => a + b, 0))}, largest ${relative(out, all[largest])} (${mib(sizes[largest])})`);
 const tooBig = all.filter((_, i) => sizes[i] > MAX_FILE_BYTES);
 const problems = [
+  ...redirectProblems,
   ...(all.length > MAX_FILES ? [`${all.length} files; keep it under ${MAX_FILES} (Cloudflare Pages allows 20,000)`] : []),
   ...tooBig.map((f) => `${relative(out, f)} is ${mib(statSync(f).size)}; keep files under ${mib(MAX_FILE_BYTES)} (Cloudflare Pages allows 25 MiB)`),
 ];

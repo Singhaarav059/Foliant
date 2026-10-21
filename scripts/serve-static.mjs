@@ -1,7 +1,8 @@
 // Serves the static build like Cloudflare Pages does, for local checks and
 // the end-to-end tests: /a → a.html or a/index.html, a missing path gets the
-// nearest 404.html with status 404, and every response carries the headers
-// that out/_headers assigns to its path.
+// nearest 404.html with status 404, every response carries the headers
+// that out/_headers assigns to its path, and the static rules in
+// out/_redirects ("/from /to 301") apply before any file is served.
 // Usage: node scripts/serve-static.mjs [dir=out] [port=3202]
 import { createServer } from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -49,6 +50,13 @@ function parseHeaders(text) {
 
 const headersFor = isFile(join(root, "_headers")) ? parseHeaders(readFileSync(join(root, "_headers"), "utf8")) : () => ({});
 
+const redirects = new Map(
+  (isFile(join(root, "_redirects")) ? readFileSync(join(root, "_redirects"), "utf8").split("\n") : [])
+    .map((l) => l.trim().split(/\s+/))
+    .filter(([from, to]) => from && to && !from.startsWith("#"))
+    .map(([from, to, status = "302"]) => [from, { to, status: Number(status) }]),
+);
+
 const server = createServer((req, res) => {
   // A request the URL parser or the decoder rejects ("//", a bad %-escape)
   // gets a 400; thrown here, it would stop the server for every later test.
@@ -58,6 +66,8 @@ const server = createServer((req, res) => {
   } catch {
     return res.writeHead(400).end();
   }
+  const moved = redirects.get(path);
+  if (moved) return res.writeHead(moved.status, { ...headersFor(path), Location: moved.to }).end();
   const target = join(root, path);
   if (!target.startsWith(root)) return res.writeHead(400).end();
   let file = [target, `${target}.html`, join(target, "index.html")].find(isFile);
