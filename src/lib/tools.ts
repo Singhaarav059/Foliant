@@ -151,8 +151,11 @@ const ALL: Tool[] = [
     id: "scan", slug: "scan-to-pdf", category: "organize", icon: "ScanLine", mode: "scan",
     runtime: "browser", accept: IMAGES, multiple: true,
     options: [
-      { key: "filter", type: "select", choices: ["document", "grayscale", "color"], default: "document" },
+      { key: "filter", type: "select", choices: ["document", "bw", "grayscale", "color"], default: "document" },
       { key: "pageSize", type: "select", choices: ["fit", "a4", "letter"], default: "a4" },
+      { key: "orientation", type: "select", choices: ["auto", "portrait", "landscape"], default: "auto", when: { key: "pageSize", is: ["a4", "letter"] } },
+      { key: "margin", type: "range", min: 0, max: 50, default: 0, unit: " mm", when: { key: "pageSize", is: ["a4", "letter"] } },
+      { key: "separate", type: "toggle", default: false },
     ],
   },
   // ── Optimise

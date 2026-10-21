@@ -99,6 +99,19 @@ export async function imagesToPdf(
 export async function scanFilter(image: Blob, filter: string): Promise<Blob> {
   if (filter === "color") return image;
   const bmp = await loadImage(image);
+  if (filter === "bw") {
+    // Black and white by an adaptive threshold (quad.ts), at full size.
+    const { enhance } = await import("./quad");
+    const c = document.createElement("canvas");
+    c.width = bmp.width;
+    c.height = bmp.height;
+    const cx = c.getContext("2d")!;
+    cx.drawImage(bmp, 0, 0);
+    bmp.close();
+    const bw = enhance(cx.getImageData(0, 0, c.width, c.height), "bw");
+    cx.putImageData(new ImageData(bw.data as Uint8ClampedArray<ArrayBuffer>, bw.width, bw.height), 0, 0);
+    return canvasToBlob(c, "image/png");
+  }
   const maxSide = 2400;
   const s = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
   const canvas = document.createElement("canvas");

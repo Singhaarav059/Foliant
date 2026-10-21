@@ -92,7 +92,9 @@
     "test:e2e:promise": "node tests/e2e/promise.mjs",
     "test:ai": "node tests/ai.mjs",
     "test:e2e:ai": "node tests/e2e/ai.mjs",
-    "test:e2e:exactsize": "node tests/e2e/exactsize.mjs chromium"
+    "test:e2e:exactsize": "node tests/e2e/exactsize.mjs chromium",
+    "test:scanner": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/scanner-quad.mjs",
+    "test:e2e:scanner": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/e2e/scanner.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

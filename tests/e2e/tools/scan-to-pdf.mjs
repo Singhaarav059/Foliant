@@ -13,8 +13,15 @@ const spec = {
       },
     },
     "colour, fit": {
-      set: async (h) => { await h.radio("filter", 2); await h.radio("pageSize", 0); },
+      set: async (h) => { await h.select("filter", "color"); await h.radio("pageSize", 0); },
       check: (r) => must(r.type === "pdf" && r.pages === 1 && r.size[0].join("x") !== "595x842", `${r.type} ${r.size?.[0]}`),
+    },
+    "black and white, margin": {
+      set: async (h) => { await h.select("filter", "bw"); await h.fill("margin", "20"); },
+      check: (r) => {
+        must(r.type === "pdf" && r.pages === 1, `${r.type} ${r.pages}p`);
+        must(r.size[0].join("x") === "595x842", `page ${r.size[0].join("x")}, expected A4`);
+      },
     },
   },
 };
