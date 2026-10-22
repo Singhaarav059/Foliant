@@ -15,6 +15,7 @@ import { Scanner } from "./Scanner";
 import { CompareView, prepareCompare } from "./CompareView";
 import { SignatureCheck, prepareCheck } from "./SignatureCheck";
 import { ChatView, prepareChat } from "./ChatView";
+import { ListenView, prepareListen } from "./ListenView";
 import { AiModels, prepareAi } from "./AiModels";
 import { ErrorBox, useProblem, type Problem } from "./ErrorBox";
 import { Results } from "./Results";
@@ -128,6 +129,7 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
       : tool.mode === "compare" ? prepareCompare
       : tool.mode === "check" ? prepareCheck
       : tool.mode === "chat" ? prepareChat
+      : tool.mode === "listen" ? prepareListen
       : () => import("@/lib/pdf/run").then((m) => m.prepare(tool.id));
     const ai = !!tool.ai && tool.mode !== "chat";
     const timer = setTimeout(() => void import("@/lib/offline").then((m) => m.warm(tool.id, ai ? () => Promise.all([code(), prepareAi()]) : code)).catch(() => {}), 1500);
@@ -480,6 +482,18 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
               onError={(e, file) => { const item = items.find((i) => i.file === file); if (item) void drop(item.id, file, e); }} />
           ) : <p className="text-center text-muted">{t("ws.needMore", { n: 2 })}</p>}
         </div>
+      </div>
+    );
+  }
+
+  // Read aloud shows the text in reading order as soon as the file is in.
+  if (tool.mode === "listen") {
+    return (
+      <div>
+        {dropHint}
+        {errorBox}
+        <FileBoard items={items} onChange={(n) => { setItems(n); if (!n.length) reset(); }} sortable={false} />
+        <ListenView key={items[0].id} file={files[0]} onError={(e) => void drop(items[0].id, files[0], e)} />
       </div>
     );
   }

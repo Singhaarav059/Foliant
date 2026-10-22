@@ -31,7 +31,7 @@ export const CATEGORIES: { id: CategoryId }[] = [
 //  check   – a report on the file's signatures, nothing to download
 //  url     – a web address instead of a file
 //  chat    – questions about one file, answered with page citations
-export type ToolMode = "files" | "pages" | "editor" | "scan" | "compare" | "check" | "url" | "chat";
+export type ToolMode = "files" | "pages" | "editor" | "scan" | "compare" | "check" | "url" | "chat" | "listen";
 
 export type OptionDef =
   | { key: string; type: "select"; choices: string[]; default: string; when?: Cond }
@@ -59,7 +59,8 @@ export type ToolId =
   | "rotate" | "pageNumbers" | "watermark" | "crop" | "edit" | "forms"
   | "unlock" | "protect" | "sign" | "verify" | "redact" | "compare"
   | "metadata" | "bookmarks" | "flatten" | "attachments" | "sanitize" | "linearize"
-  | "nUp" | "booklet" | "removeBlank" | "mix" | "resize" | "grayscale" | "headerFooter";
+  | "nUp" | "booklet" | "removeBlank" | "mix" | "resize" | "grayscale" | "headerFooter"
+  | "listen" | "accessible";
 
 export type Tool = {
   id: ToolId;
@@ -224,6 +225,17 @@ const ALL: Tool[] = [
     runtime: "browser", accept: PDF, multiple: true, chainable: true, isNew: true, options: [],
   },
   {
+    // Tagged for screen readers (src/lib/pdf/tag.ts).
+    id: "accessible", slug: "accessible-pdf", category: "optimize", icon: "Accessibility", mode: "files",
+    runtime: "browser", accept: PDF, multiple: true, chainable: true, isNew: true,
+    options: [
+      // Blank: the document's own title, else its first heading.
+      { key: "accTitle", type: "text", default: "" },
+      // A language tag ("en", "hi"); blank: detected from the text.
+      { key: "accLang", type: "text", default: "", placeholder: "auto" },
+    ],
+  },
+  {
     // Every colour turned grey (src/lib/pdf/gray.ts).
     id: "grayscale", slug: "grayscale-pdf", category: "optimize", icon: "Contrast", mode: "files",
     runtime: "browser", accept: PDF, multiple: true, chainable: true, isNew: true, options: [],
@@ -338,6 +350,11 @@ const ALL: Tool[] = [
     runtime: "browser", accept: PDF, multiple: false, isNew: true, ai: ["light", "small", "large"],
     // Scanned pages are read like the PDF conversions read them.
     options: AUTO_OCR,
+  },
+  {
+    // src/lib/ai/speak.ts: the browser's own voices, in reading order.
+    id: "listen", slug: "read-pdf-aloud", category: "convertFrom", icon: "AudioLines", mode: "listen",
+    runtime: "browser", accept: PDF, multiple: false, isNew: true, options: [],
   },
   {
     // src/lib/ai/translate.ts: the browser's built-in Translator, else the large model.

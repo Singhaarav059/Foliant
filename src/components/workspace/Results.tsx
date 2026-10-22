@@ -112,6 +112,12 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
           {total("blankRemoved:") ? t("res.blankRemoved", { n: total("blankRemoved:") }) : t("res.blankNone")}
         </p>
       )}
+      {kind === "tagged" && (
+        <p className="mt-2 text-[15px] text-ink-2">
+          {t("res.tagged", { n: n1 })}{n2 > 0 && <> {t("res.taggedFigures", { n: n2 })}</>}
+        </p>
+      )}
+      {first?.note === "tagKept" && <p className="mt-2 text-[15px] text-ink-2">{t("res.tagKept")}</p>}
       {total("grayPartial:") > 0 && <p className="mt-2 text-[15px] text-muted">{t("res.grayPartial", { n: total("grayPartial:") })}</p>}
       {kind === "attached" && <p className="mt-2 text-[15px] text-ink-2">{t("res.attached", { n: n1 })}</p>}
       {sanitized && (

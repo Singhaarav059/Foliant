@@ -47,14 +47,19 @@ export async function editMetadata(file: File, o: MetaOptions): Promise<Output[]
     if (o.subject.trim()) doc.setSubject(o.subject.trim());
     if (o.keywords.trim()) doc.setKeywords(o.keywords.split(/[,;]/).map((k) => k.trim()).filter(Boolean));
     doc.setModificationDate(new Date());
-    const id = oldXmp.match(/pdfaid:part\s*=\s*["'](\d)["']|<pdfaid:part>(\d)</);
-    const conf = oldXmp.match(/pdfaid:conformance\s*=\s*["']([A-Za-z])["']|<pdfaid:conformance>([A-Za-z])</);
-    writeXmp(doc, id ? `${id[1] ?? id[2]}${(conf?.[1] ?? conf?.[2] ?? "B").toUpperCase()}` : "");
+    writeXmp(doc, pdfaClaim(oldXmp));
   }
   return [{ name: `${baseName(file.name)}-metadata.pdf`, blob: pdfBlob(await save(doc)) }];
 }
 
-function xmpOf(doc: PDFDocument): string {
+// The PDF/A part and level an XMP packet claims ("2B"), or "".
+export function pdfaClaim(xmp: string) {
+  const id = xmp.match(/pdfaid:part\s*=\s*["'](\d)["']|<pdfaid:part>(\d)</);
+  const conf = xmp.match(/pdfaid:conformance\s*=\s*["']([A-Za-z])["']|<pdfaid:conformance>([A-Za-z])</);
+  return id ? `${id[1] ?? id[2]}${(conf?.[1] ?? conf?.[2] ?? "B").toUpperCase()}` : "";
+}
+
+export function xmpOf(doc: PDFDocument): string {
   const meta = doc.context.lookup(doc.catalog.get(N("Metadata")));
   if (!(meta instanceof PDFStream)) return "";
   try {
@@ -65,7 +70,8 @@ function xmpOf(doc: PDFDocument): string {
 }
 
 // XMP saying what the information dictionary says, plus the PDF/A part and level when given.
-function writeXmp(doc: PDFDocument, pdfa: string) {
+// `pdfua`: the PDF/UA part the file claims (tag.ts), or none.
+export function writeXmp(doc: PDFDocument, pdfa: string, pdfua = 0) {
   const iso = (d?: Date) => (d ? d.toISOString().replace(/\.\d{3}Z$/, "Z") : "");
   const title = doc.getTitle(), author = doc.getAuthor(), subject = doc.getSubject(), keywords = doc.getKeywords();
   const creator = doc.getCreator(), producer = doc.getProducer();
@@ -77,7 +83,8 @@ function writeXmp(doc: PDFDocument, pdfa: string) {
     xmlns:dc="http://purl.org/dc/elements/1.1/"
     xmlns:xmp="http://ns.adobe.com/xap/1.0/"
     xmlns:pdf="http://ns.adobe.com/pdf/1.3/"${pdfa ? `
-    xmlns:pdfaid="http://www.aiim.org/pdfa/ns/id/"` : ""}>
+    xmlns:pdfaid="http://www.aiim.org/pdfa/ns/id/"` : ""}${pdfua ? `
+    xmlns:pdfuaid="http://www.aiim.org/pdfua/ns/id/"` : ""}>
    <dc:format>application/pdf</dc:format>${title ? `
    <dc:title><rdf:Alt><rdf:li xml:lang="x-default">${xmlEscape(title)}</rdf:li></rdf:Alt></dc:title>` : ""}${author ? `
    <dc:creator><rdf:Seq><rdf:li>${xmlEscape(author)}</rdf:li></rdf:Seq></dc:creator>` : ""}${subject ? `
@@ -89,7 +96,8 @@ function writeXmp(doc: PDFDocument, pdfa: string) {
    <xmp:ModifyDate>${modified}</xmp:ModifyDate>
    <xmp:MetadataDate>${modified}</xmp:MetadataDate>` : ""}${pdfa ? `
    <pdfaid:part>${pdfa[0]}</pdfaid:part>
-   <pdfaid:conformance>${pdfa[1]}</pdfaid:conformance>` : ""}
+   <pdfaid:conformance>${pdfa[1]}</pdfaid:conformance>` : ""}${pdfua ? `
+   <pdfuaid:part>${pdfua}</pdfuaid:part>` : ""}
   </rdf:Description>
  </rdf:RDF>
 </x:xmpmeta>

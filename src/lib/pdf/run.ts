@@ -225,6 +225,10 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
       const { resize } = await import("./impose");
       return each(files, progress, (f) => resize(f, { paper: s(o.pageSize) }), signal);
     }
+    case "accessible": {
+      const { tagPdf } = await import("./tag");
+      return each(files, progress, (f, p) => tagPdf(f, { title: s(o.accTitle), lang: s(o.accLang) }, p), signal);
+    }
     case "grayscale": {
       const { grayscale } = await import("./gray");
       return each(files, progress, (f, p) => grayscale(f, p), signal);
@@ -348,6 +352,8 @@ export async function prepare(id: ToolId): Promise<unknown> {
     case "resize":
     case "removeBlank":
       return Promise.all([import("./impose"), (await import("./qpdf")).prepareQpdf(), (await import("./common")).pdfjs()]);
+    case "accessible":
+      return Promise.all([import("./tag"), (await import("./qpdf")).prepareQpdf(), (await import("./common")).pdfjs()]);
     case "grayscale":
       return Promise.all([import("./gray"), (await import("./qpdf")).prepareQpdf(), (await import("./jpeg")).prepareJpeg()]);
     case "protect":

@@ -114,6 +114,9 @@ jobs:
       - name: Live previews
         if: success() || failure()
         run: npm run test:e2e:preview -- ${{ matrix.browser }}
+      - name: Read aloud
+        if: success() || failure()
+        run: npm run test:e2e:listen -- ${{ matrix.browser }}
       - name: Page board
         if: success() || failure()
         run: npm run test:e2e:pageboard -- ${{ matrix.browser }}
@@ -292,6 +295,10 @@ jobs:
         run: node scripts/ci-report.mjs "test:ocr-accuracy" npm run test:ocr-accuracy
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:pdfa
+        env:
+          VERAPDF: ${{ runner.temp }}/verapdf
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:pdfua
         env:
           VERAPDF: ${{ runner.temp }}/verapdf
 
