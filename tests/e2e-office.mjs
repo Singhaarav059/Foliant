@@ -56,6 +56,10 @@ const alerts = [];
 page.on("dialog", (d) => { alerts.push(d.message()); d.dismiss(); });
 let loads = 0;
 page.on("load", () => loads++);
+// Console errors, from the page and its workers: LibreOffice's own log lines
+// must stay out of them (P3-02; scripts/vendor.mjs quiets its worker).
+const consoleErrors = [];
+page.on("console", (m) => m.type() === "error" && consoleErrors.push(m.text().slice(0, 160)));
 
 const test = async (label, fn) => {
   const t0 = Date.now();
@@ -127,6 +131,7 @@ await test("Word → PDF on a first visit: one consent, a real PDF", async () =>
   if (!text.includes("Project brief")) throw new Error(`text was ${JSON.stringify(text.slice(0, 80))}`);
   if (!/LibreOffice/.test(producer)) throw new Error(`written by ${producer}`);
   if (alerts.length) throw new Error(`alert: ${alerts.join(" | ")}`);
+  if (consoleErrors.length) throw new Error(`${consoleErrors.length} console errors, e.g. ${consoleErrors[0]}`);
   const reloads = loads - before;
   if (!isolatedAtFirst && reloads !== 1) throw new Error(`${reloads} reloads, expected 1`);
   return `isolated at first ${isolatedAtFirst}, ${reloads} reload, "Project brief" found, written by ${producer}`;

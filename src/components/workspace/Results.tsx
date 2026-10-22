@@ -63,7 +63,14 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
     [tool.id],
   );
 
-  const saved = first?.note?.startsWith("saved:") ? first.note.split(":").map(Number) : null;
+  // Compress: each file's sizes (a file kept as it was is the same size both
+  // ways), and for a batch the totals, so one file that didn't shrink can't
+  // stand for all of them.
+  const sizes = outputs.map((o) => o.note?.startsWith("saved:") ? o.note.split(":").slice(1).map(Number) as [number, number]
+    : o.note === "notSmaller" ? [o.blob.size, o.blob.size] as [number, number] : null);
+  const sized = sizes.filter((x): x is [number, number] => !!x);
+  const saved = sized.length && sized.some(([a, b]) => b < a)
+    ? [0, sized.reduce((n, [a]) => n + a, 0), sized.reduce((n, [, b]) => n + b, 0)] : null;
   const pdfaLevel = outputs.find((o) => o.note?.startsWith("pdfaDowngraded:"))?.note?.split(":")[1];
   // Pages drawn at less than the chosen dpi (too big for the browser's canvas), and what failed.
   const lowerDpi = outputs.flatMap((o) => (o.note?.startsWith("lowerDpi:") ? [Number(o.note.slice(9))] : []));
@@ -88,7 +95,7 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
         {summary ? t(outputs.length > 1 ? "res.summaryTitlePlural" : "res.summaryTitle") : outputs.length > 1 ? t("res.doneTitlePlural") : t("res.doneTitle")}
       </h2>
       {saved && (
-        <p className="tabular mt-2 text-[15px] text-ink-2">
+        <p className="tabular mt-2 text-[15px] text-ink-2" data-saved>
           {t("res.saved", { pct: Math.round((1 - saved[2] / saved[1]) * 100), from: humanSize(saved[1]), to: humanSize(saved[2]) })}
         </p>
       )}
@@ -107,7 +114,7 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
           {nums[0] === "padded" && ` ${t("res.examPadded", { min: n5 })}`}
         </p>
       )}
-      {first?.note === "notSmaller" && <p className="mt-2 text-[15px] text-muted">{t("res.notSmaller")}</p>}
+      {sized.length > 0 && sized.every(([a, b]) => a === b) && <p className="mt-2 text-[15px] text-muted">{t(outputs.length > 1 ? "res.notSmallerAll" : "res.notSmaller")}</p>}
       {first?.note?.startsWith("textFallback:") && <p className="mt-2 text-[15px] text-muted">{t("res.textFallback", { fonts: first.note.slice(13) })}</p>}
       {first?.note === "rebuilt" && <p className="mt-2 text-[15px] text-muted">{t("res.rebuilt")}</p>}
       {kind === "bookmarks" && <p className="mt-2 text-[15px] text-ink-2">{n1 ? t("res.bookmarks", { n: n1 }) : t("res.bookmarksNone")}</p>}
@@ -186,7 +193,14 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
         <ul className="mx-auto mt-6 max-h-[320px] max-w-[520px] divide-y divide-line overflow-auto rounded-xl border border-line bg-surface text-start">
           {outputs.map((o, i) => (
             <li key={i} className="flex items-center gap-3 px-4 py-2.5">
-              <span className="min-w-0 flex-1 truncate text-[15px]">{o.name}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[15px]">{o.name}</span>
+                {sizes[i] && (
+                  <span className="block text-[13px] text-muted" data-file-note>
+                    {sizes[i]![1] < sizes[i]![0] ? t("res.fileSaved", { pct: Math.round((1 - sizes[i]![1] / sizes[i]![0]) * 100) }) : t("res.fileKept")}
+                  </span>
+                )}
+              </span>
               <span className="tabular text-[13px] text-muted">{humanSize(o.blob.size)}</span>
               <button className="icon-btn" aria-label={`${t("res.download")} ${o.name}`} onClick={() => save(o.blob, o.name)}><Download size={17} /></button>
             </li>

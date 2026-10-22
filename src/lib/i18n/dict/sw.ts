@@ -2014,6 +2014,9 @@ const d: { [K in DictKey]?: string } = {
   "color.purple": "Zambarau",
   "color.white": "Nyeupe",
   "color.custom": "Rangi maalum",
+  "res.notSmallerAll": "Faili hizi tayari zilikuwa zimeboreshwa vizuri. Tumebakiza zile asili.",
+  "res.fileSaved": "Ndogo kwa {pct}%",
+  "res.fileKept": "Tayari imeboreshwa: asili imebakizwa",
 };
 
 export default d;

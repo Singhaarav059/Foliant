@@ -2014,6 +2014,9 @@ const d: { [K in DictKey]?: string } = {
   "color.purple": "ஊதா",
   "color.white": "வெள்ளை",
   "color.custom": "தனிப்பயன் நிறம்",
+  "res.notSmallerAll": "இந்தக் கோப்புகள் ஏற்கனவே நன்கு மேம்படுத்தப்பட்டுள்ளன. மூலக் கோப்புகளையே வைத்துள்ளோம்.",
+  "res.fileSaved": "{pct}% சிறியது",
+  "res.fileKept": "ஏற்கனவே மேம்படுத்தப்பட்டது: மூலக் கோப்பு வைக்கப்பட்டது",
 };
 
 export default d;

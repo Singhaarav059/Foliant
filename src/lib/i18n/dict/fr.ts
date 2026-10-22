@@ -2014,6 +2014,9 @@ const d: { [K in DictKey]?: string } = {
   "color.purple": "Violet",
   "color.white": "Blanc",
   "color.custom": "Couleur personnalisée",
+  "res.notSmallerAll": "Ces fichiers étaient déjà bien optimisés. Nous avons conservé les originaux.",
+  "res.fileSaved": "{pct} % plus léger",
+  "res.fileKept": "Déjà optimisé : original conservé",
 };
 
 export default d;

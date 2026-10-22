@@ -2014,6 +2014,9 @@ const d: { [K in DictKey]?: string } = {
   "color.purple": "ఊదా",
   "color.white": "తెలుపు",
   "color.custom": "అనుకూల రంగు",
+  "res.notSmallerAll": "ఈ ఫైల్‌లు ఇప్పటికే బాగా ఆప్టిమైజ్ అయి ఉన్నాయి. అసలు ఫైల్‌లనే ఉంచాం.",
+  "res.fileSaved": "{pct}% చిన్నది",
+  "res.fileKept": "ఇప్పటికే ఆప్టిమైజ్ అయింది: అసలు ఫైల్ ఉంచబడింది",
 };
 
 export default d;

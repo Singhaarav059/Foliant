@@ -2014,6 +2014,9 @@ const d: { [K in DictKey]?: string } = {
   "color.purple": "보라",
   "color.white": "흰색",
   "color.custom": "사용자 지정 색상",
+  "res.notSmallerAll": "이 파일들은 이미 잘 최적화되어 있어 원본을 그대로 두었습니다.",
+  "res.fileSaved": "{pct}% 감소",
+  "res.fileKept": "이미 최적화됨: 원본 유지",
 };
 
 export default d;

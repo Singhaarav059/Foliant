@@ -2014,6 +2014,9 @@ const d: { [K in DictKey]?: string } = {
   "color.purple": "Tím",
   "color.white": "Trắng",
   "color.custom": "Màu tùy chỉnh",
+  "res.notSmallerAll": "Các tệp này đã được tối ưu tốt. Chúng tôi giữ nguyên bản gốc.",
+  "res.fileSaved": "Nhỏ hơn {pct}%",
+  "res.fileKept": "Đã tối ưu: giữ nguyên bản gốc",
 };
 
 export default d;

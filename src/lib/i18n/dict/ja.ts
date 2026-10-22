@@ -2014,6 +2014,9 @@ const d: { [K in DictKey]?: string } = {
   "color.purple": "紫",
   "color.white": "白",
   "color.custom": "カスタムカラー",
+  "res.notSmallerAll": "これらのファイルはすでに十分最適化されていました。元のファイルをそのまま残しています。",
+  "res.fileSaved": "{pct}% 縮小",
+  "res.fileKept": "最適化済み：元のファイルを保持",
 };
 
 export default d;

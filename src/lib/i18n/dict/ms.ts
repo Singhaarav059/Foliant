@@ -2014,6 +2014,9 @@ const d: { [K in DictKey]?: string } = {
   "color.purple": "Ungu",
   "color.white": "Putih",
   "color.custom": "Warna tersuai",
+  "res.notSmallerAll": "Fail-fail ini sudah dioptimumkan dengan baik. Kami mengekalkan fail asal.",
+  "res.fileSaved": "{pct}% lebih kecil",
+  "res.fileKept": "Sudah dioptimumkan: fail asal dikekalkan",
 };
 
 export default d;

@@ -2014,6 +2014,9 @@ const d: { [K in DictKey]?: string } = {
   "color.purple": "紫色",
   "color.white": "白色",
   "color.custom": "自定义颜色",
+  "res.notSmallerAll": "这些文件已经优化得很好，我们保留了原文件。",
+  "res.fileSaved": "缩小了 {pct}%",
+  "res.fileKept": "已是最优：保留原文件",
 };
 
 export default d;
