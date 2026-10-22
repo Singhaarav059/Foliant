@@ -15,6 +15,7 @@ import type { Suggestion } from "@/lib/pdf/formsdetect";
 import { CertificateSign, prepareCertificate, type CertChoice } from "./CertificateSign";
 import { thumbUrl, pageSizes, docFor } from "@/lib/pdf/thumbs";
 import type { EditorItem, FieldInfo, FracRect, TextBox } from "@/lib/pdf/edit";
+import { AutofillPanel } from "./AutofillPanel";
 import type { PresetName } from "@/lib/pdf/security";
 import type { PageText } from "@/lib/pdf/text";
 import { moveLayer } from "@/lib/pdf/layers";
@@ -139,6 +140,9 @@ export function Editor({
   const [cert, setCert] = useState<CertChoice | null>(null);
   const [fields, setFields] = useState<FieldInfo[]>([]);
   const [values, setValues] = useState<Record<string, string | boolean | string[]>>({});
+  // Fields just filled from the autofill profile, highlighted until edited (P3-07).
+  const [autofilled, setAutofilled] = useState<Set<string>>(new Set());
+  const edited = (name: string) => autofilled.has(name) && setAutofilled((s) => { const n = new Set(s); n.delete(name); return n; });
   // Fields found on a flat form, waiting to be accepted or rejected.
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [detected, setDetected] = useState<null | "busy" | number>(null);
@@ -668,14 +672,15 @@ export function Editor({
 
             {/* Existing form fields */}
             {toolId === "forms" && fields.filter((f) => f.page === page && f.rect).map((f) => (
-              <label key={f.name} className="absolute rounded-sm bg-[color-mix(in_oklab,var(--accent)_14%,transparent)] outline outline-1 outline-[var(--accent)]"
+              <label key={f.name} data-autofilled={autofilled.has(f.name) || undefined}
+                className={`absolute rounded-sm outline outline-[var(--accent)] ${autofilled.has(f.name) ? "bg-[color-mix(in_oklab,var(--success)_28%,transparent)] outline-2 outline-[var(--success)]" : "bg-[color-mix(in_oklab,var(--accent)_14%,transparent)] outline-1"}`}
                 style={{ left: `${f.rect!.x * 100}%`, top: `${f.rect!.y * 100}%`, width: `${f.rect!.w * 100}%`, height: `${f.rect!.h * 100}%` }}
                 onPointerDown={(e) => e.stopPropagation()}>
                 {f.type === "checkbox" ? (
                   <input type="checkbox" className="h-full w-full accent-[var(--accent)]" checked={Boolean(values[f.name])} onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.checked }))} />
                 ) : f.type === "text" ? (
                   <input className="h-full w-full bg-transparent px-1 text-black outline-none" style={{ fontSize: Math.max(9, f.rect!.h * height * 0.62) }}
-                    value={String(values[f.name] ?? "")} onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))} aria-label={f.name} />
+                    value={String(values[f.name] ?? "")} onChange={(e) => { edited(f.name); setValues((v) => ({ ...v, [f.name]: e.target.value })); }} aria-label={f.name} />
                 ) : null}
               </label>
             ))}
@@ -934,15 +939,22 @@ export function Editor({
             onAcceptAll={() => void acceptSuggestions(suggestions)} onRejectAll={() => setSuggestions([])} />
         )}
 
+        {toolId === "forms" && fields.length > 0 && (
+          <AutofillPanel fields={fields} onFill={(filled) => {
+            setValues((v) => ({ ...v, ...filled }));
+            setAutofilled(new Set(Object.keys(filled)));
+          }} />
+        )}
+
         {toolId === "forms" && (
           <div>
             <p className="mb-2 text-[13px] font-medium text-ink-2">{t("ed.formFields")}</p>
             {fields.length === 0 ? <p className="text-[14px] text-muted">{t("ed.noFields")}</p> : (
               <div className="max-h-[340px] space-y-3 overflow-auto pr-1">
                 {fields.map((f) => (
-                  <label key={f.name} className="block">
+                  <label key={f.name} className={`block ${autofilled.has(f.name) ? "rounded-md bg-[color-mix(in_oklab,var(--success)_12%,transparent)] p-1" : ""}`} data-autofilled={autofilled.has(f.name) || undefined}>
                     <span className="mb-1 block truncate text-[13px] text-muted" title={f.tooltip ?? f.name}>{f.name}{f.required ? " *" : ""}</span>
-                    <FieldInput field={f} value={values[f.name]} onChange={(v) => setValues((old) => ({ ...old, [f.name]: v }))} />
+                    <FieldInput field={f} value={values[f.name]} onChange={(v) => { edited(f.name); setValues((old) => ({ ...old, [f.name]: v })); }} />
                   </label>
                 ))}
               </div>

@@ -123,6 +123,9 @@ jobs:
       - name: Service worker (cache size, stale build)
         if: success() || failure()
         run: npm run test:e2e:sw -- ${{ matrix.browser }}
+      - name: Form autofill
+        if: success() || failure()
+        run: npm run test:e2e:autofill -- ${{ matrix.browser }}
       - name: Page board
         if: success() || failure()
         run: npm run test:e2e:pageboard -- ${{ matrix.browser }}
@@ -240,6 +243,8 @@ jobs:
         run: npm run test:batch
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:recipe
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:autofill
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:structure
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}

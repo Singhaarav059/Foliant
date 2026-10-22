@@ -87,7 +87,8 @@ const urlOf = (file) => "/" + relative(out, file).split(sep).join("/");
 // copy is deleted, so the site doesn't ship (and count) them twice.
 {
   const hash = (f) => createHash("sha256").update(readFileSync(f)).digest("hex");
-  const vendored = new Map(walk(join(out, "vendor")).filter((f) => f.endsWith(".wasm")).map((f) => [hash(f), urlOf(f)]));
+  const vendor = join(out, "vendor");
+  const vendored = new Map((existsSync(vendor) ? walk(vendor) : []).filter((f) => f.endsWith(".wasm")).map((f) => [hash(f), urlOf(f)]));
   const media = join(out, "_next", "static", "media");
   const dupes = existsSync(media) ? readdirSync(media).filter((f) => f.endsWith(".wasm")).map((f) => join(media, f)).filter((f) => statSync(f).size > 1 << 20 && vendored.has(hash(f))) : [];
   if (dupes.length) {
