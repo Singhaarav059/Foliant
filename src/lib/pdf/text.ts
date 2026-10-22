@@ -110,6 +110,18 @@ type View = ReturnType<PDFPageProxy["getViewport"]>;
 async function placedGlyphs(page: PDFPageProxy): Promise<Placed[]> {
   const { OPS } = await import("pdfjs-dist");
   const list = await page.getOperatorList();
+  // A font can reach commonObjs after the operator list does (WebKit, loading
+  // a standard font such as Helvetica-Bold): wait for each one the page sets,
+  // or its text would be skipped. One that never arrives is given up on.
+  const fontIds = new Set<string>();
+  list.fnArray.forEach((fn, i) => fn === OPS.setFont && fontIds.add((list.argsArray[i] as unknown[])[0] as string));
+  await Promise.all([...fontIds].filter((id) => !page.commonObjs.has(id)).map((id) => new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, 5000);
+    page.commonObjs.get(id, () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  })));
   const out: Placed[] = [];
   type GS = { ctm: M; font: FontObj | null; size: number; cs: number; ws: number; hs: number; lead: number; rise: number; fill: string; mode: number };
   const fresh = (ctm: M): GS => ({ ctm, font: null, size: 0, cs: 0, ws: 0, hs: 1, lead: 0, rise: 0, fill: "#000000", mode: 0 });

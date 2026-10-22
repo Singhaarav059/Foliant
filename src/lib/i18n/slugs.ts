@@ -222,7 +222,7 @@ export const SLUGS: Partial<Record<Locale, Slugs>> = {
     "sign-pdf": "signera-pdf", "redact-pdf": "maska-pdf", "compare-pdf": "jamfor-pdf",
     "edit-pdf-metadata": "redigera-pdf-metadata", "pdf-bookmarks": "pdf-bokmarken", "flatten-pdf": "platta-till-pdf", "pdf-attachments": "pdf-bilagor", "sanitize-pdf": "sanera-pdf", "optimize-pdf-for-web": "optimera-pdf-for-webben",
     "n-up-pdf": "flera-sidor-per-ark", "pdf-booklet": "pdf-hafte", "remove-blank-pages": "ta-bort-tomma-sidor", "alternate-mix-pdf": "varva-och-blanda-pdf", "resize-pdf": "andra-storlek-pa-pdf-sidor", "grayscale-pdf": "pdf-i-graskala", "add-header-footer": "lagg-till-sidhuvud-och-sidfot",
-    "read-pdf-aloud": "las-upp-pdf", "accessible-pdf": "gor-pdf-tillganglig",
+    "read-pdf-aloud": "las-pdf-hogt", "accessible-pdf": "gor-pdf-tillganglig",
     "pdf-converter": "pdf-konverterare", "reduce-pdf-size": "minska-pdf-storlek", "pdf-editor": "pdf-redigerare", "pdf-security": "pdf-sakerhet",
     "exam-photo-resizer": "anpassa-examensfoto", "summarize-pdf": "sammanfatta-pdf", "chat-with-pdf": "chatta-med-pdf", "translate-pdf": "oversatt-pdf", "verify-pdf-signature": "kontrollera-pdf-signaturer",
   },
