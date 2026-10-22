@@ -1943,6 +1943,7 @@ const d: { [K in DictKey]?: string } = {
   "res.blankNone": "Hakuna kurasa tupu zilizopatikana; faili haijabadilika.",
   "res.grayPartial": "{n|one:Kipengele # hakikuweza kugeuzwa na kimebaki na rangi zake|other:Vipengele # havikuweza kugeuzwa na vimebaki na rangi zake}.",
   "err.allBlank": "Kila ukurasa wa PDF hii unaonekana mtupu, kwa hiyo hakuna kitakachobaki. Jaribu mpangilio Mkali.",
+  "ws.preview": "Onyesho la ukurasa wa {n}",
 };
 
 export default d;

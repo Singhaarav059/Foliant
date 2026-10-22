@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowRight, Download, Loader2, X } from "lucide-react";
 import { useI18n } from "../I18n";
+import { STAMPS, StampPreview, type Stamp } from "./StampPreview";
 import { useUser, postJson } from "../User";
 import { Dropzone, useFileIntake } from "./Dropzone";
 import { FileBoard, type Item } from "./FileBoard";
@@ -566,7 +567,10 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
       {errorBox}
       {consent}
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
-        <div className="min-w-0">{board}</div>
+        <div className="min-w-0">
+          {board}
+          {STAMPS.includes(tool.id) && files[0] && <StampPreview key={items[0].id} tool={tool.id as Stamp} file={files[0]} options={options} />}
+        </div>
         <aside className="card h-max p-5 lg:sticky lg:top-[88px]">
           <p className="mb-5 text-[14px] font-medium">{t("ws.options")}</p>
           <Options restore defs={tool.options} values={options} notes={notes} onChange={(k, v) => setOptions((o) => ({ ...o, [k]: v }))} />

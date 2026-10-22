@@ -1943,6 +1943,7 @@ const d: { [K in DictKey]?: string } = {
   "res.blankNone": "Không tìm thấy trang trống; tệp không thay đổi.",
   "res.grayPartial": "{n|other:# mục} không chuyển đổi được và giữ nguyên màu.",
   "err.allBlank": "Mọi trang của PDF này đều trông như trống, nên sẽ không còn gì. Hãy thử mức Nghiêm ngặt.",
+  "ws.preview": "Xem trước trang {n}",
 };
 
 export default d;

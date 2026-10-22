@@ -1943,6 +1943,7 @@ const d: { [K in DictKey]?: string } = {
   "res.blankNone": "Inga tomma sidor hittades; filen är oförändrad.",
   "res.grayPartial": "{n|one:# objekt kunde inte göras om och behöll sina färger.|other:# objekt kunde inte göras om och behöll sina färger.}",
   "err.allBlank": "Varje sida i den här PDF:en ser tom ut, så inget skulle bli kvar. Prova den strikta inställningen.",
+  "ws.preview": "Förhandsvisning av sida {n}",
 };
 
 export default d;

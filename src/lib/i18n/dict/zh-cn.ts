@@ -1943,6 +1943,7 @@ const d: { [K in DictKey]?: string } = {
   "res.blankNone": "未找到空白页，文件未作更改。",
   "res.grayPartial": "有 {n|other:# 项}内容无法转换，保留了原来的颜色。",
   "err.allBlank": "此 PDF 的每一页看起来都是空白的，删除后将一页不剩。请试试严格设置。",
+  "ws.preview": "第 {n} 页预览",
 };
 
 export default d;

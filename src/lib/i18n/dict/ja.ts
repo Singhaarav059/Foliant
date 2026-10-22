@@ -1943,6 +1943,7 @@ const d: { [K in DictKey]?: string } = {
   "res.blankNone": "白紙ページは見つかりませんでした。ファイルは変更されていません。",
   "res.grayPartial": "{n|other:# 個}の要素は変換できず、元の色のまま残りました。",
   "err.allBlank": "この PDF はすべてのページが白紙に見えるため、何も残りません。「厳しい」設定を試してください。",
+  "ws.preview": "{n} ページ目のプレビュー",
 };
 
 export default d;

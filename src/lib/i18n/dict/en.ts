@@ -1450,6 +1450,7 @@ const en = {
   "ws.file.fail": "Skipped",
   "ws.pages": "{n|one:# page|other:# pages}",
   "ws.page": "Page {n}",
+  "ws.preview": "Preview of page {n}",
   "ws.selected": "{n} selected",
   "ws.selectAll": "Select all",
   "ws.selectNone": "Clear selection",

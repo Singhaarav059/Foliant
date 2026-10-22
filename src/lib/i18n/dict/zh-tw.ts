@@ -1943,6 +1943,7 @@ const d: { [K in DictKey]?: string } = {
   "res.blankNone": "找不到空白頁，檔案未變更。",
   "res.grayPartial": "有 {n|other:# 個}項目無法轉換，保留了原本的顏色。",
   "err.allBlank": "這個 PDF 的每一頁看起來都是空白，移除後將一頁不剩。請試試嚴格設定。",
+  "ws.preview": "第 {n} 頁預覽",
 };
 
 export default d;

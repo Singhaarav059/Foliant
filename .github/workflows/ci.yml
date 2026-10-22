@@ -111,6 +111,9 @@ jobs:
       - name: Rotate
         if: success() || failure()
         run: npm run test:e2e:rotate -- ${{ matrix.browser }}
+      - name: Live previews
+        if: success() || failure()
+        run: npm run test:e2e:preview -- ${{ matrix.browser }}
       - name: Page board
         if: success() || failure()
         run: npm run test:e2e:pageboard -- ${{ matrix.browser }}
@@ -232,6 +235,8 @@ jobs:
         run: npm run test:structure
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:impose
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:preview
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:summarize
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}

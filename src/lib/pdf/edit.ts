@@ -244,6 +244,48 @@ function fillVariables(text: string, file: File) {
 
 const MARGINS: Record<string, [number, number]> = { small: [9, 0.025], normal: [18, 0.045], large: [36, 0.08] };
 
+// ── Previews (P2-12, StampPreview.tsx). `onto` makes a stamping tool draw into
+// a document it is given, on one page only, instead of opening the file.
+export type Onto = { doc: PDFDocument; only: number };
+
+// The marks alone, as the tool would draw them on page `index` (0-based) of
+// a `total`-page file whose pages are shown at w × h points: blank pages
+// carrying only the watermark, number or header. Drawn with the same code as
+// the real output, so the preview's geometry is the output's.
+export async function markLayer(
+  tool: "watermark" | "pageNumbers" | "headerFooter", file: File, o: Record<string, unknown>,
+  page: { w: number; h: number; index: number; total: number },
+  labels?: { page: string; pageOf: string; nOf: string },
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  // Every page is there (numbering counts them), but only one is drawn on.
+  for (let i = 0; i < page.total; i++) doc.addPage([page.w, page.h]);
+  const onto = { doc, only: page.index };
+  const s = (v: unknown) => String(v ?? ""), n = (v: unknown) => Number(v) || 0;
+  if (tool === "watermark") {
+    await watermark(file, {
+      markType: s(o.markType), markText: s(o.markText), markImage: o.markImage as File | undefined, fontSize: n(o.fontSize), color: s(o.color),
+      imageScale: n(o.imageScale), position: s(o.position), mosaic: !!o.mosaic, opacity: 100, rotation: n(o.rotation), layer: "over",
+      pageRange: s(o.pageRange), font: s(o.font), markBox: !!o.markBox, tileSpacing: n(o.tileSpacing) || 100,
+    }, onto);
+  } else if (tool === "pageNumbers") {
+    await pageNumbers(file, {
+      position: s(o.position), numberFormat: s(o.numberFormat), startAt: n(o.startAt) || 1, pageRange: s(o.pageRange),
+      skipFirst: n(o.skipFirstPages), skipLast: n(o.skipLastPages), fontSize: n(o.fontSize), color: s(o.color), facing: !!o.facing,
+      template: s(o.template), numberStyle: s(o.numberStyle) || "1", margin: s(o.margin), font: s(o.font),
+      batesPrefix: s(o.batesPrefix), batesDigits: n(o.batesDigits), counter: { next: n(o.startAt) || 1 }, labels,
+    }, onto);
+  } else {
+    await headerFooter(file, {
+      header: s(o.hfHeader), footer: s(o.hfFooter), align: s(o.hfAlign), font: s(o.font), fontSize: n(o.fontSize), color: s(o.color),
+      margin: s(o.margin), pageRange: s(o.pageRange), skipFirst: n(o.hfSkipFirst),
+    }, onto);
+  }
+  // Only the page drawn on is kept, so the layer is small and renders as page 1.
+  for (let i = page.total - 1; i >= 0; i--) if (i !== page.index) doc.removePage(i);
+  return doc.save({ addDefaultPage: false });
+}
+
 // ── Page numbers
 export async function pageNumbers(
   file: File,
@@ -260,8 +302,9 @@ export async function pageNumbers(
     // Translated templates: "Page {n}", "Page {n} of {total}", "{n} of {total}".
     labels?: { page: string; pageOf: string; nOf: string };
   },
+  onto?: Onto,
 ): Promise<Output[]> {
-  const doc = await loadPdf(file, file.name);
+  const doc = onto?.doc ?? (await loadPdf(file, file.name));
   const family = fontChoice(o.font);
   const pages = doc.getPages();
   const total = pages.length;
@@ -281,6 +324,7 @@ export async function pageNumbers(
     const i = numbered[k];
     const page = pages[i];
     const n = o.numberFormat === "bates" && o.counter ? o.counter.next++ : o.startAt + k;
+    if (onto && i !== onto.only) continue;
     const last = o.startAt + count - 1;
     const text =
       o.numberFormat === "bates" ? `${o.batesPrefix ?? ""}${String(n).padStart(digits, "0")}`
@@ -302,6 +346,7 @@ export async function pageNumbers(
       vx, vy, size, color: o.color, anchor: h === "left" ? "left" : h === "right" ? "right" : "center", maxWidth: vw - 2 * margin,
     });
   }
+  if (onto) return [];
   return [{ name: `${baseName(file.name)}-numbered.pdf`, blob: await save(doc) }];
 }
 
@@ -310,8 +355,9 @@ export async function pageNumbers(
 export async function headerFooter(
   file: File,
   o: { header: string; footer: string; align: string; font?: string; fontSize: number; color: string; margin?: string; pageRange: string; skipFirst: number },
+  onto?: Onto,
 ): Promise<Output[]> {
-  const doc = await loadPdf(file, file.name);
+  const doc = onto?.doc ?? (await loadPdf(file, file.name));
   const family = fontChoice(o.font);
   const pages = doc.getPages();
   const total = pages.length;
@@ -320,7 +366,7 @@ export async function headerFooter(
   const anchor = o.align === "left" ? "left" : o.align === "right" ? "right" : "center";
   const header = fillVariables(o.header.trim(), file), footer = fillVariables(o.footer.trim(), file);
   for (let i = 0; i < total; i++) {
-    if (!chosen.has(i) || i < Math.max(0, o.skipFirst || 0)) continue;
+    if (!chosen.has(i) || i < Math.max(0, o.skipFirst || 0) || (onto && i !== onto.only)) continue;
     const page = pages[i];
     const { vw, vh } = visualFrame(page);
     const margin = Math.min(Math.max(mMin, Math.min(vw, vh) * mFrac), Math.min(vw, vh) * 0.1);
@@ -331,6 +377,7 @@ export async function headerFooter(
     if (header) await draw(header, vh - margin - size * 0.75);
     if (footer) await draw(footer, margin);
   }
+  if (onto) return [];
   return [{ name: `${baseName(file.name)}-header-footer.pdf`, blob: await save(doc) }];
 }
 
@@ -360,8 +407,9 @@ export async function watermark(
     // Font family, a white box behind the mark, and the gap between tiles (100 = default).
     font?: string; markBox?: boolean; tileSpacing?: number;
   },
+  onto?: Onto,
 ): Promise<Output[]> {
-  const doc = await loadPdf(file, file.name);
+  const doc = onto?.doc ?? (await loadPdf(file, file.name));
   const family = fontChoice(o.font);
   const pages = doc.getPages();
   const chosen = pageSet(o.pageRange, pages.length);
@@ -385,7 +433,7 @@ export async function watermark(
   const textImage = textImg ? await doc.embedPng(textImg.png) : null;
 
   for (let i = 0; i < pages.length; i++) {
-    if (!chosen.has(i)) continue;
+    if (!chosen.has(i) || (onto && i !== onto.only)) continue;
     const page = pages[i];
     isolate(page);
     const before = contentCount(page);
@@ -451,6 +499,7 @@ export async function watermark(
     }
     if (o.layer === "under") sendLastStreamToBack(page, before);
   }
+  if (onto) return [];
   return [{ name: `${baseName(file.name)}-watermarked.pdf`, blob: await save(doc) }];
 }
 

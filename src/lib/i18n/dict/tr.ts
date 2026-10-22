@@ -1943,6 +1943,7 @@ const d: { [K in DictKey]?: string } = {
   "res.blankNone": "Boş sayfa bulunamadı; dosya değiştirilmedi.",
   "res.grayPartial": "{n|one:# öğe dönüştürülemedi ve renklerini korudu|other:# öğe dönüştürülemedi ve renklerini korudu}.",
   "err.allBlank": "Bu PDF’nin tüm sayfaları boş görünüyor, geriye hiçbir şey kalmaz. Katı ayarı deneyin.",
+  "ws.preview": "{n}. sayfanın önizlemesi",
 };
 
 export default d;

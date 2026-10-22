@@ -1943,6 +1943,7 @@ const d: { [K in DictKey]?: string } = {
   "res.blankNone": "No s’ha trobat cap pàgina en blanc; el fitxer no ha canviat.",
   "res.grayPartial": "{n|one:# element no s’ha pogut convertir i ha conservat els colors.|other:# elements no s’han pogut convertir i han conservat els colors.}",
   "err.allBlank": "Totes les pàgines d’aquest PDF semblen en blanc, així que no quedaria res. Prova l’ajust estricte.",
+  "ws.preview": "Previsualització de la pàgina {n}",
 };
 
 export default d;

@@ -1943,6 +1943,7 @@ const d: { [K in DictKey]?: string } = {
   "res.blankNone": "Tidak ditemukan halaman kosong; file tidak berubah.",
   "res.grayPartial": "{n|other:# item} tidak bisa diubah dan tetap berwarna.",
   "err.allBlank": "Semua halaman PDF ini tampak kosong, jadi tidak akan ada yang tersisa. Coba pengaturan Ketat.",
+  "ws.preview": "Pratinjau halaman {n}",
 };
 
 export default d;

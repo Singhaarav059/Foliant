@@ -1943,6 +1943,7 @@ const d: { [K in DictKey]?: string } = {
   "res.blankNone": "Geen lege pagina’s gevonden; het bestand is ongewijzigd.",
   "res.grayPartial": "{n|one:# onderdeel kon niet worden omgezet en heeft zijn kleuren behouden.|other:# onderdelen konden niet worden omgezet en hebben hun kleuren behouden.}",
   "err.allBlank": "Elke pagina van deze pdf lijkt leeg, dus er zou niets overblijven. Probeer de strenge instelling.",
+  "ws.preview": "Voorbeeld van pagina {n}",
 };
 
 export default d;

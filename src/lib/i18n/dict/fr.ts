@@ -1943,6 +1943,7 @@ const d: { [K in DictKey]?: string } = {
   "res.blankNone": "Aucune page blanche trouvée ; le fichier est inchangé.",
   "res.grayPartial": "{n|one:# élément n’a pas pu être converti et a gardé ses couleurs.|other:# éléments n’ont pas pu être convertis et ont gardé leurs couleurs.}",
   "err.allBlank": "Toutes les pages de ce PDF semblent blanches, il ne resterait donc rien. Essayez le réglage strict.",
+  "ws.preview": "Aperçu de la page {n}",
 };
 
 export default d;

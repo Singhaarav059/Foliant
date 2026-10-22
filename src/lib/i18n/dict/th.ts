@@ -1943,6 +1943,7 @@ const d: { [K in DictKey]?: string } = {
   "res.blankNone": "ไม่พบหน้าว่าง ไฟล์ไม่มีการเปลี่ยนแปลง",
   "res.grayPartial": "{n|other:# รายการ}แปลงไม่ได้และยังคงสีเดิม",
   "err.allBlank": "ทุกหน้าของ PDF นี้ดูว่างเปล่า จึงจะไม่เหลืออะไรเลย ลองใช้การตั้งค่าเข้มงวด",
+  "ws.preview": "ตัวอย่างหน้า {n}",
 };
 
 export default d;

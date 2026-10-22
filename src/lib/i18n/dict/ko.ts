@@ -1943,6 +1943,7 @@ const d: { [K in DictKey]?: string } = {
   "res.blankNone": "빈 페이지가 없어 파일을 변경하지 않았습니다.",
   "res.grayPartial": "{n|other:#개} 항목은 변환하지 못해 원래 색을 유지했습니다.",
   "err.allBlank": "이 PDF는 모든 페이지가 비어 보여서 남는 페이지가 없습니다. '엄격' 설정을 사용해 보세요.",
+  "ws.preview": "{n}쪽 미리보기",
 };
 
 export default d;

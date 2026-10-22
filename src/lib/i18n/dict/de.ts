@@ -1943,6 +1943,7 @@ const d: { [K in DictKey]?: string } = {
   "res.blankNone": "Keine leeren Seiten gefunden; die Datei ist unverändert.",
   "res.grayPartial": "{n|one:# Element konnte nicht umgewandelt werden und behielt seine Farben.|other:# Elemente konnten nicht umgewandelt werden und behielten ihre Farben.}",
   "err.allBlank": "Jede Seite dieser PDF sieht leer aus, es bliebe also nichts übrig. Versuche die strenge Einstellung.",
+  "ws.preview": "Vorschau von Seite {n}",
 };
 
 export default d;
