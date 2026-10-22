@@ -295,8 +295,8 @@ await test("outputs open in pdf.js with working links", async () => {
 });
 
 // ── Loading (P1-03): every tool opens a file the way readers do.
-const fx = corpus(["enc-aes256-owner.pdf", "enc-rc4-40-owner.pdf", "enc-aes256-user.pdf", "dup-ids.pdf", "odd-boxes.pdf", "zero-pages.pdf", "cyclic-tree.pdf", "base.pdf", "acroform-unicode.pdf", "attachments.pdf", "xfa.pdf"]);
-const { compress } = await load("optimize");
+const fx = corpus(["enc-aes256-owner.pdf", "enc-rc4-40-owner.pdf", "enc-aes256-user.pdf", "dup-ids.pdf", "odd-boxes.pdf", "zero-pages.pdf", "cyclic-tree.pdf", "truncated-70.pdf", "base.pdf", "acroform-unicode.pdf", "attachments.pdf", "xfa.pdf"]);
+const { compress, repair } = await load("optimize");
 const { pdfToPdfa, pdfToExcel } = await load("convert");
 const { redact } = await load("security");
 const fxFile = (name, as = name) => file(fx[name], as);
@@ -437,6 +437,21 @@ await test("a looped page tree is refused as damaged, not a stack overflow", asy
     error = e;
   }
   eq(error?.code, "damaged", `error code (${error?.message})`);
+});
+// Repair (P3-04): a file cut off at 70% and one whose page tree loops come
+// back with their pages and their text, not as pictures.
+await test("repair: a file cut off at 70% keeps its 3 pages and their text", async () => {
+  const [out] = await repair(fxFile("truncated-70.pdf"));
+  const { pages, text } = await readable(out.blob);
+  eq(pages, 3, "pages");
+  for (const w of ["ALPHA1", "ALPHA2", "ALPHA3"]) eq(text.includes(w), true, w);
+  eq(out.note, undefined, "not rasterised");
+});
+await test("repair: a looped page tree keeps its text", async () => {
+  const [out] = await repair(fxFile("cyclic-tree.pdf"));
+  const { text } = await readable(out.blob);
+  eq(text.includes("CYCLEPAGE"), true, "CYCLEPAGE");
+  eq(out.note, undefined, "not rasterised");
 });
 await test("PDF to Excel, one sheet per document, takes any file name", async () => {
   for (const name of ["Q1: report [final]?.pdf", "'quoted'.pdf", "History.pdf", "a/b\\c*d.pdf", `${"x".repeat(40)}].pdf`]) {

@@ -2,7 +2,7 @@
   {
     "slug": "repair-pdf",
     "variant": "truncated file",
-    "reason": "P3-04: Repair can't read a PDF cut off at 60% and says it's damaged and that repairing it may help"
+    "reason": "report.pdf keeps its pages in a compressed object stream, and cutting it at 60% cuts that stream, so there is nothing left to salvage (P3-04 recovers files whose objects survive the cut)"
   },
   {
     "slug": "sign-pdf",

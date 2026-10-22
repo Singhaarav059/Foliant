@@ -1,6 +1,6 @@
 "use client";
 
-import { PDFDocument, PDFName, PDFRawStream, PDFStream, PDFNumber, PDFRef, PDFArray, PDFDict, PDFHexString, PDFString, decodePDFRawStream, type PDFContext, type PDFObject } from "pdf-lib";
+import { PDFDocument, PDFName, PDFParser, PDFRawStream, PDFStream, PDFNumber, PDFRef, PDFArray, PDFDict, PDFHexString, PDFString, PDFWriter, decodePDFRawStream, type PDFContext, type PDFObject } from "pdf-lib";
 import { Unzlib, zlibSync } from "fflate";
 import { baseName, bytesOf, canvasToBlob, closePdf, openPdf, pdfBlob, pdfjs, renderPage, yieldToPage, type Output, type Progress } from "./common";
 import { loadPdf } from "./organize";
@@ -401,6 +401,15 @@ export async function repair(file: File): Promise<Output[]> {
   } catch {
     /* fall through */
   }
+  // A file cut short, or whose page tree loops: its objects are still there.
+  // Keep everything up to the last complete object, and hang every page
+  // object found, in file order, on a new page tree. Text stays text.
+  try {
+    const salvaged = await salvage(input);
+    if (salvaged) return [{ name: `${stem}-repaired.pdf`, blob: pdfBlob(salvaged) }];
+  } catch {
+    /* fall through */
+  }
   {
     // Last resort: pdf.js is very forgiving. Render what it can read into a fresh PDF.
     const src = await openPdf(input);
@@ -419,6 +428,46 @@ export async function repair(file: File): Promise<Output[]> {
     if (!out.getPageCount()) throw new PdfError("unrecoverable", file.name);
     return [{ name: `${stem}-repaired.pdf`, blob: pdfBlob(await out.save()), note: "rebuilt" }];
   }
+}
+
+// The objects of a damaged file, on a new page tree (P3-04), or null.
+async function salvage(input: Uint8Array): Promise<Uint8Array | null> {
+  const latin = new TextDecoder("latin1").decode(input);
+  // Up to the end of the last complete object, then a trailer naming the catalog.
+  const end = latin.lastIndexOf("endobj");
+  if (end < 0) return null;
+  let body = latin.slice(0, end + 6);
+  const root = [...body.matchAll(/(\d+)\s+(\d+)\s+obj\s*<<(?:(?!endobj)[\s\S])*?\/Type\s*\/Catalog\b/g)].at(-1);
+  const highest = Math.max(0, ...[...body.matchAll(/(\d+)\s+\d+\s+obj\b/g)].map((m) => Number(m[1])));
+  body += `\ntrailer\n<< /Size ${highest + 1}${root ? ` /Root ${root[1]} ${root[2]} R` : ""} >>\n%%EOF\n`;
+  // Parsed into objects only: a PDFDocument would walk the old page tree, and a looped one never ends.
+  const ctx = await PDFParser.forBytesWithOptions(Uint8Array.from(body, (c) => c.charCodeAt(0)), Infinity, false).parseDocument();
+  const N = (n: string) => PDFName.of(n);
+  const pages = ctx.enumerateIndirectObjects()
+    .filter(([, o]) => o instanceof PDFDict && o.get(N("Type")) === N("Page"))
+    .sort(([a], [b]) => a.objectNumber - b.objectNumber) as [PDFRef, PDFDict][];
+  if (!pages.length) return null;
+  // What a page inherits from its old parents (ISO 32000-1 §7.7.3.4) is copied onto it first.
+  for (const [, page] of pages) {
+    const seen = new Set<PDFDict>();
+    for (let parent = page.lookup(N("Parent")); parent instanceof PDFDict && !seen.has(parent); parent = parent.lookup(N("Parent"))) {
+      seen.add(parent);
+      for (const key of ["Resources", "MediaBox", "CropBox", "Rotate"]) if (!page.has(N(key)) && parent.has(N(key))) page.set(N(key), parent.get(N(key))!);
+    }
+  }
+  const treeRef = ctx.register(ctx.obj({ Type: "Pages", Kids: pages.map(([ref]) => ref), Count: pages.length }));
+  for (const [, page] of pages) page.set(N("Parent"), treeRef);
+  let catalog = ctx.lookup(ctx.trailerInfo.Root);
+  if (!(catalog instanceof PDFDict)) {
+    catalog = ctx.obj({ Type: "Catalog" }) as PDFDict;
+    ctx.trailerInfo.Root = ctx.register(catalog);
+  }
+  (catalog as PDFDict).set(N("Pages"), treeRef);
+  const out = await PDFDocument.load(await PDFWriter.forContext(ctx, 50).serializeToBuffer(), { updateMetadata: false });
+  if (!out.getPageCount()) return null;
+  const bytes = await out.save({ useObjectStreams: true });
+  await openPdf(bytes.slice()).then(closePdf);
+  return bytes;
 }
 
 // ── OCR (in ./ocr.ts)

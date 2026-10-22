@@ -1,6 +1,5 @@
 {
-  "redact bomb-image.pdf": {"why":"P1-09 a decompression-bomb image: memory over the limit","fails":["MB of memory (limit"]},
-  "repair cyclic-tree.pdf": {"why":"P3-04 repair rasterises a looped page tree","fails":["missing words [\"CYCLEPAGE\"]","fell back to rasterising pages (text no longer selectable)"]},
-  "word huge-scan.pdf": {"why":"P1-09 a huge scanned page: memory over the limit","fails":["MB of memory (limit"]},
-  "word odd-boxes.pdf": {"why":"P0-09 PDF to Word drops pages with little text","fails":["missing words [\"OFFSETMEDIA\",\"INHERITROT\",\"CROPSMALL\"]"]}
+  "redact bomb-image.pdf": {"why": "P1-09 a decompression-bomb image: memory over the limit", "fails": ["MB of memory (limit"]},
+  "word huge-scan.pdf": {"why": "P1-09 a huge scanned page: memory over the limit", "fails": ["MB of memory (limit"]},
+  "word odd-boxes.pdf": {"why": "P0-09 PDF to Word drops pages with little text", "fails": ["missing words [\"OFFSETMEDIA\",\"INHERITROT\",\"CROPSMALL\"]"]}
 }
