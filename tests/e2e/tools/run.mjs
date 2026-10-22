@@ -45,7 +45,7 @@ const knownFor = (lang, slug, variant) => known.find((k) => k.slug === slug && k
 
 const tmp = mkdtempSync(join(tmpdir(), "e2e-tools-"));
 const fxDir = join(tmp, "fixtures");
-const fx = (n) => (n.startsWith("/") ? n : [ "photo.jpg", "logo.png", "form.pdf", "truncated.pdf", "page.html" ].includes(n) ? join(fxDir, n) : join(fixtures, n));
+const fx = (n) => (n.startsWith("/") ? n : [ "photo.jpg", "logo.png", "form.pdf", "truncated.pdf", "page.html", "with-blank.pdf", "photo-page.pdf" ].includes(n) ? join(fxDir, n) : join(fixtures, n));
 
 const browser = await launch(engine);
 await makeFixtures(browser, fxDir);
