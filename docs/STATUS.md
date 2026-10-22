@@ -17,7 +17,7 @@ main (GitHub, P0 launch blockers)
 Each run resumes at the first item not marked done.
 
 - [x] 1. npm ci, build:static, fast tests (2026-10-22, Linux): all node test scripts, typecheck and lint pass. Fixed: test:server counted a killed zombie grandchild as alive. Notes: `npm ci` here needs `ONNXRUNTIME_NODE_INSTALL_CUDA=skip` (its CUDA download from api.nuget.org gets reset); Playwright's bundled browser build doesn't match this container, so Chromium tests run with `CHROME_PATH=/opt/pw-browsers/chromium`; test:server-routes needs `npm run build` first.
-- [ ] 2. Robustness run (`test:robust -- --known`)
+- [x] 2. Robustness run (`test:robust -- --known`), Linux, 2026-10-22: 752/756 pass, 4 known failures (P3-04 cyclic tree, P0-09 Word odd boxes, P1-09 two memory cases), 0 new.
 - [ ] 3. Browser e2e (Chromium, WebKit, Firefox)
 - [ ] 4a. P2-03 No limits and batch everything
 - [ ] 4b. P2-05 Folder workflows and recipe links
