@@ -5,13 +5,16 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Globe2, Menu, X, UserRound, LogOut } from "lucide-react";
 import { Logo } from "./Logo";
-import { ToolIcon } from "./ToolIcon";
+import dynamic from "next/dynamic";
 import { useI18n } from "./I18n";
 import { useUser, postJson } from "./User";
 import { CATEGORIES, TOOLS } from "@/lib/tools";
 import { LOCALES, type Locale } from "@/lib/i18n/locales";
 import { switchLanguage } from "@/lib/i18n/slugs";
 import { STATIC } from "@/lib/mode";
+
+// Every tool's icon only shows in the phone menu: loaded when it opens (P3-03).
+const ToolIcon = dynamic(() => import("./ToolIcon").then((m) => m.ToolIcon), { ssr: false });
 
 function useDismiss(open: boolean, close: () => void) {
   const ref = useRef<HTMLDivElement>(null);

@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { ShieldCheck, Server, ArrowRight } from "lucide-react";
-import { Workspace } from "@/components/workspace/Workspace";
+import { Workspace } from "@/components/workspace/LazyWorkspace";
 import { PrivacyChip } from "@/components/workspace/PrivacyChip";
 import { ToolIcon } from "@/components/ToolIcon";
 import { ToolContent, toolText } from "@/components/ToolContent";

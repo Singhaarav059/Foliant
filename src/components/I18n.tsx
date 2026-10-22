@@ -1,7 +1,8 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect } from "react";
-import { format, type Dict, type DictKey } from "@/lib/i18n/dictionary";
+import { format } from "@/lib/i18n/format";
+import type { Dict, DictKey } from "@/lib/i18n/dictionary";
 import type { Locale } from "@/lib/i18n/locales";
 import { localizePath } from "@/lib/i18n/slugs";
 

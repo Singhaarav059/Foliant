@@ -2017,6 +2017,8 @@ const d: { [K in DictKey]?: string } = {
   "res.notSmallerAll": "या फाइल्स आधीच चांगल्या ऑप्टिमाइझ केलेल्या होत्या. आम्ही मूळ फाइल्सच ठेवल्या.",
   "res.fileSaved": "{pct}% लहान",
   "res.fileKept": "आधीच ऑप्टिमाइझ: मूळ फाइल ठेवली",
+  "ws.staleBuild": "हे पान उघडल्यानंतर {brand} अपडेट झाले आहे. काम सुरू ठेवण्यासाठी पान रीलोड करा.",
+  "ws.reloadPage": "रीलोड करा",
 };
 
 export default d;

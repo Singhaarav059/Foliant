@@ -120,6 +120,9 @@ jobs:
       - name: Accessibility (axe-core, keyboard)
         if: success() || failure()
         run: npm run test:e2e:a11y -- ${{ matrix.browser }}
+      - name: Service worker (cache size, stale build)
+        if: success() || failure()
+        run: npm run test:e2e:sw -- ${{ matrix.browser }}
       - name: Page board
         if: success() || failure()
         run: npm run test:e2e:pageboard -- ${{ matrix.browser }}

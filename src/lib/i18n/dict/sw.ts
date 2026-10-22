@@ -2017,6 +2017,8 @@ const d: { [K in DictKey]?: string } = {
   "res.notSmallerAll": "Faili hizi tayari zilikuwa zimeboreshwa vizuri. Tumebakiza zile asili.",
   "res.fileSaved": "Ndogo kwa {pct}%",
   "res.fileKept": "Tayari imeboreshwa: asili imebakizwa",
+  "ws.staleBuild": "{brand} imesasishwa tangu ukurasa huu ulipofunguliwa. Pakia upya ili uendelee kufanya kazi.",
+  "ws.reloadPage": "Pakia upya",
 };
 
 export default d;

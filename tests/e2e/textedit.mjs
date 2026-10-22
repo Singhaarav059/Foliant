@@ -96,8 +96,8 @@ await suite(async ({ name, browser, test }) => {
       await page.mouse.move(box.x + box.width * (x + 0.2), box.y + box.height * (y + 0.1), { steps: 4 });
       await page.mouse.up();
     };
-    await draw("#d33f6a", 0.4, 0.3);
-    await draw("#2f6fed", 0.5, 0.35);
+    await draw(t["color.red"], 0.4, 0.3);
+    await draw(t["color.blue"], 0.5, 0.35);
     await panel().getByRole("button", { name: t["ed.sendBackward"] }).click();
 
     step = "save";

@@ -52,3 +52,4 @@ src/lib/vendor.ts
 
 # browser add-on builds (scripts/build-extension.mjs)
 /extension/dist/
+lighthouse/

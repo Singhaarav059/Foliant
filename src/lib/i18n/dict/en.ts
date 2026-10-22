@@ -1554,6 +1554,8 @@ const en = {
   "ws.passwordTooLong": "That password is too long for a PDF. Use {max} characters or fewer.",
   "ws.protectUnverified": "The protected file didn't open with your password, so it was discarded. Try a different password.",
   "ws.officeReload": "High fidelity needs a fresh page load. Reload the page and try again.",
+  "ws.staleBuild": "{brand} has been updated since this page opened. Reload to keep working.",
+  "ws.reloadPage": "Reload",
   "ws.officeMemory": "This device doesn't have enough free memory for high fidelity. Try Standard, or use a computer.",
   "ws.redactionLeak": "Some text you searched for is still in the file outside your marks, for example in a note or form field on another page. Nothing was saved. Mark those places too and try again.",
   "ws.officeStalled": "High fidelity stopped responding in this browser. Try Standard, or another browser.",

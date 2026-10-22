@@ -2017,6 +2017,8 @@ const d: { [K in DictKey]?: string } = {
   "res.notSmallerAll": "Aquests fitxers ja estaven ben optimitzats. Hem conservat els originals.",
   "res.fileSaved": "Un {pct}% més petit",
   "res.fileKept": "Ja optimitzat: s’ha conservat l’original",
+  "ws.staleBuild": "{brand} s’ha actualitzat des que vas obrir aquesta pàgina. Torna-la a carregar per continuar treballant.",
+  "ws.reloadPage": "Torna a carregar",
 };
 
 export default d;

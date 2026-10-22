@@ -15,6 +15,9 @@
 //   another slug. Each old address also gets a small page that refreshes to
 //   the new one and names it as canonical, for hosts without _redirects
 //   (Cloudflare Pages follows _redirects before serving the file).
+// - No .wasm twice: a library's own copy that Next put in _next/static/media
+//   (pdfium, ONNX Runtime) is the same file the app loads from /vendor, so
+//   the chunk's reference points there and the copy goes (P3-03).
 // - sw-manifest.json: what the service worker (public/sw.js) precaches for
 //   offline use: the app shell every page loads, plus the full list of build
 //   files so it can drop old ones. sw.js gets this build's id, so a deploy
@@ -24,7 +27,7 @@
 // 25 MiB per file, 2,000 static redirects), with some headroom for files.
 // Usage: node scripts/static-extras.mjs [dir=out]
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -79,6 +82,27 @@ if (moved.length > MAX_REDIRECTS) redirectProblems.push(`${moved.length} redirec
 const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)]));
 const urlOf = (file) => "/" + relative(out, file).split(sep).join("/");
 
+// Large .wasm files Next copied into _next/static/media that /vendor already
+// holds byte for byte: chunks are pointed at the vendor copy and the media
+// copy is deleted, so the site doesn't ship (and count) them twice.
+{
+  const hash = (f) => createHash("sha256").update(readFileSync(f)).digest("hex");
+  const vendored = new Map(walk(join(out, "vendor")).filter((f) => f.endsWith(".wasm")).map((f) => [hash(f), urlOf(f)]));
+  const media = join(out, "_next", "static", "media");
+  const dupes = existsSync(media) ? readdirSync(media).filter((f) => f.endsWith(".wasm")).map((f) => join(media, f)).filter((f) => statSync(f).size > 1 << 20 && vendored.has(hash(f))) : [];
+  if (dupes.length) {
+    const chunks = walk(join(out, "_next")).filter((f) => f.endsWith(".js"));
+    for (const file of chunks) {
+      let js = readFileSync(file, "utf8");
+      const before = js;
+      for (const d of dupes) js = js.replaceAll(urlOf(d), vendored.get(hash(d)));
+      if (js !== before) writeFileSync(file, js);
+    }
+    for (const d of dupes) rmSync(d);
+    console.log(`static: ${dupes.length} duplicate .wasm files now load from /vendor`);
+  }
+}
+
 // The Content-Security-Policy as a <meta> tag too, first in every page's
 // <head>, for hosts that ignore _headers (GitHub Pages). Browsers ignore
 // frame-ancestors there, so it's left out; framing stays the header's job.
@@ -124,6 +148,14 @@ for (const html of walk(out).filter((f) => f.endsWith(".html"))) {
   for (const [url] of readFileSync(html, "utf8").matchAll(/\/_next\/static\/[\w./~@-]+\.(?:js|css|woff2)/g)) {
     if (known.has(url)) shell.add(url);
   }
+}
+// The stubs that load a dynamic import's chunks (next/dynamic views, P3-03):
+// a few hundred bytes each, and no page names them, so a page that used one
+// offline would find it missing. They're precached with the shell.
+for (const url of known) {
+  if (!/^\/_next\/static\/chunks\/[^/]+\.js$/.test(url)) continue;
+  const file = join(out, url);
+  if (statSync(file).size < 2048 && /\.l\(/.test(readFileSync(file, "utf8"))) shell.add(url);
 }
 const locales = [...readFileSync(join(root, "src/lib/i18n/locales.ts"), "utf8").matchAll(/code: "([\w-]+)"/g)].map((m) => m[1]);
 const build = createHash("sha256").update(files.join("\n")).digest("hex").slice(0, 12);

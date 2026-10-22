@@ -7,7 +7,6 @@ import { docFor } from "@/lib/pdf/thumbs";
 import { closePdf, openPdf, pageSet, renderPage } from "@/lib/pdf/common";
 
 export type Stamp = "watermark" | "pageNumbers" | "headerFooter";
-export const STAMPS: string[] = ["watermark", "pageNumbers", "headerFooter"];
 const WIDTH = 300;
 
 // A live preview for the stamping tools (P2-12): the first page they draw

@@ -98,8 +98,9 @@ async function build(page, look) {
     await filter.waitFor({ timeout: 20000 });
     await filter.selectOption(look);
   }
+  // A select, or (three choices) a radio group named by the same label.
   const size = page.getByLabel(t["opt.pageSize"], { exact: true });
-  if (await size.count()) await size.selectOption("fit");
+  if (await size.count() && (await size.evaluate((e) => e.tagName)) === "SELECT") await size.selectOption("fit");
   else await page.getByRole("radio", { name: t["choice.pageSize.fit"] }).click();
   const [dl] = await Promise.all([
     page.waitForEvent("download", { timeout: 60000 }),

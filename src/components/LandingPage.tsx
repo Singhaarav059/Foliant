@@ -3,7 +3,7 @@
 // about that job, with the same structured data a tool page has.
 import Link from "next/link";
 import { ArrowRight, ShieldCheck } from "lucide-react";
-import { Workspace } from "@/components/workspace/Workspace";
+import { Workspace } from "@/components/workspace/LazyWorkspace";
 import { format, type Dict, type DictKey } from "@/lib/i18n/dictionary";
 import type { Locale } from "@/lib/i18n/locales";
 import { BRAND } from "@/lib/brand";

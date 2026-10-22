@@ -1,26 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { AlertTriangle, ArrowRight, Download, Loader2, X } from "lucide-react";
 import { useI18n } from "../I18n";
-import { STAMPS, StampPreview, type Stamp } from "./StampPreview";
+import type { Stamp } from "./StampPreview";
 import { useUser, postJson } from "../User";
 import { Dropzone, useFileIntake } from "./Dropzone";
 import { FileBoard, type Item } from "./FileBoard";
 import { Options } from "./Options";
 import { useSplitHints } from "./splitHints";
-import { PageBoard, type PageItem } from "./PageBoard";
-import { Editor, prepareEditor } from "./Editor";
-import { Scanner } from "./Scanner";
-import { CompareView, prepareCompare } from "./CompareView";
-import { SignatureCheck, prepareCheck } from "./SignatureCheck";
-import { ChatView, prepareChat } from "./ChatView";
-import { ListenView, prepareListen } from "./ListenView";
+import type { PageItem } from "./PageBoard";
 import { AiModels, prepareAi } from "./AiModels";
 import { ErrorBox, useProblem, type Problem } from "./ErrorBox";
-import { Results } from "./Results";
-import { PrintResults } from "./PrintResults";
-import { PasteHtml } from "./PasteHtml";
 import { peekHandoff, restoreHandoff } from "@/lib/handoff";
 import { fileExt, humanSize, type Output, type Progress } from "@/lib/pdf/common";
 import type { FileState, Track } from "@/lib/pdf/run";
@@ -35,6 +27,27 @@ type Caps = { chrome: boolean; libreoffice: boolean };
 type Job = { files: File[]; options: Record<string, unknown>; reloaded: boolean; agreed?: boolean };
 
 const uid = () => crypto.randomUUID();
+
+// Each mode's view is loaded when a tool uses it (P3-03), so a tool that only
+// lists files doesn't carry the editor, the page board or the scanner.
+const Editor = dynamic(() => import("./Editor").then((m) => m.Editor), { ssr: false });
+const PageBoard = dynamic(() => import("./PageBoard").then((m) => m.PageBoard), { ssr: false });
+const Scanner = dynamic(() => import("./Scanner").then((m) => m.Scanner), { ssr: false });
+const CompareView = dynamic(() => import("./CompareView").then((m) => m.CompareView), { ssr: false });
+const SignatureCheck = dynamic(() => import("./SignatureCheck").then((m) => m.SignatureCheck), { ssr: false });
+const ChatView = dynamic(() => import("./ChatView").then((m) => m.ChatView), { ssr: false });
+const ListenView = dynamic(() => import("./ListenView").then((m) => m.ListenView), { ssr: false });
+const PrintResults = dynamic(() => import("./PrintResults").then((m) => m.PrintResults), { ssr: false });
+const PasteHtml = dynamic(() => import("./PasteHtml").then((m) => m.PasteHtml), { ssr: false });
+const Results = dynamic(() => import("./Results").then((m) => m.Results), { ssr: false });
+const StampPreview = dynamic(() => import("./StampPreview").then((m) => m.StampPreview), { ssr: false });
+const prepareEditor = (id: ToolId) => import("./Editor").then((m) => m.prepareEditor(id));
+const prepareCompare = () => import("./CompareView").then((m) => m.prepareCompare());
+const prepareCheck = () => import("./SignatureCheck").then((m) => m.prepareCheck());
+const prepareChat = () => import("./ChatView").then((m) => m.prepareChat());
+const prepareListen = () => import("./ListenView").then((m) => m.prepareListen());
+// The tools with a live preview (StampPreview.tsx).
+const STAMPS: string[] = ["watermark", "pageNumbers", "headerFooter"];
 
 // `preset`: options to start from instead of the defaults (a landing page's, see src/lib/landings.ts).
 export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<string, unknown> }) {
@@ -123,7 +136,7 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
   // Once the page has settled, load what this tool runs on, so it also works
   // offline. The imports match the ones each stage makes when it runs.
   useEffect(() => {
-    const code =
+    const engine =
       tool.mode === "pages" ? () => import("@/lib/pdf/organize")
       : tool.mode === "editor" ? () => prepareEditor(tool.id)
       : tool.mode === "compare" ? prepareCompare
@@ -131,6 +144,16 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
       : tool.mode === "chat" ? prepareChat
       : tool.mode === "listen" ? prepareListen
       : () => import("@/lib/pdf/run").then((m) => m.prepare(tool.id));
+    // The views this tool shows load on demand too (the dynamic imports above),
+    // so they're fetched with its code, for offline use.
+    const views = () => Promise.all([
+      import("./Results"), import("./PrintResults"),
+      tool.mode === "pages" ? import("./PageBoard") : null,
+      tool.mode === "scan" ? import("./Scanner") : null,
+      tool.id === "htmlToPdf" ? import("./PasteHtml") : null,
+      STAMPS.includes(tool.id) ? import("./StampPreview") : null,
+    ]);
+    const code = () => Promise.all([engine(), views()]);
     const ai = !!tool.ai && tool.mode !== "chat";
     const timer = setTimeout(() => void import("@/lib/offline").then((m) => m.warm(tool.id, ai ? () => Promise.all([code(), prepareAi()]) : code)).catch(() => {}), 1500);
     return () => clearTimeout(timer);

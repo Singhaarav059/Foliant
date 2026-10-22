@@ -16,8 +16,16 @@
 // POST to /share (the manifest's share_target). This worker keeps them in
 // IndexedDB and sends the page on to /{lang}/open, which offers the tools
 // that take them (src/lib/handoff.ts reads them). No server sees them.
+//
+// Pages visited are kept in a cache of their own, the most recently used
+// PAGE_LIMIT of them, and fetched with navigation preload so the worker's
+// start-up doesn't delay them. A tab still running an older build that asks
+// for one of its /vendor files after a deploy gets a 404 (only this build's
+// files are served); its pages are told, and offer to reload (ServiceWorker.tsx).
 const VERSION = new URL(location.href).searchParams.get("v") ?? "dev";
 const CACHE = `nopload-${VERSION}`;
+const PAGES = `nopload-pages-${VERSION}`;
+const PAGE_LIMIT = 60;
 const BUILD = "dev";
 
 async function manifest() {
@@ -74,19 +82,22 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
     // AI models the visitor downloaded (src/lib/ai/store.ts) stay across deploys.
-    await Promise.all((await caches.keys()).filter((k) => k !== CACHE && k !== "nopload-models").map((k) => caches.delete(k)));
+    await Promise.all((await caches.keys()).filter((k) => k !== CACHE && k !== PAGES && k !== "nopload-models").map((k) => caches.delete(k)));
+    await self.registration.navigationPreload?.enable().catch(() => {});
     // After a deploy: drop build files this build doesn't have, and fetch
     // the pages kept from before again, since they point at those files.
     const m = await manifest();
     if (m?.files) {
       const files = new Set(m.files);
-      const cache = await caches.open(CACHE);
-      await Promise.all((await cache.keys()).map(async (req) => {
-        const url = new URL(req.url);
-        if (isBuildFile(url.pathname) && !files.has(url.pathname)) await cache.delete(req);
-        else if (url.searchParams.has("_rsc") || url.pathname.endsWith(".txt")) await cache.delete(req);
-        else if (isPage(url.pathname)) await store(cache, url.pathname).catch(() => {});
-      }));
+      for (const name of [CACHE, PAGES]) {
+        const cache = await caches.open(name);
+        await Promise.all((await cache.keys()).map(async (req) => {
+          const url = new URL(req.url);
+          if (isBuildFile(url.pathname) && !files.has(url.pathname)) await cache.delete(req);
+          else if (url.searchParams.has("_rsc") || url.pathname.endsWith(".txt")) await cache.delete(req);
+          else if (isPage(url.pathname)) await store(cache, url.pathname).catch(() => {});
+        }));
+      }
     }
     await self.clients.claim();
   })());
@@ -109,6 +120,30 @@ function keep(event, req, res) {
   if (res.status !== 200) return;
   const copy = plain(res.clone());
   event.waitUntil(caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {}));
+}
+
+// A page's copy goes to the pages cache, as its newest entry; the oldest go
+// past PAGE_LIMIT. (Cache keys come back in the order they were put.)
+function keepPage(event, req, res) {
+  if (res.status !== 200) return;
+  const copy = plain(res.clone());
+  event.waitUntil((async () => {
+    const cache = await caches.open(PAGES);
+    await cache.delete(req);
+    await cache.put(req, copy);
+    const keys = await cache.keys();
+    await Promise.all(keys.slice(0, Math.max(0, keys.length - PAGE_LIMIT)).map((k) => cache.delete(k)));
+  })().catch(() => {}));
+}
+
+// A /vendor file from another build than this worker's (a tab left open
+// across a deploy) that's gone: that tab's pages should reload.
+function staleBuild(event, url, res) {
+  const build = url.pathname.split("/")[2];
+  if (res.status !== 404 || !url.pathname.startsWith("/vendor/") || build === VERSION || VERSION === "dev") return;
+  event.waitUntil((async () => {
+    for (const client of await self.clients.matchAll({ type: "window" })) client.postMessage({ type: "nopload:stale" });
+  })());
 }
 
 // The same database and keys as src/lib/handoff.ts.
@@ -194,6 +229,7 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       caches.match(req).then((hit) => hit || fetch(req).then((res) => {
         keep(event, req, res);
+        staleBuild(event, url, res);
         return res;
       })).then(isolated),
     );
@@ -202,9 +238,11 @@ self.addEventListener("fetch", (event) => {
   const navigation = req.mode === "navigate";
   if (navigation || req.headers.get("accept")?.includes("text/html") || url.searchParams.has("_rsc")) {
     event.respondWith(
-      fetch(req)
+      // The navigation preload's response when there is one: it started while this worker woke up.
+      Promise.resolve(navigation ? event.preloadResponse : undefined)
+        .then((preloaded) => preloaded ?? fetch(req))
         .then((res) => {
-          keep(event, req, res);
+          keepPage(event, req, res);
           return res;
         })
         // Offline: the page as last seen, else the home page in its language.

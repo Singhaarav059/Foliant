@@ -2017,6 +2017,8 @@ const d: { [K in DictKey]?: string } = {
   "res.notSmallerAll": "Bu dosyalar zaten iyi optimize edilmişti. Orijinalleri koruduk.",
   "res.fileSaved": "%{pct} daha küçük",
   "res.fileKept": "Zaten optimize: orijinal korundu",
+  "ws.staleBuild": "{brand}, bu sayfa açıldığından beri güncellendi. Çalışmaya devam etmek için sayfayı yenileyin.",
+  "ws.reloadPage": "Yenile",
 };
 
 export default d;

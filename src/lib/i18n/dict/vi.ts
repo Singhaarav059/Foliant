@@ -2017,6 +2017,8 @@ const d: { [K in DictKey]?: string } = {
   "res.notSmallerAll": "Các tệp này đã được tối ưu tốt. Chúng tôi giữ nguyên bản gốc.",
   "res.fileSaved": "Nhỏ hơn {pct}%",
   "res.fileKept": "Đã tối ưu: giữ nguyên bản gốc",
+  "ws.staleBuild": "{brand} đã được cập nhật kể từ khi bạn mở trang này. Hãy tải lại trang để tiếp tục làm việc.",
+  "ws.reloadPage": "Tải lại",
 };
 
 export default d;
