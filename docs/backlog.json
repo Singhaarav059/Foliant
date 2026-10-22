@@ -1,0 +1,1380 @@
+[
+ {
+  "id": "P0-01",
+  "priority": "P0",
+  "title": "Make CI green and trustworthy (red on all 5 jobs at HEAD)",
+  "why": "GitHub Actions run 39015444608 (7e775ad) and the two prior runs fail every job: typecheck ('Cannot find name PageProps/LayoutProps' in src/app/[lang]/page.tsx:10, layout.tsx:22,43, [slug]/page.tsx:29,41,49), e2e chromium/firefox/webkit at 'Run tests', and the pdf job at test:office, so libreoffice, ocr-accuracy and veraPDF test:pdfa never run. A launch-and-forget product has no other safety net, and ubuntu-latest moves to Ubuntu 26 on 2026-10-19.",
+  "files": [
+   ".github/workflows/ci.yml",
+   "package.json",
+   "tests/e2e.mjs",
+   "tests/e2e/harness.mjs",
+   "scripts/serve-static.mjs",
+   "next.config.ts",
+   ".node-version"
+  ],
+  "approach": "(1) Typecheck: generate Next's route types before tsc. Next 16's global PageProps/LayoutProps come from type generation, but read node_modules/next/dist/docs for the exact command per AGENTS.md. Alternatively run tsc after next build. (2) Pull the failing logs with authenticated `gh run view --log-failed` and fix the root causes. Known contributors: the Dropzone hydration race (open() must also wait for __reactProps on input[type=file]), and serve-static.mjs ignoring out/_headers (parse and apply it so COOP/COEP behave as in production). (3) Split tests/e2e.mjs into tests/e2e/harness.mjs plus per-area spec files, so later items add their own spec without conflicts. (4) In the pdf job, give each test step `if: success() || failure()` so one failure no longer hides the rest. (5) Pin runs-on: ubuntu-24.04, pin actions by commit SHA, add .node-version, and install Chrome with `npx playwright-core install` instead of assuming /usr/bin/google-chrome. (6) next.config.ts: set turbopack.root from a TURBOPACK_ROOT env var so worktree builds with a symlinked node_modules succeed.",
+  "acceptance": "The CI run for the fixing commit is green on all 5 jobs, including test:pdfa with veraPDF; today all 5 fail. 10 consecutive local `node tests/e2e.mjs chromium` runs are all green. `curl -sI localhost:3202/en` against serve-static shows Cross-Origin-Embedder-Policy; today the header is absent.",
+  "effort": "M",
+  "depends_on": [],
+  "parallel_safe": false
+ },
+ {
+  "id": "P0-02",
+  "priority": "P0",
+  "title": "Rotate PDF returns unrotated files",
+  "why": "Verified in 6/6 UI runs and by 2 verifiers: the sidebar 'Rotate all by' angle (default 90) is never read in pages mode (Workspace.tsx:167-179 calls buildFromPlan with rotate 0). So the tool's main action hands back an unchanged file.",
+  "files": [
+   "src/components/workspace/Workspace.tsx",
+   "tests/e2e/rotate.mjs"
+  ],
+  "approach": "Apply options.angle to the page state when the option changes, so thumbnails preview it and the toolbar's rotate buttons add to it instead of being applied twice. At minimum, add ((item.rotate + Number(options.angle)) % 360) to each item in start() before org.buildFromPlan. The e2e spec should check pdf-lib getRotation() on every page.",
+  "acceptance": "On /en/rotate-pdf with report.pdf and default options, pdf-lib getRotation().angle is 90 on all 3 pages (today [0,0,0]). Choosing 180 gives 180, and 270 gives 270.",
+  "effort": "S",
+  "depends_on": [
+   "P0-01"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P0-03",
+  "priority": "P0",
+  "title": "Normalise the page frame: redaction misses text on pages with odd page boxes",
+  "why": "Verified: on a page with an inverted MediaBox, or a CropBox larger than the MediaBox, the redaction box lands in the wrong place or off the page, and the secret stays visible and extractable. Watermarks and page numbers are also missing on those pages. Both box shapes are legal under the PDF spec.",
+  "files": [
+   "src/lib/pdf/edit.ts",
+   "tests/redact.mjs"
+  ],
+  "approach": "In edit.ts visualFrame (around l.14-15), build the frame the way pdf.js builds page.view. Normalise both boxes with min/max. Intersect the CropBox with the MediaBox, falling back to the MediaBox if the overlap is empty. Then apply /Rotate. Replace the raw getCropBox() at edit.ts:395 the same way. Every caller inherits the fix: redact userBoxes, watermark, pageNumbers, crop, applyItems and readFields. Add both page types to tests/redact.mjs, generated with pdf-lib.",
+  "acceptance": "tests/redact.mjs gains cases where SECRET sits on an inverted-MediaBox page and on an oversized-CropBox page. After redact(), pdf.js text no longer contains it (today LEAKED). pageNumbers on those pages yields 'Page 8 of 10' and 'Page 9 of 10' (today missing).",
+  "effort": "S",
+  "depends_on": [],
+  "parallel_safe": false
+ },
+ {
+  "id": "P0-04",
+  "priority": "P0",
+  "title": "Redaction output hygiene: orphan link URLs and linked unredacted pages",
+  "why": "Verified: the removed link annotation, URL included (for example the mailto: of a redacted email), stays in the file as an unreferenced object inside an object stream. When PDFium fails for the file or for one page, a GoTo link pulls an unredacted copy of the redacted page into the output. tests/redact.mjs scans only PDFRawStream objects, so it passes.",
+  "files": [
+   "src/lib/pdf/security.ts",
+   "tests/redact.mjs",
+   "package.json"
+  ],
+  "approach": "Before copyPages, delete annotations whose rectangles intersect redaction boxes. Remove or retarget /Dest and /A GoTo entries that point at pages outside the output, sharing the helper from P0-06. After saving, run the vendored qpdf once (Apache-2.0, `--object-streams=generate`) to drop unreachable objects. If PDFium fails on a page, rasterise that page rather than copying the original. Finish with a verification pass that decodes every indirect object (dicts, strings in hex and UTF-16, streams, object streams) and throws if any search term survives. Test the fallback path in Node: stub pdfiumWasm.load before its first load and shim the canvas with @napi-rs/canvas (MIT, added as a devDependency).",
+  "acceptance": "In tests/redact.mjs: (a) a Link with a URI containing SECRET-4471 under the box leaves 0 objects containing it after redact (today 1). (b) In fallback mode, a table-of-contents link to the redacted page leaves 0 streams containing SECRET3 (today 1). (c) Mutations R3 and R4 make the suite fail (today it passes).",
+  "effort": "M",
+  "depends_on": [
+   "P0-03"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P0-05",
+  "priority": "P0",
+  "title": "Redaction search must match across text runs",
+  "why": "Verified: findMatches tests each pdf.js glyph run on its own (security.ts:54-87). 'John Smith' split across two text objects, or with a bold surname, is counted once while 2 occurrences stay unredacted, and the UI shows a plausible count.",
+  "files": [
+   "src/lib/pdf/security.ts",
+   "src/lib/pdf/text.ts",
+   "src/components/workspace/Editor.tsx",
+   "tests/redact.mjs"
+  ],
+  "approach": "Run the regex against line.text and map each match back to (run, glyph index) through an explicit map that accounts for the synthetic spaces groupLines inserts. Emit one rectangle per covered run segment, merged per line. Treat a hyphen at a line break as a join. Optional whole-word and case toggles. The Editor shows the true hit count.",
+  "acceptance": "A synthetic PDF has 'John Smith' 3 times: as one run, split across two drawText objects, and with 'Smith' in bold. findMatches returns 3 hits, and after redact() pdf.js text contains no 'Smith' (today 1 hit, 2 left). For '1234-5678', the box starts at or before xs[index] minus the pad (catches mutant R4).",
+  "effort": "M",
+  "depends_on": [
+   "P0-04",
+   "P0-08"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P0-06",
+  "priority": "P0",
+  "title": "Split, extract, remove and organize ship every linked page as hidden content",
+  "why": "Verified: pdf-lib copyPages follows link /Dest page references. A one-page part of a 61-page linked book stores all 60 images and secret strings (61x the expected size). 'Remove pages' keeps the removed pages' content whenever a kept page links to them. This is a privacy leak.",
+  "files": [
+   "src/lib/pdf/organize.ts",
+   "tests/organize.mjs"
+  ],
+  "approach": "Select pages with the vendored qpdf (Apache-2.0, `--empty --pages in.pdf <list> --`) in subset, buildFromPlan, extractSeparate and split, and use pdf-lib only for setting rotation. Or, before copyPages, strip or remap /Dest and /A GoTo entries whose target is outside the subset. Export the helper for P0-04.",
+  "acceptance": "tests/organize.mjs, using a generated 61-page book whose contents page links to 60 chapters: splitting every page gives parts each under 40 KB with at most 1 image XObject (today about 944 KB each with 60 images). buildFromPlan keeping only page 1 stores 0 images and no 'SECRET-CHAPTER' strings.",
+  "effort": "M",
+  "depends_on": [
+   "P0-01"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P0-07",
+  "priority": "P0",
+  "title": "Protect: password lockout and option-like passwords",
+  "why": "Verified: a password longer than 127 UTF-8 bytes gives a file that pdf.js, qpdf and Foliant's own Unlock cannot open, because the vendored qpdf hashes the untruncated password. Passwords starting with '-' or '@' (for example '@Secure2024') fail with 'qpdf exited with 2' because protect passes them as positional arguments (security.ts:26-33).",
+  "files": [
+   "src/lib/pdf/security.ts",
+   "src/components/workspace/Workspace.tsx",
+   "src/components/Workflows.tsx",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "Call qpdf as `--encrypt --user-password=PW --owner-password=X --bits=256 ... -- in out` (verified working for all tested passwords). Reject passwords where `new TextEncoder().encode(pw).length > 127` with a typed password_too_long error and a localized message. Rejecting is safer than truncating a multibyte password. After encrypting, open the output with pdf.js using the password and throw if that fails.",
+  "acceptance": "protect() with '-v', '--', '@notes' and '@Secure2024' each returns a file pdf.js opens with that password (today QpdfError). 'a'.repeat(200) throws code password_too_long before encryption (today it returns a file nobody using pdf.js can open).",
+  "effort": "S",
+  "depends_on": [
+   "P0-04",
+   "P0-12"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P0-08",
+  "priority": "P0",
+  "title": "Rotated text comes out reversed or one character per cell (wrong numbers in Excel)",
+  "why": "Verified on a fresh build: on a page turned 180 degrees with Foliant's own Rotate, PDF to Excel stores 980 as 89 and 1,200 as 21, and text such as 'Region' as 'noigeR'. Sideways tables split into fragments in Excel, Word and Markdown. This is silent data corruption. glyphRuns uses only viewport x and ignores glyph direction.",
+  "files": [
+   "src/lib/pdf/text.ts",
+   "src/lib/pdf/convert.ts",
+   "tests/rotated-text.mjs"
+  ],
+  "approach": "In text.ts glyphRuns (about l.88-161), compute each glyph's advance vector in viewport space. Start a new run when the direction changes. Transform 90/180/270-degree runs into their own frame before groupLines, as pdf.js TextLayer does with angle. If most glyphs on a page are not left-to-right horizontal, fall back to pdf.js getTextContent order. convert.ts asNumber (about l.231) rejects text from non-horizontal runs. The fix also benefits compare, redact and layout, which all use pageText.",
+  "acceptance": "tests/rotated-text.mjs: a table page rotated 180 degrees with rotateAll, then PDF to Excel, gives C1=980, C2=1200 and D3='Region' (today 89, 21, 'noigeR'). A sideways table (text matrix turned 90 degrees) gives cells 'Region', 'Revenue' and 'Growth'.",
+  "effort": "M",
+  "depends_on": [],
+  "parallel_safe": false
+ },
+ {
+  "id": "P0-09",
+  "priority": "P0",
+  "title": "PDF to Word must never return an empty or lossy document",
+  "why": "Verified: scanned pages carrying a text stamp of 20 or more characters (for example a Bates or exhibit footer) produce a docx with 0 images, an empty body and no footer. Header-only pages lose their text. When page 1 has no body text, the header and footer are dropped for the whole document. Pages with fewer than 20 characters are flattened to a picture and their text is lost.",
+  "files": [
+   "src/lib/pdf/word.ts",
+   "src/lib/pdf/layout.ts",
+   "tests/word-content.mjs"
+  ],
+  "approach": "In word.ts:\n- When a page has no body sections and no figures, take the picture-page path and still attach the header and footer.\n- Attach the header and footer to the first section created, even if it is empty (word.ts:256-261).\n- Use the picture path only for pages with no text at all (not textChars < 20, word.ts:224). Otherwise keep the paragraphs plus the image.\n\nIn layout.ts, keep an image covering 60% or more of the page (l.234) as a behind-text background picture instead of dropping it.\n\nFixtures go in the new test file, generated with pdf-lib from tests/fixtures/scanned.pdf.",
+  "acceptance": "tests/word-content.mjs:\n- 3 scanned pages with a 48-character stamp: the docx has 3 images and the stamp text. Today it has 0 media and an empty body.\n- A 3-page header-only document: a header part contains 'MANYPAGES page'.\n- First page header-only, pages 2-3 with body text: the header part is kept.\n- A page whose only text is 'CMYKJPEG image page': the docx keeps 'CMYKJPEG'.",
+  "effort": "M",
+  "depends_on": [],
+  "parallel_safe": true
+ },
+ {
+  "id": "P0-10",
+  "priority": "P0",
+  "title": "Fix offline mode: the service worker never caches the JS chunks",
+  "why": "Verified on hosts with and without COEP headers. public/sw.js:44 calls res.clone() after the response has already been returned, which throws 'body already used' 32 times per visit. The cache holds 0 /_next/static entries, so no page works offline even though the README and en.ts promise 'Works offline'. The offline fallback always goes to /en. Install precaches about 2.6 MB of engines (0.8 MB gzip) for every visitor, including those who only read /about.",
+  "files": [
+   "public/sw.js",
+   "scripts/static-extras.mjs",
+   "src/components/ServiceWorker.tsx",
+   "tests/e2e/offline.mjs"
+  ],
+  "approach": "- Take `const copy = res.clone()` synchronously before returning, as the navigation branch already does.\n- At build time, write a precache manifest of the app-shell chunks, CSS and fonts to out/ from static-extras.mjs.\n- On install, precache the shell for the visitor's locale.\n- Make the offline fallback match the locale (/{lang} taken from the URL) instead of /en (sw.js:60).\n- Stop precaching qpdf.wasm and pdf.worker on install. Cache them on the first tool visit, using the existing cache-first /vendor rule, or on the appinstalled event.\n\nWorkbox (MIT) is an alternative, but the hand-written fix is small.",
+  "acceptance": "Playwright:\n- Visit /fr, then /fr/compress-pdf. Call setOffline(true), reload, and compress scanned.pdf: the output is a valid PDF. Today the page never hydrates and every chunk fails with ERR_FAILED.\n- caches.keys() content includes at least one /_next/static/chunks/ entry.\n- A fresh visit to /en/about does not request qpdf.wasm.",
+  "effort": "M",
+  "depends_on": [
+   "P0-01"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P0-11",
+  "priority": "P0",
+  "title": "Compare correctness: false '0 changes' and page-number pairing",
+  "why": "Verified: CompareView.tsx:26 turns any failure, such as an encrypted or non-PDF file, into an empty diff, so the user sees '0 changes / No text differences found'. The visual overlay hangs on an unhandled rejection. compare.ts pairs pages by index, so inserting one page marks every page as changed. All three views have this pairing problem.",
+  "files": [
+   "src/lib/pdf/compare.ts",
+   "src/components/workspace/CompareView.tsx",
+   "tests/compare.mjs"
+  ],
+  "approach": "- Open each file separately so the error can name the bad one.\n- On failure, show the shared role=alert from P0-12 with Unlock or Repair links. Never show '0 changes' after an error.\n- Add a .catch to visualOverlay.\n- Align pages before diffing: an LCS over page similarity (Jaccard of word sets), with unmatched pages marked as added or removed. Use this alignment in the text, overlay and side-by-side views. jsdiff (BSD-3) is already a dependency.",
+  "acceptance": "tests/compare.mjs:\n- a.pdf (3 pages) against b.pdf (the same 3 pages plus 1 inserted at the front) reports exactly 1 change: 1 added page and 3 unchanged pages. Today all 4 pages are flagged.\n- e2e with an encrypted file plus report.pdf shows a role=alert naming the file, with an Unlock link, and no '0 changes'.",
+  "effort": "M",
+  "depends_on": [
+   "P0-12"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P0-12",
+  "priority": "P0",
+  "title": "Error honesty layer: typed, localized, correct errors",
+  "why": "Today users see raw parser text such as 'Failed to parse PDF document (line:2 col:0 offset=43)' or 'qpdf exited with 2'. A non-PDF is called 'password-protected' in page-grid tools (Workspace.tsx:88-92). The file name is missing (' is password-protected'). Arabic and Japanese pages show English errors. The editor tools show a blank page with a disabled button (Editor.tsx:74). HEIC in Chromium shows a raw DOMException. qpdf's diagnostics never reach the user because this qpdf-wasm build ignores print and printErr.",
+  "files": [
+   "src/lib/pdf/errors.ts",
+   "src/lib/pdf/organize.ts",
+   "src/lib/pdf/common.ts",
+   "src/lib/pdf/qpdf.ts",
+   "src/components/workspace/Workspace.tsx",
+   "src/components/workspace/Editor.tsx",
+   "src/lib/i18n/dict/en.ts",
+   "src/lib/i18n/dict/*.ts"
+  ],
+  "approach": "- Add typed errors that carry fileName: not_pdf, damaged, encrypted, already_encrypted, password_too_long, no_pages, image_unsupported, page_too_large, out_of_memory.\n- Map engine failures to them:\n  - pdf.js PasswordException and InvalidPDFException\n  - pdf-lib parse errors\n  - RangeError from cyclic page trees\n  - qpdf exit codes, with qpdf's console output captured\n- Give each error a localized message with Unlock or Repair links.\n- Editor gets an onError prop that calls fail().\n- Add a 'Report this problem' link to a prefilled GitHub issue containing the tool id, browser and error code, never file names or content.",
+  "acceptance": "- fake.pdf in organize-pdf, compress-pdf and pdf-to-word shows a translated 'not a valid PDF' message, in Arabic on /ar. No message contains 'line:', 'offset' or 'qpdf'.\n- An encrypted PDF in /en/sign-pdf shows a role=alert with an Unlock link within 2 s.\n- A .heic in Chromium shows the localized unsupported-format message.\n\nToday these cases show raw parser text, the wrong 'password-protected' message, a blank editor, or a DOMException.",
+  "effort": "M",
+  "depends_on": [
+   "P0-01"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P0-13",
+  "priority": "P0",
+  "title": "OCR high-accuracy mode: wrong languages, sideways pages and absolute quality gates",
+  "why": "Three verified problems:\n- PaddleOCR 'High accuracy' is offered for Greek but scores 66-72% CER, against 3-7% for Tesseract. The dictionary has no tonos letters and no final sigma. French and Spanish also lose \u00ab \u00bb \u0153 \u00bf \u00a1 \u00d1.\n- In high-accuracy mode, pages turned 90 degrees clockwise or upside down return 0 words. The `wordCount < 3` early exit at ocr.ts:85 stops before trying other orientations.\n- The test suites only compare the two engines with each other. Removing the denoise step (CER 1% to 79%) or an orientation-unmapping bug still passes.",
+  "files": [
+   "src/lib/tools.ts",
+   "src/lib/pdf/ocr.ts",
+   "tests/ocr.mjs",
+   "tests/ocr-accuracy.mjs"
+  ],
+  "approach": "- Remove ell from PADDLE_LANGS (tools.ts:74). Keep fra, spa, por and cat only if a CER gate passes on realistic text that contains their special characters.\n- In readPage, when PaddleOCR returns 0 words, keep trying the remaining orientations instead of treating the page as blank.\n- On low-confidence pages (score under about 45), keep only words with confidence of 70 or more and return an ocrLowConfidence note.\n- Tests:\n  - add a sidewaysLeft variant (rotate90(upright,3), turns 1)\n  - check PaddleOCR text positions against the Tesseract anchor\n  - add absolute per-case CER ceilings: clean \u22641%, smallPrint \u22643%, degraded \u22646%, extreme \u2264100%\n  - add Greek, French and Spanish samples that contain the missing characters\n\nLater: per-script PP-OCRv5 recognition models (Apache-2.0), chosen by language.",
+  "acceptance": "- readPage(paddlePage, rotate90(upright,1)) and rotate90(upright,2) each return 7 or more words. Today they return 0.\n- The Greek high-accuracy option is gone, or its CER is no worse than Tesseract plus 5 points.\n- Mutations O5 (no denoise), O3 (k===1 unmap), O1/O2 (page turn and angle) and O7 (confidence 0) each make a suite fail. Today all pass.",
+  "effort": "M",
+  "depends_on": [
+   "P0-01"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P0-14",
+  "priority": "P0",
+  "title": "File intake in every stage: drop, paste, and picks made before hydration",
+  "why": "In the work stage, dragover is not cancelled (Dropzone only registers window listeners when not compact), so dropping a second file makes Chrome navigate to it and the session is lost. This is inferred with high confidence. Verified: taps on 'Select files' in the 1-2 s before hydration do nothing, and a file picked before hydration is lost for good. There is no clipboard paste.",
+  "files": [
+   "src/components/workspace/Dropzone.tsx",
+   "src/components/workspace/Workspace.tsx",
+   "tests/e2e/intake.mjs"
+  ],
+  "approach": "- Register window dragover and drop listeners in Workspace for every stage, including the page board and editor. preventDefault, route files to addFiles, and reject wrong types with ws.wrongType.\n- Add a window 'paste' listener that reads clipboardData.files.\n- Render the picker as a <label> that wraps the file input, so the OS picker opens before React hydrates.\n- In a mount effect, read input.files so early picks are processed.",
+  "acceptance": "- On /en/merge-pdf, add report.pdf, then drop report-v2.pdf on the page: 2 files are listed and the URL is unchanged.\n- Pasting a PDF File adds it.\n- With Slow 4G and 4x CPU throttling, tapping Select files at first paint opens the picker, and the chosen file appears after hydration. Today the tap is ignored.",
+  "effort": "M",
+  "depends_on": [
+   "P0-02"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P0-15",
+  "priority": "P0",
+  "title": "Word, PowerPoint and Excel to PDF should produce a real PDF in one click",
+  "why": "'word to pdf' gets about 2.6M searches a month in India. In the static build the default fidelity is 'standard' (tools.ts:301), which only opens a print preview, so the user has to find 'Save as PDF', and 'Continue with' is disabled. The LibreOffice path makes a real PDF, but it is opt-in, a 79 MB first download, and fails on the first visit on hosts without isolation headers ('needs a fresh page load').",
+  "files": [
+   "src/lib/tools.ts",
+   "src/lib/pdf/run.ts",
+   "src/lib/office/libreoffice.ts",
+   "src/components/workspace/Workspace.tsx",
+   "public/sw.js",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "- Add fidelity 'auto' and make it the default. Use LibreOffice when crossOriginIsolated is true and the device looks capable (navigator.deviceMemory of 4 or more, not a phone).\n- Show a one-time consent: '79 MB one-time download, stays on this device'.\n- If the page is not isolated but the service worker is active, store the File in IndexedDB, reload once, and resume. This is the coi-serviceworker pattern (MIT).\n- Keep the print preview only as the fallback for phones until P1-02, and for office_memory errors.\n- 'Continue with' works on the .pdf output.",
+  "acceptance": "e2e in desktop Chromium, with serve-static sending no headers and a fresh profile: drop brief.docx with default options. A .pdf downloads, starts with %PDF, contains 'Project brief', and no reload alert appears. Today the result is a print preview, or 'needs a fresh page load'.",
+  "effort": "M",
+  "depends_on": [
+   "P0-01",
+   "P0-10"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P0-16",
+  "priority": "P0",
+  "title": "SEO foundation: canonical, per-slug hreflang, sitemap, robots, OG and icons",
+  "why": "Every tool page's 26 hreflang links point at the language home pages, as relative URLs (layout.tsx:32), and Google requires fully qualified URLs. There is no canonical, x-default, sitemap.xml, robots.txt, metadataBase, OG or Twitter tags. '/' is noindex. /en/404 is indexable. favicon.ico returns 404. Icons are SVG only. The manifest declares file_handlers that nothing consumes.",
+  "files": [
+   "src/lib/brand.ts",
+   "src/app/[lang]/layout.tsx",
+   "src/app/[lang]/page.tsx",
+   "src/app/[lang]/[slug]/page.tsx",
+   "src/app/(start)/layout.static.tsx",
+   "src/app/(start)/page.static.tsx",
+   "src/app/[lang]/404/page.static.tsx",
+   "scripts/static-extras.mjs",
+   "public/manifest.webmanifest",
+   "public/favicon.ico",
+   "public/icon-192.png",
+   "public/icon-512.png",
+   "public/apple-touch-icon.png"
+  ],
+  "approach": "- Read NEXT_PUBLIC_SITE_URL into metadataBase. The build fails if it is unset.\n- Remove alternates from the layout. In generateMetadata for each page, set alternates.canonical and absolute per-slug languages for all 26 locales, plus an x-default.\n- Write sitemap.xml (with xhtml:link alternates) and robots.txt from static-extras.mjs. This works whatever Next 16's metadata routes do under output:'export', which is unverified.\n- Make '/' the indexable x-default, with language links. Set noindex on 404 pages.\n- Add openGraph and twitter metadata, with 31 per-tool 1200x630 PNGs shared across locales.\n- Ship PNG icons, a maskable icon, an apple-touch PNG and favicon.ico.\n- Remove manifest file_handlers until P2-04 ships.\n\nCheck node_modules/next/dist/docs first, as AGENTS.md requires.",
+  "acceptance": "After build:static:\n- out/es/merge-pdf.html has exactly one canonical, https://<domain>/es/merge-pdf, and 27 absolute alternates including itself and x-default. Today it has 26 relative /xx links.\n- out/sitemap.xml lists at least 1,040 URLs.\n- out/robots.txt has a Sitemap: line.\n- out/favicon.ico exists.\n- Every tool page has og:image.",
+  "effort": "M",
+  "depends_on": [
+   "P0-10"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P0-17",
+  "priority": "P0",
+  "title": "Legal operator, third-party licence notices and a contact path",
+  "why": "Verified: the privacy and terms pages name no operator, contact or jurisdiction. legal.ts:1-3 itself says these must be filled before launch. A static build without NEXT_PUBLIC_REPO_URL has no way to reach the operator, yet the About page points to a 'contact page' that does not exist. No third-party licence texts ship: LibreOffice is MPL-2.0 and needs a source pointer, and the PDFium, tesseract, mozjpeg, onnxruntime, qpdf, Noto and Geist licences are absent. Only paddle and pdfjs licences reach out/vendor.",
+  "files": [
+   "scripts/vendor.mjs",
+   "scripts/static-extras.mjs",
+   "src/lib/brand.ts",
+   "src/lib/legal.ts",
+   "src/lib/mode.ts",
+   "src/components/Footer.tsx",
+   "src/app/[lang]/[slug]/page.tsx",
+   "src/lib/i18n/dict/en.ts",
+   ".github/ISSUE_TEMPLATE/bug.yml"
+  ],
+  "approach": "- vendor.mjs copies each vendored package's LICENSE and NOTICE into public/vendor/<hash>/licenses/, including LICENSE.pdfium and the OFL font licences, and writes licenses.json listing package, version, licence and source URL. No new dependency is needed.\n- Add a 'licenses' info slug that renders that list, linked from the footer. It points to the LibreOffice and converter source as MPL \u00a73.2 requires.\n- Render OPERATOR {name, country, contactUrl} from brand.ts in the privacy and terms pages. The build fails when it is empty.\n- Take the issues link default from package.json 'repository', so static builds always have a contact path.\n- Fix about.b3.\n- State in the privacy text that LibreOffice and PaddleOCR are downloaded from the same site and run on the device.",
+  "acceptance": "- out/vendor/<hash>/licenses/ has one file per vendored package. Today only paddle and pdfjs have one.\n- out/en/licenses.html lists LibreOffice as MPL-2.0 with a source link.\n- build:static exits non-zero when OPERATOR.name is empty.\n- out/en/about.html contains an issues link. Today it has 0 github.com links.",
+  "effort": "M",
+  "depends_on": [
+   "P0-16"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P0-18",
+  "priority": "P0",
+  "title": "Launch-and-forget operations: live checks, build guards, host documentation",
+  "why": "CI triggers only on push and PR, so nothing tells the owner if the live site breaks. Scheduled workflows in public repos are disabled after 60 days with no repository activity. There is no file-count or file-size guard: the Cloudflare Pages free plan allows 20,000 files and 25 MiB per file, and out/ already has 7,832 files with some at exactly 20 MiB. out/.nojekyll is missing, so a GitHub Pages branch deploy would drop _next/. The README still says the build is about 100 MB; it is about 460 MB.",
+  "files": [
+   ".github/workflows/live.yml",
+   ".github/dependabot.yml",
+   "scripts/static-extras.mjs",
+   "README.md"
+  ],
+  "approach": "- live.yml runs on a weekly cron and on workflow_dispatch. It runs the e2e suite with BASE_URL=${{ vars.SITE_URL }}; the tests already support BASE_URL.\n- It also checks headers with curl:\n  - COOP and COEP on /en\n  - no-cache on /sw.js\n  - immutable on a /vendor file\n  - 200 on sitemap.xml and on 20 random sitemap URLs\n- A keepalive step re-enables the workflow through the Actions API before GitHub's 60-day cutoff, without making commits. GitHub emails failure notices for free.\n- dependabot updates github-actions monthly.\n- static-extras.mjs fails the build if there are more than 18,000 files or any file is over 24 MiB, and writes out/.nojekyll.\n- README: recommend Cloudflare Pages, add an honest limits section, and give the correct size.",
+  "acceptance": "- live.yml exists with a schedule.\n- Dispatching it with SITE_URL pointed at a wrong host fails; against the real deployment it passes.\n- static-extras exits non-zero when a 26 MiB fixture file is added to out/.\n- out/.nojekyll exists.\n\nNone of these exist today.",
+  "effort": "S",
+  "depends_on": [
+   "P0-01",
+   "P0-16"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P0-19",
+  "priority": "P0",
+  "title": "Bring the hostile-input corpus and its oracles into the repo",
+  "why": "All current tests use well-formed fixtures. The fuzz audit found these bugs only by using 49 hostile fixtures: redaction leaks, linked-page bloat, crashes on /Rotate 45, lockouts from long passwords, owner-only encrypted files rejected, duplicate-object shadow content, and memory bombs. The harness lives in /private/tmp and will be lost, and many acceptance tests in this backlog depend on it.",
+  "files": [
+   "tests/robustness/gen.mjs",
+   "tests/robustness/g4.mjs",
+   "tests/robustness/run.mjs",
+   "tests/robustness/oracles.mjs"
+  ],
+  "approach": "Port /private/tmp/claude-501/foliant-fuzz (gen.mjs, lib/g4.mjs, run-one.mjs, driver.mjs). It is the project's own code, MIT. It deterministically generates the fixtures: broken xref, incremental updates, 6 encryption variants, XFA, a unicode AcroForm, 1,500 pages, huge pages, odd boxes, duplicate ids, a cyclic page tree, zero pages, compression bombs, CMYK, 16-bit, JPX, JBIG2 and CCITT images, a linked book and rotated text. Oracles cover:\n- page count\n- words that must be present or absent\n- fields and attachments kept\n- redaction inside and outside the boxes\n- compressed output no larger than the input\n- time under 60 s\n- an RSS cap\n\nEach run gets a timeout. Run it with `node tests/robustness/run.mjs`; P0-01 adds the npm alias.",
+  "acceptance": "On HEAD, `node tests/robustness/run.mjs` exits non-zero and lists at least these failures: the redact odd-boxes leak, linked-pages bloat in split, the rotate crash on /Rotate 45, the protect lockout with a 128-byte password, and refusal of owner-password-only files. Each failure turns green when its backlog item is fixed. Today the suite does not exist.",
+  "effort": "M",
+  "depends_on": [],
+  "parallel_safe": true
+ },
+ {
+  "id": "P1-01",
+  "priority": "P1",
+  "title": "Auto-OCR inside PDF to Word, Excel, PowerPoint and Markdown",
+  "why": "Verified: a scanned PDF gives a docx with 0 text characters and an xlsx with 0 strings, with no warning. iLovePDF sells OCR for these conversions as Premium, limited to 25 languages. Free OCR here is a direct win over that paywall.",
+  "files": [
+   "src/lib/tools.ts",
+   "src/lib/pdf/run.ts",
+   "src/lib/pdf/ocr.ts",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "- Add an 'ocr' option (auto or off) and ocrLang to pdfToWord, pdfToExcel, pdfToPpt and pdfToMarkdown.\n- In auto mode, find pages with 40 characters or fewer (the same test as ocr.ts:118-125). Run the existing ocr() on them to add the invisible text layer, using Tesseract (Apache-2.0) or PaddleOCR (Apache-2.0 models), then convert.\n- Show a note in Results when OCR was used.",
+  "acceptance": "- PDF to Word on tests/fixtures/scanned.pdf with default options gives a docx with more than 50 text characters. Today it has 0 <w:t> characters.\n- PDF to Excel on scanned.pdf has more than 0 shared strings.\n- CER is no worse than the OCR tool's CER on the same file.",
+  "effort": "M",
+  "depends_on": [
+   "P0-09",
+   "P0-13"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P1-02",
+  "priority": "P1",
+  "title": "Office to PDF on phones without the print dialog",
+  "why": "Most of the Indian audience for 'word to pdf' is on phones. LibreOffice is a 79 MB download needing about 1 GB of memory and is meant for desktops. On a phone the print dialog is unfamiliar and behaves differently in each browser.",
+  "files": [
+   "src/lib/office/docx.ts",
+   "src/lib/office/print.ts",
+   "src/lib/office/topdf.ts",
+   "src/lib/pdf/run.ts",
+   "src/lib/pdf/textlayer.ts"
+  ],
+  "approach": "Write a real PDF from the paginated docx-preview DOM (Apache-2.0):\n- Walk the laid-out boxes (getClientRects per text node).\n- Draw the text runs with pdf-lib and @pdf-lib/fontkit (MIT), using the vendored Noto, Carlito, Caladea, Arimo and Tinos fonts.\n- Draw the images.\n\nFallback: rasterise each printed page to a canvas and add an invisible text layer with textlayer.ts.\n\nReuse this for the PPTX and XLSX HTML renders. The print dialog becomes the last resort.",
+  "acceptance": "With Playwright mobile emulation (Pixel), Word to PDF on brief.docx and rich.docx downloads a .pdf without opening the print preview, and its text can be extracted. The page count is within 1 of LibreOffice's output. Today the result is a print preview.",
+  "effort": "L",
+  "depends_on": [
+   "P0-15"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P1-03",
+  "priority": "P1",
+  "title": "Shared load pre-pass: owner-only encryption, duplicate objects, cycles, zero pages, /Rotate, sheet names",
+  "why": "Verified failures, all from the engines loading PDFs inconsistently:\n- 9 tools refuse owner-password-only PDFs, which open in any viewer without a password.\n- Files with duplicate object numbers make pdf-lib tools output content the preview never showed.\n- A looped page tree surfaces as 'Maximum call stack size exceeded'.\n- Zero-page files silently become one blank page, and merge crashes on them.\n- Rotate and organize crash on /Rotate 45.\n- Protect and unlock fail on damaged files that every reader opens.\n- Excel per-document mode crashes on file names containing : ? [ ] or apostrophes, and on 'History'.",
+  "files": [
+   "src/lib/pdf/organize.ts",
+   "src/lib/pdf/qpdf.ts",
+   "src/lib/pdf/convert.ts",
+   "src/lib/pdf/ocr.ts",
+   "src/lib/pdf/security.ts",
+   "src/lib/pdf/strip.ts"
+  ],
+  "approach": "Add one shared openForEdit(bytes):\n- Try pdf-lib first.\n- If the file is encrypted, run the vendored qpdf `--decrypt` with an empty password and continue with a note. Raise EncryptedError only when a real open password is needed.\n- Normalise through qpdf, which also resolves duplicate objects. If qpdf fails, fall back to the raw bytes.\n- Map RangeError to 'damaged' and 0 pages to 'no_pages'.\n- Save with addDefaultPage:false.\n\nUse openForEdit everywhere a PDF is loaded directly: convert.ts:138, ocr.ts:114, security.ts:126, strip.ts:89.\n\nNormalise /Rotate to a multiple of 90 before adding turns (organize.ts:139,155 and ocr.ts:152).\n\nIn protect and unlock, retry with bytes rebuilt by pdf-lib when the input is damaged.\n\nSanitise Excel sheet names: strip *?:\\/[] after slice(0,31), trim apostrophes, and avoid 'History'.",
+  "acceptance": "With the tests/robustness fixtures:\n- compress, merge, rotate, pdfa and redact on enc-aes256-owner.pdf succeed with 3 pages and the text 'ALPHA1'. Today they throw EncryptedError.\n- dup-ids.pdf outputs 'XREFTEXT' and never 'SHADOWTEXT'.\n- Rotating odd-boxes.pdf by 90 succeeds.\n- zero-pages.pdf throws the typed no_pages error.\n- Protect on garbage-prefix.pdf returns an encrypted 3-page file.\n- Excel on 'Q1: report [final]?.pdf' returns an xlsx.",
+  "effort": "M",
+  "depends_on": [
+   "P0-06",
+   "P0-07",
+   "P0-12",
+   "P0-19"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P1-04",
+  "priority": "P1",
+  "title": "Merge keeps form fields, attachments and source bookmarks",
+  "why": "Verified: merge copies pages into an empty document and adds a flat outline of file names (organize.ts:26-39). Form fields go from 5 to 0, XFA from 3 to 0, attachments from 2 to 0, and each input's chapter bookmarks are lost, all without a warning.",
+  "files": [
+   "src/lib/pdf/organize.ts",
+   "tests/organize.mjs"
+  ],
+  "approach": "Merge with the vendored qpdf (Apache-2.0): `--empty --pages a.pdf b.pdf --`. It keeps AcroForm fields and renames clashing ones. Then nest each input's outline, remapped to the copied pages, under its file bookmark by extending addOutline (organize.ts:41) to nested items. Carry over the EmbeddedFiles name trees. Do the same in buildFromPlan when there are several sources.",
+  "acceptance": "Merging acroform-unicode.pdf with itself gives pdf.js getFieldObjects with at least 5 fields (today null). attachments.pdf keeps 2 attachments (today 0). The merged base.pdf outline contains 'Chapter 1' under 'base' (today ['base','second']).",
+  "effort": "M",
+  "depends_on": [
+   "P1-03"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P1-05",
+  "priority": "P1",
+  "title": "Split parity: linear size split, KB unit, bookmarks mode, smart defaults",
+  "why": "Size split is O(n\u00b2): verified at 84 s for 1,500 pages, because organize.ts:92-104 saves the whole growing part for every page. It has no KB unit and no compression option. The default ranges '1-2, 3-4' are applied to any document. There is no split by bookmarks, which iLovePDF lacks too.",
+  "files": [
+   "src/lib/pdf/organize.ts",
+   "src/lib/tools.ts",
+   "src/components/workspace/Options.tsx",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "- Size mode: measure each page's standalone size once, pack pages greedily, save each part once, and re-split only if a part exceeds the limit.\n- Add a KB/MB unit select.\n- Add 'allow compression': run compress() on any part over the limit.\n- Add a 'bookmarks' mode: pdf.js getOutline and getPageIndex at a chosen level, with output files named after the bookmark titles.\n- Derive the default ranges from the page count, and show a preview line such as '2 files: 1-2, 3'.",
+  "acceptance": "Size split of a 2,000-page file finishes in under 15 s (today 84 s for 1,500 pages). A file with 3 bookmarked chapters split by bookmarks gives 3 files named after the chapters. With a 1 MB cap, every part is 1 MB or less. For a 3-page file, the ranges field shows ranges within 1-3.",
+  "effort": "M",
+  "depends_on": [
+   "P1-04"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P1-06",
+  "priority": "P1",
+  "title": "Page board parity: Shift ranges, interleave, reverse, reset, multi-file rotate",
+  "why": "iLovePDF offers Shift-click ranges, mixing pages from several PDFs, sorting and reset, and rotating many files filtered by orientation. Foliant's page board (PageBoard.tsx:135-165) toggles single pages and only rotates everything. Rotate takes one file (tools.ts:216, multiple:false).",
+  "files": [
+   "src/components/workspace/PageBoard.tsx",
+   "src/components/workspace/Workspace.tsx",
+   "src/lib/tools.ts",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "- Track the last clicked page; Shift-click adds every page in the range.\n- Toolbar: interleave (A1, B1, A2, B2..., useful for duplex scans), reverse, sort by original number, reset.\n- Rotate accepts multiple files and produces one output per input, grouped by PageItem.file and zipped by Results.\n- Add 'Rotate portrait pages' and 'Rotate landscape pages' buttons that use pageSizes().",
+  "acceptance": "Click page 2, then Shift-click page 6: 5 pages are selected (today only page 6). Interleaving two 3-page files gives A1, B1, A2, B2, A3, B3. Dropping 2 PDFs into Rotate gives 2 rotated outputs (today the picker accepts 1 file).",
+  "effort": "M",
+  "depends_on": [
+   "P0-02",
+   "P0-14"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P1-07",
+  "priority": "P1",
+  "title": "Compress: CMYK, 16-bit and Indexed images, orphan-stream bombs, and real size budgets",
+  "why": "Verified:\n- CMYK, 16-bit, Lab and Indexed images are never downsampled (extreme-level ratios of 0.75-1.0, against 0.008 for RGB).\n- A 1 MB file with an unreferenced 1 GiB Flate stream peaks at 1.6-2.3 GB RSS, because every stream is inflated.\n- The tests only check that the levels come out in size order. Ignoring the quality setting tripled the output and still passed, and five more engine mutations (forms, rotation, inherited resources, SMask, lossless choice) also pass.",
+  "files": [
+   "src/lib/pdf/optimize.ts",
+   "src/lib/pdf/pixels.ts",
+   "src/lib/pdf/jpeg.ts",
+   "tests/compress.mjs"
+  ],
+  "approach": "- Convert 16-bit images to 8-bit.\n- Indexed images: expand the palette, then resample.\n- CMYK, Flate or DCT: resample. Convert to sRGB at 'extreme' and 'recommended' (icc.ts or a naive transform). Keep CMYK at 'light'. Respect the Adobe-inverted /Decode.\n- Before dedupe and recompression, skip unreachable objects (walk the object graph from the trailer). Bound inflation with a byte budget using fflate's streaming Inflate (MIT).\n- Optionally subset fonts at 'extreme' with harfbuzzjs hb-subset.wasm (MIT).\n\nTests:\n- Size budgets on images.pdf: recommended 30 KB or less, extreme 12 KB or less, light 90 KB or less.\n- Fixtures: a Form XObject, a rotated placement, /Resources inherited from the Pages node, an SMask (compare decoded samples and check /DeviceGray), an unfiltered 400-colour screenshot (must stay /FlateDecode), and a CMYK print file.",
+  "acceptance": "- At 'extreme', the ratio is under 0.1 on img-cmyk-flate.pdf and img-16bit.pdf (today 0.81 and 0.997).\n- bomb-orphan.pdf peaks under 400 MB RSS and finishes in under 2 s (today 1.6-2.3 GB).\n- Mutants C2, C3, C5, C6, C8 and C9 each fail tests/compress.mjs (today all pass).",
+  "effort": "L",
+  "depends_on": [
+   "P0-19"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P1-08",
+  "priority": "P1",
+  "title": "Image to PDF: TIFF, AVIF and HEIC that actually work, plus page layout options",
+  "why": "jpg to pdf is the #1 search intent (4.8M a month in India, 168K in the US). iLovePDF accepts TIFF, which Foliant lacks: IMAGES at tools.ts:71 has no tif. Foliant advertises HEIC, but it fails in every Chromium browser, verified on Chrome 155 and Chromium 153 ('source image could not be decoded'). Only WebKit decodes it.",
+  "files": [
+   "src/lib/tools.ts",
+   "src/lib/pdf/common.ts",
+   "src/lib/pdf/convert.ts",
+   "scripts/vendor.mjs",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "- Add tif/tiff, decoded with UTIF.js (MIT). Add avif and svg.\n- HEIC: when createImageBitmap fails, lazy-load a decoder.\n  - Option 1: libheif-js (LGPL-3.0) as a separately loaded, replaceable WASM. Needs owner approval.\n  - Option 2: demux the HEIF container and decode with WebCodecs VideoDecoder when HEVC is supported.\n  - Otherwise show the localized message from P0-12.\n- Add page sizes A3, A5, Legal and custom, a continuous margin slider, and EXIF orientation.",
+  "acceptance": "In Chromium, dropping 1 HEIC, 1 WebP and 1 TIFF gives a 3-page PDF. Under 'fit', each page's aspect ratio matches its image within 1%. Today HEIC throws and TIFF is rejected.",
+  "effort": "M",
+  "depends_on": [
+   "P0-12"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P1-09",
+  "priority": "P1",
+  "title": "Render safety and image-export parity",
+  "why": "Verified in Chrome: one oversized page fails the whole PDF to JPG or OCR job ('Canvas export failed' / 'Out of memory at ImageData creation'), and the normal pages are lost too. A 390 KB file holding a 20000x20000 image costs 2.4-3.7 GB. renderPage has no clamp (common.ts:41-53), and openPdf sets no maxImageSize. Extract-images skips ICC, Indexed, predictor-encoded and alpha images (convert.ts:150-160). iLovePDF exports JPG only, so PNG and WebP are a chance to beat it.",
+  "files": [
+   "src/lib/pdf/common.ts",
+   "src/lib/pdf/convert.ts",
+   "src/lib/pdf/run.ts",
+   "src/lib/pdf/ocr.ts",
+   "src/lib/tools.ts",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "- Clamp the render scale to a pixel budget: about 16 Mpx on iOS and about 100 Mpx elsewhere, with each side at most 16,384. Report the effective dpi in a note.\n- Pass maxImageSize and canvasMaxAreaInBytes to getDocument.\n- Wrap each page in try/catch in pdfToImages, ocr, Word 'exact' mode and the PDF/A raster path. Wrap each file in try/catch in run.ts each().\n- New options: page range, PNG/JPG/WebP, custom dpi from 72 to 600, transparent PNG.\n- Extract images through optimize.ts readImage and pixels.ts (ICC, Indexed, predictors, SMask to PNG alpha), de-duplicated by hash.",
+  "acceptance": "- PDF to JPG on huge-page.pdf returns 1 JPEG with a reduced-dpi note (today the job fails).\n- OCR on huge-scan.pdf returns 2 pages, with '4471' on page 1.\n- bomb-image.pdf peaks under 1.5 GB RSS.\n- A fixture with an ICC image, an Indexed image and an RGBA image gives 3 extracted files, and the RGBA one keeps its transparency.\n- Range 2-3 at 200 dpi as PNG gives 2 files whose width in pixels equals the width in points \u00d7 200/72, \u00b11.",
+  "effort": "L",
+  "depends_on": [
+   "P0-12",
+   "P1-03"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P1-10",
+  "priority": "P1",
+  "title": "Cancel actually stops the work",
+  "why": "Verified: after Cancel, 4 Tesseract workers keep running at about 190% CPU for 12-15 s until the job would have finished anyway. Cancelling and starting again doubles the worker pool. Workspace.tsx:229 only bumps a run counter, and runTool takes no AbortSignal.",
+  "files": [
+   "src/lib/pdf/run.ts",
+   "src/lib/pdf/ocr.ts",
+   "src/lib/pdf/paddle.ts",
+   "src/lib/office/libreoffice.ts",
+   "src/components/workspace/Workspace.tsx",
+   "src/components/Workflows.tsx"
+  ],
+  "approach": "Create an AbortController for each run and pass its signal through runTool to every engine. Check signal.aborted in each() and in the per-page loops (ocr.ts `while (next < todo.length)`). On abort, call ocrEngine.stop() (scheduler.terminate) and terminate the LibreOffice and Paddle workers.",
+  "acceptance": "Start OCR on heavy-120p.pdf and press Cancel after 5 s. Within 3 s, renderer CPU drops below 20% and no Tesseract workers remain. Today CPU stays near 190% for 12-15 s.",
+  "effort": "M",
+  "depends_on": [
+   "P1-09"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P1-11",
+  "priority": "P1",
+  "title": "Page numbers and watermark parity, plus Bates numbering",
+  "why": "Foliant offers 4 fixed number formats with a fixed margin and no font or skip choice (tools.ts:220-231, edit.ts:110-116). The watermark always uses Helvetica Bold (edit.ts:155). iLovePDF offers a custom template, margins, 9 fonts and 'exclude last pages'. Verified bugs: a CJK watermark extracts with spaces between characters, so it can't be searched, and a page whose content ends inside an unterminated inline image loses its label.",
+  "files": [
+   "src/lib/pdf/edit.ts",
+   "src/lib/pdf/fonts.ts",
+   "src/lib/tools.ts",
+   "src/components/workspace/Options.tsx",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "Page numbers:\n- A custom template with Foliant's own tokens, {page} and {pages}. Do not reuse iLovePDF's tokens.\n- Styles 1, i, I, a, A; small, normal or large margin; a font from the bundled families (Arimo, Tinos, Cousine and Noto via fonts.ts, all OFL); skip the first or last N pages; mirrored odd/even positions.\n- Bates mode: a prefix plus a zero-padded counter that continues across a batch of files.\n\nWatermark:\n- A font family choice, an optional background box, a continuous angle, tile spacing, and {filename} and {date} variables.\n\nFixes:\n- Wrap multi-run CJK marks in /ActualText so they extract as one string.\n- isolate() appends 'EI' when a content stream ends inside BI\u2026ID.",
+  "acceptance": "These all fail today:\n- The template 'Sheet {page}/{pages}' gives 'Sheet 2/3' on page 2.\n- Bates with prefix ABC across two 3-page files stamps ABC000001 to ABC000006 in order.\n- Choosing the Times watermark font embeds a serif font.\n- A '\u673a\u5bc6\u6587\u4ef6' watermark extracts with no spaces.\n- Page 5 of malformed-content.pdf shows 'Page 5 of 7'.",
+  "effort": "M",
+  "depends_on": [
+   "P0-03"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P1-12",
+  "priority": "P1",
+  "title": "Protect parity: 7 permissions, owner password, permissions-only mode, AES-256 stated",
+  "why": "Foliant exposes 3 permissions and always uses a random owner password (security.ts:24-33). The UI rejects an empty open password, although the engine accepts one. iLovePDF offers a separate permissions password and 7 restriction flags.",
+  "files": [
+   "src/lib/pdf/security.ts",
+   "src/lib/tools.ts",
+   "src/components/workspace/Options.tsx",
+   "src/components/workspace/Workspace.tsx",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "- Add allowAnnotate, allowForms, allowAssemble and allowAccessibility, mapped to qpdf --annotate, --form, --assemble and --accessibility.\n- Optional owner password; fall back to a random one.\n- Permissions-only mode: allow an empty open password when at least one restriction is set.\n- Default to AES-256 and say so. Offer AES-128 for legacy readers.\n- Add a strength meter and a random passphrase generator (crypto.getRandomValues).",
+  "acceptance": "With printing unchecked and no open password, the output opens in pdf.js without a password, and its permissions show printing disabled. Today the UI blocks the empty password. qpdf --show-encryption reports R = 6 and honours all 7 flags.",
+  "effort": "S",
+  "depends_on": [
+   "P0-07"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P1-13",
+  "priority": "P1",
+  "title": "Sign and editor parity: consistent fonts, stamp, presets, mobile action bar, reliable typing",
+  "why": "Several gaps, some verified:\n- Typed signatures use system fonts, so they look different on every OS.\n- There is no stamp, name field, date format or placement preset (Editor.tsx:542-549, 660-663).\n- On phones, the action button sits 1,150-1,330 px down an 812 px screen.\n- The text tool focuses one frame late (Editor.tsx:488) and drops early keystrokes: 5 of 10 runs failed under throttling.\n- Signing needs a mouse, and the signature dialog does not trap focus.",
+  "files": [
+   "src/components/workspace/Editor.tsx",
+   "src/components/workspace/SignaturePad.tsx",
+   "scripts/vendor.mjs",
+   "package.json",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "- Bundle 3 OFL handwriting fonts (@fontsource Dancing Script, Caveat, Great Vibes).\n- Add a Stamp tab: upload an image and reuse onUpload's background removal.\n- Add a Name field and a date-format choice.\n- Placement presets: all pages, all but the last, last page, or custom pages via parseRanges.\n- Focus the textarea synchronously in its ref callback instead of after requestAnimationFrame.\n- Sticky bottom action bar below the lg breakpoint for Edit, Sign, Crop, Redact and Forms.\n- 'Place at centre' button plus arrow-key nudging.\n- SignaturePad becomes a native <dialog> opened with showModal().",
+  "acceptance": "These all fail today:\n- In Linux headless Chrome, the typed signature passes document.fonts.check for the bundled font.\n- At 375x812, the Sign PDF button is visible after loading a PDF.\n- 20 of 20 runs at 4x CPU of 'click with the Text tool, then type Hello' save 'Hello'.\n- A typed signature can be placed and saved with the keyboard only.",
+  "effort": "L",
+  "depends_on": [
+   "P0-12"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P1-14",
+  "priority": "P1",
+  "title": "Form field types: radio, dropdown, list, date, signature",
+  "why": "PDF Forms can only create text fields and checkboxes (Editor.tsx:376-380, edit.ts:342-347). iLovePDF also offers radio buttons and lists.",
+  "files": [
+   "src/components/workspace/Editor.tsx",
+   "src/lib/pdf/edit.ts",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "Add field tools built on pdf-lib (MIT): createRadioGroup, createDropdown, createOptionList, a date field (text field with a format action-free hint), and an empty signature field. Each gets an editable list of options and a required flag.",
+  "acceptance": "Creating one radio group, one dropdown, one list, one date field and one signature field on a blank page gives 5 AcroForm fields of the right types in pdf.js getFieldObjects. Today only text fields and checkboxes can be created.",
+  "effort": "M",
+  "depends_on": [
+   "P1-13",
+   "P1-11"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P1-15",
+  "priority": "P1",
+  "title": "Edit the PDF's existing text, and order layers",
+  "why": "'pdf editor' has about 1.5M searches a month, plus long-tail variants. Foliant can only add overlays (Editor.tsx:16, 365-374). iLovePDF can edit, move and delete existing text and reorder items.",
+  "files": [
+   "src/lib/pdf/pdfium.ts",
+   "src/components/workspace/Editor.tsx",
+   "src/lib/pdf/edit.ts",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "First, confirm that @embedpdf/pdfium 2.15.1 (MIT, wrapping BSD-3 PDFium) exports FPDFPage_CountObjects, FPDFPage_GetObject, FPDFTextObj_GetText, FPDFText_SetText, FPDFPageObj_Transform, FPDFPage_RemoveObject and FPDFPage_GenerateContent.\n\nThen:\n- Show hit boxes for text objects.\n- Support replace, move and delete.\n- When the embedded subset lacks a needed glyph, embed a Noto font for the new text.\n- Add bring-forward and send-back for overlays by reordering items.",
+  "acceptance": "Replacing 'Revenue' with 'Income' on report.pdf page 1 gives a PDF whose pdf.js text contains 'Income' and not 'Revenue', and the page is still vector (no raster fallback). This is impossible today.",
+  "effort": "XL",
+  "depends_on": [
+   "P1-14"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P1-16",
+  "priority": "P1",
+  "title": "OCR in 100+ languages with multi-select",
+  "why": "Foliant offers 26 OCR languages, one at a time (tools.ts:76-80, 135). iLovePDF offers 121 with multi-select. Mixed-script documents, such as English with Hindi, are common in India.",
+  "files": [
+   "package.json",
+   "scripts/vendor.mjs",
+   "src/lib/tools.ts",
+   "src/components/workspace/Options.tsx",
+   "src/lib/pdf/ocr.ts",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "- Vendor more @tesseract.js-data/* packages (tessdata is Apache-2.0). Each language is a separate lazy download, so only hosting size grows, by about 75 files.\n- Add a multi-select option type. Pass the selection joined with '+' to createWorker, e.g. 'eng+hin'.\n- Label languages with Intl.DisplayNames, so the 26 dictionaries need no new strings.\n- Remember the choice per viewer in localStorage, wrapped in try/catch.",
+  "acceptance": "The OCR language list has 100 or more entries (today 26). Selecting English and Hindi on a mixed-script fixture gives a CER under 5% for each script.",
+  "effort": "M",
+  "depends_on": [
+   "P0-13"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P1-17",
+  "priority": "P1",
+  "title": "PDF/A conformance levels, and the PDF/A test gaps",
+  "why": "Foliant offers PDF/A-2b only (convert.ts:455-491). iLovePDF offers 8 levels plus downgrade, though as Premium. The DPI and keepText options do nothing for normal files: the outputs are byte-identical. Six verified mutations pass tests/pdfa.mjs: JavaScript actions on annotations, pages and outlines, /AA, /Interpolate, and Separation to CMYK. veraPDF has never run in CI because the pdf job stops at test:office.",
+  "files": [
+   "src/lib/pdf/pdfa.ts",
+   "src/lib/pdf/convert.ts",
+   "src/lib/tools.ts",
+   "src/lib/i18n/dict/en.ts",
+   "tests/pdfa.mjs"
+  ],
+  "approach": "Add a pdfaLevel option:\n- 1b: no transparency and no object streams; rasterise pages that contain transparency.\n- 2b and 2u: 2u requires ToUnicode on every font.\n- 3b and 3u: embedded files with AFRelationship.\n- Downgrade automatically when a level fails.\n\nShow DPI and keepText only when fixForPdfA reports pages that need rasterising.\n\nExtend build() in tests/pdfa.mjs with: a Link annotation carrying a JavaScript action and /AA, page /AA, an outline item with a JavaScript action, an image with /Interpolate, and a fill in /Separation over DeviceCMYK. Assert the Separation case through fixForPdfA().raster.",
+  "acceptance": "The CI veraPDF job (MPL-2.0/GPL dual-licensed, run as an external CLI) reports PASS for the 1b, 2u and 3b outputs. Each of mutants A2-A7 makes tests/pdfa.mjs exit 1 (today all pass).",
+  "effort": "M",
+  "depends_on": [
+   "P0-01"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P1-18",
+  "priority": "P1",
+  "title": "HTML to PDF in the static build: zip, paste, options and honest copy",
+  "why": "Verified: the static page says 'Save any web page', but it accepts only .html/.htm files and offers 2 page sizes. Relative CSS and images can't resolve from a blob: URL. Remote assets are blocked by COEP on hosts that send headers, while the request still reaches the remote host, which leaks the user's IP. iLovePDF offers URL, paste and zip input, 5 viewports, A3/A5, one long page and margins.",
+  "files": [
+   "src/lib/tools.ts",
+   "src/lib/office/print.ts",
+   "src/lib/office/html.ts",
+   "src/components/workspace/PrintResults.tsx",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "- Accept a .zip: unpack with fflate (MIT, already a dependency) and rewrite relative src and href to blob: URLs.\n- Add a 'Paste HTML' textarea.\n- Add A3/A5, margins none/small/big, and a viewport width for the print iframe.\n- Before rendering, replace remote URLs with placeholders and show a privacy notice.\n- Change the static description to 'HTML file or pasted HTML'. A cross-origin URL cannot be fetched without a server.",
+  "acceptance": "A zip with index.html, style.css and logo.png renders with the CSS applied and the image visible. An HTML file with a remote <img> makes 0 off-origin requests and shows the notice (today the request is sent). The /en/html-to-pdf page text no longer claims 'any web page'.",
+  "effort": "M",
+  "depends_on": [
+   "P1-02"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P1-19",
+  "priority": "P1",
+  "title": "PDF to PowerPoint: real text colours and separate pictures",
+  "why": "Verified: every text box is forced to colour #1F2937 (convert.ts:433), so white text on a dark slide becomes unreadable. The whole page becomes one JPEG background (convert.ts:422-426). Separate text items on the same baseline are joined without a space.",
+  "files": [
+   "src/lib/pdf/convert.ts",
+   "src/lib/pdf/text.ts",
+   "tests/ppt.mjs"
+  ],
+  "approach": "- Record each run's fill colour from page.getOperatorList(), tracking setFillRGBColor, setFillGray and setFillCMYKColor against the text-show operators (the pdfplumber non_stroking_color method, MIT, as reference). Pass the colour to pptxgenjs addText (MIT).\n- Add raster figures as separate pictures with addImage, using the figure boxes that layout.ts already finds. Keep a background image only for vector art.\n- Join runs with a space when the gap is wider than a space.\n- Apply auto-OCR from P1-01 when the deck is scanned.",
+  "acceptance": "tests/ppt.mjs: white text on a dark rectangle produces slide XML with srgbClr FFFFFF (today only 1F2937). Each embedded raster image appears as its own <p:pic> (today 0).",
+  "effort": "M",
+  "depends_on": [
+   "P0-08"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P1-20",
+  "priority": "P1",
+  "title": "Tool-page content and structured data (SEO parity)",
+  "why": "Tool pages have 85-92 visible words, including the header and footer, and the same 3 generic steps on every tool. iLovePDF's Merge page has 364 words, and Smallpdf's has 1,129 words plus 5 JSON-LD blocks. Titles are minimal ('Merge PDF \u00b7 Foliant'). Thin, near-duplicate pages will not rank for the high-volume intents.",
+  "files": [
+   "src/lib/i18n/dict/en.ts",
+   "src/lib/i18n/dict/*.ts",
+   "src/app/[lang]/[slug]/page.tsx",
+   "src/lib/i18n/meta.ts"
+  ],
+  "approach": "For each tool, in Foliant's own words:\n- a keyword title\n- a 120-160 character description\n- 3 tool-specific steps\n- 4-6 FAQs\n- a 'why it's private' paragraph\n\nAdd JSON-LD WebApplication (offers price 0) and BreadcrumbList; FAQPage markup is harmless, but don't expect rich results. Translate in each wave's translation sweep.",
+  "acceptance": "Every out/en/<tool>.html has at least 350 visible words (today 85-92), a unique description of 120-160 characters, and a JSON-LD block that parses. The shared-text similarity between any two tool pages is under 50%.",
+  "effort": "L",
+  "depends_on": [
+   "P0-16"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P1-21",
+  "priority": "P1",
+  "title": "Summarize PDF, light version: no downloads, no quotas",
+  "why": "The AI Summarizer is missing; iLovePDF offers about one free task and fixes the summary language to the UI language. A model-free version closes the parity gap now, and the LLM tier (P2-06) upgrades it later.",
+  "files": [
+   "src/lib/ai/summarize.ts",
+   "src/lib/tools.ts",
+   "src/components/ToolIcon.tsx",
+   "src/components/workspace/Results.tsx",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "- Use Chrome's built-in Summarizer API when it exists (feature-detect 'Summarizer' in self).\n- Otherwise, run an in-house extractive TextRank over documentText() and the layout.ts headings, with no download.\n- Offer short, medium and long summaries.\n- Let the user pick the output language separately from the UI language, using the Translator API where it exists.\n- Output: copy, .md or .txt.\n- Add a new 'summarize' tool id; this adds 26 tool pages.",
+  "acceptance": "Today the tool doesn't exist. On report.pdf, short, medium and long summaries are all non-empty, with short shorter than medium and medium shorter than long. No request leaves the origin.",
+  "effort": "L",
+  "depends_on": [
+   "P0-16",
+   "P0-12"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P1-22",
+  "priority": "P1",
+  "title": "Browser end-to-end smoke tests for all 31 tools in English, Arabic and Japanese",
+  "why": "18 of the 31 tools have no browser test. These include redact, edit, sign, forms, crop, compare, organize, extract, remove, scan, repair, jpg-to-pdf, html-to-pdf, and pdf-to-word/excel/ppt/markdown/pdfa. That is how Rotate shipped broken.",
+  "files": [
+   "tests/e2e/tools/*.mjs"
+  ],
+  "approach": "Fold the audit harness from /private/tmp/claude-501/foliant-ux (run.mjs, scenarios.mjs) into one spec per tool slug, built on the tests/e2e harness from P0-01.\n- Use selectors that don't depend on the page language.\n- Run each tool with default options and with one non-default option.\n- Check the output type, page count and text with pdf-lib, pdf.js and JSZip.\n- Assert that no request leaves the origin.",
+  "acceptance": "The e2e report has a PASS row for every tool slug in src/lib/tools.ts, in en, ar and ja. Today only 13 tools are covered.",
+  "effort": "L",
+  "depends_on": [
+   "P0-01"
+  ],
+  "parallel_safe": true
+ },
+ {
+  "id": "P1-23",
+  "priority": "P1",
+  "title": "Regression net for PDF to Word, tables, layout and Office to PDF",
+  "why": "PDF to Word and PDF to Excel are top search intents. Mutation testing found that 0 of 5 Word mutations were caught, and only 1 of 5 table mutations and 2 of 5 layout mutations. Mutations to docx-preview continuous sections, footnotes and fldSimple all survive. libreoffice.ts is never run by any test (verified for LO1 and LO2).",
+  "files": [
+   "tests/layout.mjs",
+   "tests/tables.mjs",
+   "tests/office.mjs",
+   "tests/make-rich-docx.mjs",
+   "tests/e2e/office-high.mjs"
+  ],
+  "approach": "Word assertions:\n- <w:b/> on 'Warning:'\n- Heading1 style on 'Spring Update'\n- a headerReference in the first sectPr\n- a vertically merged cell fixture producing vMerge\n- pdfToWord run in Chrome, checking <w:drawing>\n\nTable and layout fixtures: a wrapped cell, two tables on one page, a vertical merge, a bold header row, a one-page memo line, a figure label, and a mailto link.\n\ndocx fixtures: a CONTINUOUS section, a footnote, and a footer with fldSimple PAGE.\n\nAdd a high-fidelity e2e test: wait for the service worker, reload, choose the radio named /^High/, convert brief.docx and expect a PDF. Add a unit test that fetchParts joins parts in order.",
+  "acceptance": "Each mutant (W1-W5, T1, T2, T4, T5, L2, L4, L5, D2, D5, D6, LO1, LO2) fails at least one test. Today all of them survive.",
+  "effort": "M",
+  "depends_on": [
+   "P0-01"
+  ],
+  "parallel_safe": true
+ },
+ {
+  "id": "P2-01",
+  "priority": "P2",
+  "title": "Browser-enforced privacy proof: CSP plus a live '0 bytes sent' chip",
+  "why": "Today 'never uploads' is a claim only: there is no Content-Security-Policy. Audits show 0 third-party requests, so a strict policy matches current behaviour. iLovePDF uploads every file and loads Google Ad Manager, Criteo and OpenX. A privacy claim that anyone can check is Foliant's sharpest differentiator.",
+  "files": [
+   "security-headers.json",
+   "scripts/static-extras.mjs",
+   "src/components/workspace/PrivacyChip.tsx",
+   "src/components/workspace/Workspace.tsx",
+   "public/sw.js",
+   "src/app/[lang]/[slug]/page.tsx",
+   "src/lib/i18n/dict/en.ts",
+   "tests/e2e/csp.mjs"
+  ],
+  "approach": "Add this CSP:\n- default-src 'self'\n- script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' (Next static export inlines scripts; replace with hashes later)\n- worker-src 'self' blob:\n- connect-src 'self' blob: data:\n- img-src 'self' blob: data:\n- style-src 'self' 'unsafe-inline'\n- font-src 'self' data:\n- frame-src 'self' blob:\n- frame-ancestors 'none'\n- object-src 'none'\n- base-uri 'none'\n- form-action 'self'\n\nAlso:\n- Test the Tesseract worker under this policy: it calls new Function once.\n- Add a chip that counts off-origin requests and bytes during a task (PerformanceObserver plus a counter in the service worker) and links to a 'check it yourself' section (DevTools or airplane mode).\n- Add a CI check that fails if an off-origin URL appears in out/ outside known library defaults.",
+  "acceptance": "curl -I on a tool page shows the CSP (today there is none). fetch('https://example.com') run in the page fires a securitypolicyviolation event. All tool e2e specs pass in Chromium, Firefox and WebKit with the CSP applied. During a compress run the chip shows 0 off-origin bytes.",
+  "effort": "M",
+  "depends_on": [
+   "P0-01",
+   "P1-22"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P2-02",
+  "priority": "P2",
+  "title": "Compress to an exact size, an exam-form kit, and intent landing pages",
+  "why": "'compress pdf' gets about 1.6M searches a month in India. Exam, KYC and scholarship portals cap uploads at 100-200 KB, and Adobe and BentoPDF run landing pages for exactly this. iLovePDF has only 3 presets, with no target size, DPI or greyscale control.",
+  "files": [
+   "src/lib/pdf/optimize.ts",
+   "src/lib/pdf/placements.ts",
+   "src/lib/pdf/jpeg.ts",
+   "src/lib/pdf/examkit.ts",
+   "src/lib/tools.ts",
+   "src/components/workspace/Options.tsx",
+   "src/app/[lang]/[slug]/page.tsx",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "- Add a targetKb option: 100, 200, 300, 500, 1000 or custom.\n- Search for a fitting setting by bisection over downsample DPI and MozJPEG quality (@jsquash/jpeg, Apache-2.0). Fall back to greyscale as the last step.\n- Keep the text layer. Say so clearly when the target cannot be reached.\n- Show a live size estimate, a custom DPI and quality setting, and a greyscale switch.\n- Add an exam-kit tool that resizes a photo and a signature to exact pixel dimensions and a maximum size in KB (canvas plus MozJPEG).\n- Add /{lang}/compress-pdf-to-{100,200,500}kb landing pages in the top languages, within the file budget.",
+  "acceptance": "A 3 MB, 10-page scan with targetKb=200 comes out at 204,800 bytes or less, every page renders, and the text layer is kept. A 50 KB input is returned unchanged. The exam kit produces a 200x230 px photo of 50 KB or less. None of this exists today.",
+  "effort": "L",
+  "depends_on": [
+   "P1-07",
+   "P0-16"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P2-03",
+  "priority": "P2",
+  "title": "No limits and batch everything",
+  "why": "iLovePDF's free caps are tiny: 15 MB and 1 file for Office conversions and OCR, 2 files for compress, and one file per task for edit, redact and crop even on Premium. Registering doesn't raise them. Foliant still enforces a hard 200 MB and 100-file cap even for tools that run on the device (tools.ts:338, Workspace.tsx:60-68).",
+  "files": [
+   "src/lib/tools.ts",
+   "src/components/workspace/Workspace.tsx",
+   "src/components/workspace/FileBoard.tsx",
+   "src/lib/pdf/run.ts",
+   "src/lib/pdf/queue.ts",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "- For browser tools, replace the hard cap with a device-aware soft warning based on navigator.deviceMemory and storage.estimate().\n- Run structure-only operations (merge, split, rotate) through qpdf, so large files are never fully parsed by pdf-lib.\n- Add a Web Worker queue with per-file progress.\n- Add batch mode for crop (same box on every file), redact (same terms or patterns), Markdown and OCR.\n- Copy: no caps, no meters, same on the 1st and the 100th file.",
+  "acceptance": "In desktop Chromium, merging two 300 MB PDFs is not rejected up front (today anything over 200 MB is). 20 PDFs totalling 500 MB compress with per-file progress. Crop with one box on 5 files gives 5 outputs with identical CropBoxes.",
+  "effort": "L",
+  "depends_on": [
+   "P1-10",
+   "P1-04"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P2-04",
+  "priority": "P2",
+  "title": "PWA 'Open with' and the phone share sheet",
+  "why": "Verified: the manifest declares file_handlers, but nothing consumes window.launchQueue. Opening a PDF with the installed app lands on the language picker and the file is dropped. There is no share_target, so phones can't share a PDF into Foliant. This replaces iLovePDF's paid desktop and mobile apps.",
+  "files": [
+   "public/manifest.webmanifest",
+   "public/sw.js",
+   "src/app/[lang]/open/page.tsx",
+   "src/lib/handoff.ts",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "- Point file_handlers at /{lang}/open. That page calls launchQueue.setConsumer and shows a 'what do you want to do' tool picker that hands the file over via handoff.ts.\n- Add a share_target (POST, multipart). sw.js stores the shared files in IndexedDB and redirects (303) to /{lang}/open. Accept images and docx as well as PDF.\n- Package for the Microsoft Store with PWABuilder, using the owner's free individual account and the PNG icons from P0-16.",
+  "acceptance": "A mocked window.launchQueue with one PDF lands on /en/open with the file listed. A multipart POST to /share through the service worker redirects to /{lang}/open with the file available. Chrome DevTools shows share_target in the manifest (today there is none).",
+  "effort": "M",
+  "depends_on": [
+   "P0-10",
+   "P0-16"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P2-05",
+  "priority": "P2",
+  "title": "Run workflows on whole folders, and share recipes as links",
+  "why": "On iLovePDF, workflows are Premium-only and need a login; Stirling-PDF needs a server. Running a saved workflow over a whole folder, offline and without limits, is something no free competitor offers. A shareable recipe link spreads by word of mouth at no cost.",
+  "files": [
+   "src/components/Workflows.tsx",
+   "src/app/[lang]/workflows/page.tsx",
+   "src/lib/pdf/run.ts",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "- Chromium desktop: use showDirectoryPicker to read every PDF and image in a folder, run the saved steps in the worker queue, and write the results to a chosen output folder.\n- Other browsers: fall back to multi-select plus a ZIP built with fflate (MIT).\n- Encode the recipe in the URL #fragment, which browsers never send to a server.",
+  "acceptance": "In Chromium, a folder of 50 fixtures run through compress then page numbers writes 50 outputs. A recipe link opened in a fresh profile imports the same steps. After P0-10, an offline reload can still run the workflow.",
+  "effort": "M",
+  "depends_on": [
+   "P0-10",
+   "P2-03"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P2-06",
+  "priority": "P2",
+  "title": "On-device AI: chat with page citations, translate, and LLM summaries",
+  "why": "iLovePDF puts its AI summarizer, translator and OCR conversions behind Premium. Smallpdf translates only a summary, Xodo AskPDF is a Pro feature, and PDFgear's AI runs in the cloud. Private AI with no quotas, where documents never leave the device, is rare.",
+  "files": [
+   "src/lib/ai/engine.ts",
+   "src/lib/ai/chat.ts",
+   "src/lib/ai/translate.ts",
+   "src/components/workspace/ChatView.tsx",
+   "src/lib/tools.ts",
+   "scripts/vendor.mjs",
+   "package.json",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "Pick the engine by capability, in this order:\n1. Chrome's built-in Summarizer, Translator and LanguageDetector (desktop Chrome 138 and later).\n2. @huggingface/transformers v4 (Apache-2.0) on WebGPU, with SmolLM2-360M-Instruct q4f16 (about 273 MB, Apache-2.0) or Qwen3-0.6B (about 570 MB, Apache-2.0).\n3. An extractive fallback with all-MiniLM-L6-v2 (about 23 MB, Apache-2.0) for phones without WebGPU.\n\nChat: local retrieval over layout.ts chunks. Each answer cites its pages, and clicking a citation jumps to the page.\n\nTranslate: text-only output first (DOCX or Markdown). Then a keep-layout mode: white out each line box with PDFium and redraw the translation in Noto, shrinking it to fit.\n\nSelf-host the weights under /vendor, split into parts of 20 MiB or less. Show a consent step with the download size first.\n\nUse a translation fallback model only after its licence has been checked.",
+  "acceptance": "- Chromium with WebGPU: summarise and chat on a 20-page fixture with no off-origin requests once the model is cached.\n- Chat answers 'what is the invoice total' with the correct page citation.\n- WebKit without WebGPU returns the extractive summary in under 10 s.\n- Translating report.pdf from English to Spanish gives Spanish text with the same page count.",
+  "effort": "XL",
+  "depends_on": [
+   "P1-21",
+   "P2-01"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P2-07",
+  "priority": "P2",
+  "title": "Trust-grade redaction and an in-browser PDF/A check",
+  "why": "iLovePDF's redaction can't handle right-to-left text and needs a separate OCR step for scans. Its AI-assisted redaction is Premium, and its PDF/A tool has no validation on the web. Redaction that shows proof of removal, and PDF/A output that comes with a report, build trust that 'upload and hope' tools cannot match.",
+  "files": [
+   "src/lib/pdf/security.ts",
+   "src/components/workspace/Editor.tsx",
+   "src/lib/pdf/ocr.ts",
+   "src/lib/pdf/pdfa.ts",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "Redaction:\n- After redacting, show a verification report: text re-extracted with pdf.js plus OCR of the rendered output, the number of matches left (0), and a list of what was removed, including annotations and metadata.\n- Presets: email, phone, card number (Luhn check), IBAN (mod-97), Aadhaar (Verhoeff), PAN, SSN, dates.\n- Whole-word and match-case options.\n- Run OCR inline on image-only pages before searching.\n- Support right-to-left text using pdf.js logical order.\n\nPDF/A check, written from the ISO 19005 clauses (veraPDF stays a CI-only oracle):\n- fonts embedded\n- OutputIntent present\n- XMP pdfaid present\n- no JavaScript and no encryption\n- no transparency for level 1b",
+  "acceptance": "- Redacting an email address on scanned.pdf: neither pdf.js text nor OCR of the output finds it.\n- An Arabic fixture has the selected word redacted.\n- The card preset ignores numbers that fail the Luhn check.\n- A fixture with a non-embedded font gets a report naming the font clause; converted outputs get 0 failures, in agreement with veraPDF.",
+  "effort": "L",
+  "depends_on": [
+   "P0-05",
+   "P1-17"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P2-08",
+  "priority": "P2",
+  "title": "Digital signatures with your own certificate (PAdES), and signature validation",
+  "why": "iLovePDF's certificate-based signing is Premium. BentoPDF's needs a Cloudflare Worker proxy. Free, local PAdES signing with the user's own .p12 file, plus a validator, makes Foliant usable for legal and business documents.",
+  "files": [
+   "src/lib/pdf/sign.ts",
+   "src/components/workspace/SignaturePad.tsx",
+   "src/components/workspace/Editor.tsx",
+   "src/lib/tools.ts",
+   "package.json",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "Signing:\n- Import a .p12 file (PFX parsing with pkijs and asn1js, both BSD-3), or generate a self-signed key with WebCrypto, stored as non-extractable in IndexedDB.\n- Reserve a /ByteRange placeholder with pdf-lib, then append the signature as an incremental save.\n- Write a CMS SignedData signature (PAdES B-B).\n\nValidation: add a 'Validate signature' tool that shows the signer, whether the file is intact, and any changes made after signing.\n\nRFC 3161 timestamping needs a third-party timestamp server, so leave it off by default (owner decision; it conflicts with the CSP).",
+  "acceptance": "A signed fixture verifies in poppler pdfsig: valid signature, certificate untrusted because it is self-signed. `openssl cms -verify -noverify` on the extracted signature blob succeeds. Editing one byte after signing makes Foliant's validator report the file as modified.",
+  "effort": "L",
+  "depends_on": [
+   "P1-13"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P2-09",
+  "priority": "P2",
+  "title": "Document structure tools that iLovePDF doesn't list",
+  "why": "iLovePDF's 31-tool menu has no metadata editor, bookmarks editor, flatten, attachments, sanitize or web-optimize tools. BentoPDF, Smallpdf and PDF24 offer several of them. Each new tool adds 26 search landing pages.",
+  "files": [
+   "src/lib/pdf/structure.ts",
+   "src/lib/tools.ts",
+   "src/lib/pdf/run.ts",
+   "src/components/ToolIcon.tsx",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "New tools, built on pdf-lib (MIT) and the vendored qpdf:\n- Edit metadata: the Info dictionary plus XMP.\n- Bookmarks editor, with automatic bookmarks generated from the headings layout.ts finds.\n- Flatten: forms and annotations into page content.\n- Attachments: add or extract.\n- Sanitize: reuse the pdfa.ts cleanup.\n- Web-optimize: qpdf --linearize.\n\nImplement from the PDF specification only. BentoPDF is AGPL, so do not read its code.",
+  "acceptance": "These all fail today:\n- Setting the title to 'X' reads back as 'X' from pdf.js getMetadata.\n- Flattening a form fixture leaves no AcroForm fields, and the values stay visible in the page text.\n- The linearized output passes `qpdf --check-linearization`.",
+  "effort": "L",
+  "depends_on": [
+   "P0-16",
+   "P1-03"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P2-10",
+  "priority": "P2",
+  "title": "Print and scan helper tools",
+  "why": "iLovePDF has no N-up, booklet, remove blank pages, alternate and mix, resize pages or greyscale tool. These matter to students, offices and people scanning double-sided documents.",
+  "files": [
+   "src/lib/pdf/impose.ts",
+   "src/lib/tools.ts",
+   "src/lib/pdf/run.ts",
+   "src/components/ToolIcon.tsx",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "- N-up (2, 4 or 9 pages per sheet) and booklet imposition, using pdf-lib embedPage form XObjects.\n- Remove blank pages: render each page with pdf.js and drop it when ink coverage is below a threshold.\n- Alternate and mix, for double-sided scans.\n- Resize pages to A4 or Letter.\n- Greyscale: convert images with pixels.ts and switch colour operators to DeviceGray.\n- Header and footer.",
+  "acceptance": "These all fail today:\n- An 8-page booklet comes out as 2 sheets with page order [8,1,2,7] and [6,3,4,5].\n- Remove blank pages on a fixture with 2 blank pages drops exactly those 2.\n- Greyscale output contains no RGB image and no colour operator.",
+  "effort": "L",
+  "depends_on": [
+   "P2-09"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P2-11",
+  "priority": "P2",
+  "title": "Phone scanner v2: edge detection and perspective correction, no app needed",
+  "why": "iLovePDF's scanner needs its mobile app, paired by QR code. Foliant already scans in any phone browser, but it saves raw camera frames: no crop handles, no perspective correction, and no orientation, margin or merge options (Scanner.tsx:20-21, tools.ts:114-120).",
+  "files": [
+   "src/components/workspace/Scanner.tsx",
+   "src/lib/pdf/quad.ts",
+   "src/lib/pdf/convert.ts",
+   "src/lib/tools.ts",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "Write our own implementation of the jscanify method (MIT, as reference):\n- downscale the frame\n- Canny edge detection\n- find the largest 4-point contour\n- homography warp\n\nThen add draggable corners, a 'whiten' black-and-white filter, orientation, margin and merge options (reusing imagesToPdf), and optional OCR.",
+  "acceptance": "A Playwright fake-camera feed of a skewed document gives a 1-page PDF whose aspect ratio is within 3% of A4. Today the raw frame is saved.",
+  "effort": "M",
+  "depends_on": [
+   "P1-08"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P2-12",
+  "priority": "P2",
+  "title": "Live previews for watermark, page numbers and crop",
+  "why": "Today the user sees only the original thumbnail while changing options, so they discover mistakes only after downloading.",
+  "files": [
+   "src/components/workspace/StampPreview.tsx",
+   "src/components/workspace/Workspace.tsx",
+   "src/lib/pdf/edit.ts"
+  ],
+  "approach": "Render the first page with PdfThumb. Draw the watermark, page number or crop box on top with the same geometry helpers edit.ts uses, exported from edit.ts. Update the preview on every option change.",
+  "acceptance": "Changing the watermark opacity updates the preview within 200 ms. The page-number position in the preview matches the output within 2 points. Today there is no preview.",
+  "effort": "M",
+  "depends_on": [
+   "P1-11"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P2-13",
+  "priority": "P2",
+  "title": "Compare: export the differences",
+  "why": "iLovePDF's compare offers a downloadable report, but probably needs a login. CompareView.tsx has no export at all.",
+  "files": [
+   "src/lib/pdf/compare.ts",
+   "src/components/workspace/CompareView.tsx",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "- Export an annotated PDF: highlight annotations on the revised file, added with pdf-lib.\n- Export an HTML or CSV change report.\n- Sync scrolling between the two side-by-side views.",
+  "acceptance": "Comparing two fixtures that differ by one word gives a report with 1 change and an exported PDF with exactly 1 highlight annotation. Today there is no export.",
+  "effort": "M",
+  "depends_on": [
+   "P0-11"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P2-14",
+  "priority": "P2",
+  "title": "Localized URL slugs and search-intent pages",
+  "why": "Every language uses English slugs (for example /fr/merge-pdf). Localized slugs, written in each language's own words, match local searches better. iLovePDF localizes slugs only for es, de and fr.",
+  "files": [
+   "src/lib/i18n/dict/*.ts",
+   "src/lib/i18n/locales.ts",
+   "src/app/[lang]/[slug]/page.tsx",
+   "scripts/static-extras.mjs",
+   "src/components/Header.tsx"
+  ],
+  "approach": "- Add a per-language slug map to the dictionaries, derived from Foliant's own translated tool names. Never copy a competitor's slugs.\n- Redirect the old English slugs with 301s in _redirects (at most 2,000 rules) and put the canonical on the localized URL.\n- Group hreflang alternates by localized slug.\n- Make the header language switcher render real <a hreflang> links.\n- Generate search-intent pages only for the top languages, within the file budget.",
+  "acceptance": "out/es/<localized merge slug>.html exists with a canonical pointing to itself. out/_redirects 301s /es/merge-pdf to that URL. out/ still holds fewer than 18,000 files.",
+  "effort": "M",
+  "depends_on": [
+   "P1-20",
+   "P0-18"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P2-15",
+  "priority": "P2",
+  "title": "Bengali, Tamil, Telugu, Marathi, Urdu and Persian",
+  "why": "India is the core market for this category, but Foliant's UI supports only Hindi among South Asian languages. PDF24 offers 43 UI languages and Stirling-PDF more than 40.",
+  "files": [
+   "src/lib/i18n/dict/bn.ts",
+   "src/lib/i18n/dict/ta.ts",
+   "src/lib/i18n/dict/te.ts",
+   "src/lib/i18n/dict/mr.ts",
+   "src/lib/i18n/dict/ur.ts",
+   "src/lib/i18n/dict/fa.ts",
+   "src/lib/i18n/locales.ts",
+   "package.json",
+   "scripts/vendor.mjs",
+   "src/lib/tools.ts"
+  ],
+  "approach": "- Add the 6 dictionaries: machine-translated, then spot-checked.\n- Lay out ur and fa right-to-left, as ar is today.\n- Add tessdata packs (Apache-2.0) as lazy downloads.\n- Add the matching Noto script fonts from @fontsource (OFL) so watermarks and page numbers render in these scripts.",
+  "acceptance": "`node scripts/i18n-check.mjs` passes for all 32 locales. out/bn/merge-pdf.html exists. OCR on a Bengali fixture reaches a CER under 10%.",
+  "effort": "M",
+  "depends_on": [
+   "P1-16",
+   "P0-18"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P2-16",
+  "priority": "P2",
+  "title": "Read aloud and make PDFs accessible",
+  "why": "Few PDF tools offer free accessibility tagging or read-aloud. Smallpdf promotes an accessible-PDF service, and Firefox already generates alt text on the device.",
+  "files": [
+   "src/lib/ai/speak.ts",
+   "src/lib/pdf/tag.ts",
+   "src/lib/tools.ts",
+   "src/lib/i18n/dict/en.ts",
+   "tests/pdfua.mjs"
+  ],
+  "approach": "Listen:\n- Use the browser's built-in speechSynthesis, in reading order from layout.ts, with word highlighting.\n- Optional later: Kokoro-82M (Apache-2.0, about 86 MB) for natural voices and WAV export.\n\nMake accessible:\n- Set /Lang, /Title and MarkInfo.\n- Build a StructTreeRoot (H1-H6, P, L, Table, Figure) from layout.ts and tables.ts.\n- Suggest alt text with distilvit (Apache-2.0, about 187 MB, opt-in). The user reviews each suggestion.",
+  "acceptance": "'Listen' on a 2-page fixture starts speaking within 1 s. Tagged output passes the veraPDF PDF/UA-1 checks for structure and language, or fails fewer checks than the untagged baseline. Neither tool exists today.",
+  "effort": "XL",
+  "depends_on": [
+   "P2-06"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P2-17",
+  "priority": "P2",
+  "title": "Detect form fields automatically",
+  "why": "iLovePDF detects form fields with AI (its API charges 20 credits per page). Rule-based detection runs locally and costs nothing.",
+  "files": [
+   "src/lib/pdf/formdetect.ts",
+   "src/components/workspace/Editor.tsx",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "Find underscore runs, empty ruled table cells (reusing tables.ts rule detection) and small squares. Suggest text fields and checkboxes for each, and let the user accept or reject every suggestion.",
+  "acceptance": "A flat fixture with 3 underline blanks and 2 boxes gets at least 3 text-field and 2 checkbox suggestions. Accepting them all gives 5 AcroForm fields. Today there is no detection.",
+  "effort": "L",
+  "depends_on": [
+   "P1-14"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P2-18",
+  "priority": "P2",
+  "title": "Homepage promise and a sourced comparison table",
+  "why": "'Private, no upload' alone no longer stands out: there were more than 20 such launches on HN, mostly scoring 1-10 points. What makes people switch is quotas, paywalls and billing traps. A concrete promise that visitors can check, next to competitors' real free-tier limits, turns that into a reason to choose Foliant.",
+  "files": [
+   "src/app/[lang]/page.tsx",
+   "src/lib/i18n/dict/en.ts",
+   "README.md"
+  ],
+  "approach": "- Homepage: a short promise in our own words: free, unlimited, works offline, and the browser blocks uploads.\n- A 'free here vs elsewhere' table. Each row gives a competitor's free-tier limit, links its source and shows the date it was checked. Use no competitor assets.\n- README: rewrite it as a GEO-friendly document with honest limitations and a 'Deploy your own on Cloudflare Pages' section for schools and offices.",
+  "acceptance": "/en shows the table with at least 5 competitor limits, each linking a source URL and showing a 'checked on' date. The README has a deploy-your-own section. Neither exists today.",
+  "effort": "M",
+  "depends_on": [
+   "P2-01"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P2-19",
+  "priority": "P2",
+  "title": "Office export options through LibreOffice filters",
+  "why": "iLovePDF's Word, PowerPoint and Excel to PDF tools have no options: no fit-to-page, no sheet choice, no orientation and no PDF/A output. Wide spreadsheets split across pages.",
+  "files": [
+   "src/lib/office/libreoffice.ts",
+   "src/lib/tools.ts",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "Expose LibreOffice PDF export filter options:\n- fit to page width, or one page per sheet\n- choose which sheets to export\n- orientation\n- export bookmarks and hyperlinks\n- PDF/A-2b output\n\nFirst check that @matbee/libreoffice-converter (MPL-2.0) lets us pass filter options.",
+  "acceptance": "A wide XLSX fixture converted with 'fit columns' has no column split across pages. Today the option doesn't exist.",
+  "effort": "M",
+  "depends_on": [
+   "P0-15"
+  ],
+  "parallel_safe": false,
+  "status": "done",
+  "done": {
+   "date": "2026-10-19",
+   "branch": "p2/officeopts (from launch/p1b 7d5bad4), merged into launch/p1b as aade6a9; not in main, not pushed",
+   "commits": [
+    "4c58729 options engine and UI",
+    "31ab955 browser tests",
+    "4193112 translations into all 25 languages"
+   ],
+   "verified": "tests/libreoffice.mjs 17/17 (13 new, each failing before the change; reads page counts, no row split across pages, outline, StructTreeRoot, pdfaid XMP and image sizes from the PDFs). tests/e2e-office.mjs: 3 new tests fail on the launch/p1b build and pass on this one, with and without isolation headers. typecheck, lint, i18n:check (616/616) and the office-route, office-run, errors and seo suites pass.",
+   "acceptance": "Met: a wide XLSX converted with 'Fit to page width' has no column split across pages, and a long sheet still runs onto several pages.",
+   "notes": "Shipped: page range, image quality, PDF/A-1b/2b/3b, bookmarks and tagged PDF for every format; fit to width, one page per sheet and sheet choice for Excel; notes pages and hidden slides for PowerPoint. The pipeline is in src/lib/office/export.ts. Not done: orientation for LibreOffice (stays Standard-only), and the server build's /api/convert/office doesn't take these options. On Automatic, a fallback to the light renderer ignores them."
+  }
+ },
+ {
+  "id": "P3-01",
+  "priority": "P3",
+  "title": "Accessibility pass: contrast, radio groups, focus, dialog",
+  "why": "Light-mode muted text fails WCAG AA contrast: 4.26:1 for 12-14 px text, with 56 failing elements on /en. Option radio groups have dangling label ids and no arrow-key support. Focus drops to BODY after adding files and after a result. Page cards nest two interactive elements, each a tab stop. Colour swatches are announced as hex codes, and aria-label 'Bold' is English in every language. Do this early: it is cheap.",
+  "files": [
+   "src/app/globals.css",
+   "src/components/workspace/Options.tsx",
+   "src/components/workspace/Workspace.tsx",
+   "src/components/workspace/Results.tsx",
+   "src/components/workspace/PageBoard.tsx",
+   "src/components/workspace/Editor.tsx",
+   "src/lib/i18n/dict/en.ts",
+   "tests/e2e/a11y.mjs"
+  ],
+  "approach": "- Darken the light-theme --muted token until it reaches at least 4.5:1.\n- Radio groups: roving tabindex, arrow keys, and aria-labelledby pointing to an id that exists.\n- After adding files, focus the file board heading. After a result, focus the result h2 inside a role=status region.\n- Spread the dnd-kit attributes only on sortable page cards.\n- Translate colour names.\n- Run axe-core (MPL-2.0) in e2e.",
+  "acceptance": "axe-core reports 0 aria-input-field-name, label, nested-interactive and color-contrast violations on /en and on all three stages of /en/compress-pdf, in light and dark modes. With the keyboard only, adding files and running Merge leaves focus on the result heading. Both fail today.",
+  "effort": "M",
+  "depends_on": [
+   "P1-13"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P3-02",
+  "priority": "P3",
+  "title": "Polish result messages and console output",
+  "why": "In a batch, the result shows only the first file's note. A 5-file compress said 'already optimised, kept the original' while another file shrank 99% (Results.tsx:58-72). Each LibreOffice conversion logs about 30 console.error lines even when it succeeds.",
+  "files": [
+   "src/components/workspace/Results.tsx",
+   "src/lib/office/libreoffice.ts"
+  ],
+  "approach": "- For more than one output, show the total original and result sizes in a single 'saved' line, and show each file's note in its own row.\n- Pass Emscripten print and printErr handlers that send LibreOffice's 'warn:' and '[LOK C++]' lines to console.debug unless a debug flag is set.",
+  "acceptance": "Compressing the 5 audit files shows the total saving, and report.pdf's row says it kept the original. A high-fidelity brief.docx conversion logs 0 console.error entries (today about 30).",
+  "effort": "S",
+  "depends_on": [
+   "P0-15"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P3-03",
+  "priority": "P3",
+  "title": "Performance budget, service-worker hygiene, duplicate WASM",
+  "why": "18.9 MB of WASM ships twice: once under _next/static/media and once under vendor. Every page embeds the full 489-key dictionary, about 7.6 KB gzip. Info pages load the 33 KB gzip Workspace chunk. The service worker has no navigation preload. Its cache grows without bound, and tabs left open across a vendor update can request /vendor files that return 404. There are no Lighthouse budgets.",
+  "files": [
+   "src/app/[lang]/layout.tsx",
+   "src/components/I18n.tsx",
+   "src/app/[lang]/[slug]/page.tsx",
+   "next.config.ts",
+   "public/sw.js",
+   "scripts/static-extras.mjs",
+   ".github/workflows/live.yml"
+  ],
+  "approach": "- Pass each client component only the dictionary keys it needs, as a per-route subset.\n- Load Workspace with next/dynamic so info pages skip it.\n- Delete _next/static/media .wasm files that no chunk references, or alias the wasm URL modules away.\n- Service worker:\n  - enable navigation preload\n  - keep pages in an LRU cache capped at about 60 entries\n  - on a stale vendor hash, prompt the user to reload\n- Add Lighthouse CI (@lhci/cli, Apache-2.0) budgets to live.yml.",
+  "acceptance": "- `find out/_next -name '*.wasm' -size +1M` prints nothing.\n- /en/faq does not request the chunk containing DndContext.\n- Modern-browser JS on /en/merge-pdf is under 170 KiB gzip.\n- After visiting 200 pages, the pages cache holds at most 60 entries.\n- An old tab after a vendor change prompts a reload instead of failing.",
+  "effort": "M",
+  "depends_on": [
+   "P0-10",
+   "P0-18"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P3-04",
+  "priority": "P3",
+  "title": "Repair truncated files and looped page trees",
+  "why": "Repair gives up on a truncated file whose catalog, pages and content are all intact; cutting at the last 'endobj' already recovers it. Files with a looped page tree get rasterised, so their text is no longer selectable.",
+  "files": [
+   "src/lib/pdf/optimize.ts"
+  ],
+  "approach": "Add a step before the raster fallback: cut the input at the last complete 'endobj' and retry the pdf-lib load. For looped page trees, rebuild /Pages from every /Type /Page object in file order.",
+  "acceptance": "Repairing truncated-70.pdf returns 3 pages with selectable ALPHA1, ALPHA2 and ALPHA3 (today: Invalid PDF structure). cyclic-tree.pdf keeps the text 'CYCLEPAGE' without a rasterising note.",
+  "effort": "S",
+  "depends_on": [
+   "P1-07"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P3-05",
+  "priority": "P3",
+  "title": "Edge and Firefox add-ons: 'Open in Foliant'",
+  "why": "Free add-on stores bring extra discovery. Edge Add-ons and Firefox AMO cost nothing; the Chrome Web Store charges a one-time $5.",
+  "files": [
+   "extension/manifest.json",
+   "extension/background.js"
+  ],
+  "approach": "Build a Manifest V3 extension with a context-menu entry and download-shelf hook that opens the PDF in the Foliant PWA. Requires P2-04 for launch handling, otherwise it falls back to the handoff page. The extension never uploads anything; the owner publishes it.",
+  "acceptance": "Loaded unpacked in Edge, right-clicking a PDF link opens the Foliant tool picker with the file. Today no extension exists.",
+  "effort": "M",
+  "depends_on": [
+   "P0-16"
+  ],
+  "parallel_safe": true
+ },
+ {
+  "id": "P3-06",
+  "priority": "P3",
+  "title": "Optional Google Drive and Dropbox import (owner-gated; not recommended)",
+  "why": "Every iLovePDF tool page offers Drive and Dropbox import. But these pickers need developer keys and third-party scripts, which break the browser-enforced privacy promise (CSP connect-src 'self').",
+  "files": [
+   "src/components/workspace/Dropzone.tsx",
+   "security-headers.json"
+  ],
+  "approach": "Build it only if the owner chooses to. Load the Google Picker and Dropbox Chooser lazily, and only when NEXT_PUBLIC_GDRIVE_KEY or NEXT_PUBLIC_DROPBOX_KEY is set. Scope the CSP exceptions to those hosts and say so on the privacy page. Off by default.",
+  "acceptance": "With the keys set, a Drive file can be imported. Without keys, the build sends no requests to googleapis or dropbox and the CSP is unchanged.",
+  "effort": "M",
+  "depends_on": [
+   "P2-01"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P3-07",
+  "priority": "P3",
+  "title": "Local form-autofill profile",
+  "why": "Indian exam, KYC and admission forms ask for the same details again and again. A profile that never leaves the device saves typing.",
+  "files": [
+   "src/lib/autofill.ts",
+   "src/components/workspace/Editor.tsx",
+   "src/lib/i18n/dict/en.ts"
+  ],
+  "approach": "Keep an optional profile in IndexedDB, encrypted with AES-GCM under a key derived from a passphrase (WebCrypto PBKDF2). Match AcroForm field names and labels with fuzzy rules. Pre-fill the form, highlight every filled field for review, and never sync.",
+  "acceptance": "A fixture form with fields 'Applicant Name', 'D.O.B.' and 'Pin code' is filled from the profile, with each value highlighted. Clearing site data removes the profile.",
+  "effort": "M",
+  "depends_on": [
+   "P1-14"
+  ],
+  "parallel_safe": false
+ },
+ {
+  "id": "P3-08",
+  "priority": "P3",
+  "title": "Retire or harden the server build",
+  "why": "The server build has accounts, a contact form and server-side conversion. The SSRF guard can be bypassed through DNS rebinding and gaps in its IPv6 checks (chrome.ts:45-89). The rate limiter trusts the client-supplied leftmost X-Forwarded-For value (limits.ts:19-20). bcryptjs, jose and playwright-core install for everyone. None of this ships in the static launch; it becomes P0 if the owner ever deploys the server build.",
+  "files": [
+   "README.md",
+   "package.json",
+   "src/lib/server/chrome.ts",
+   "src/lib/server/limits.ts"
+  ],
+  "approach": "Recommended: state in the README that the static build is the only supported public deployment, and move server-only dependencies to optionalDependencies or a 'server' branch. If the server build is kept:\n- pin DNS resolution (Chromium --host-resolver-rules or a filtering proxy)\n- block 64:ff9b::/96, 2002::/16 and ::a.b.c.d\n- use the rightmost IP added by a trusted proxy",
+  "acceptance": "The README names only the static build for public hosting. If the server build is kept, unit tests reject 64:ff9b::a00:1 and 2002:0a00:0001::, and the rate limiter ignores a spoofed X-Forwarded-For.",
+  "effort": "S",
+  "depends_on": [],
+  "parallel_safe": false
+ }
+]
