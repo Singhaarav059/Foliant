@@ -57,7 +57,8 @@ export type ToolId =
   | "jpgToPdf" | "wordToPdf" | "pptToPdf" | "excelToPdf" | "htmlToPdf"
   | "pdfToJpg" | "pdfToWord" | "pdfToPpt" | "pdfToExcel" | "pdfToPdfa" | "pdfToMarkdown" | "summarize" | "chat" | "translate"
   | "rotate" | "pageNumbers" | "watermark" | "crop" | "edit" | "forms"
-  | "unlock" | "protect" | "sign" | "verify" | "redact" | "compare";
+  | "unlock" | "protect" | "sign" | "verify" | "redact" | "compare"
+  | "metadata" | "bookmarks" | "flatten" | "attachments" | "sanitize" | "linearize";
 
 export type Tool = {
   id: ToolId;
@@ -80,6 +81,8 @@ export type Tool = {
 };
 
 const PDF = ["pdf"];
+// What can be attached to a PDF (src/lib/pdf/structure.ts attachments).
+const ATTACHABLE = ["pdf", "txt", "csv", "xml", "json", "md", "html", "png", "jpg", "jpeg", "gif", "webp", "svg", "docx", "xlsx", "pptx", "odt", "ods", "odp", "zip"];
 const IMAGES = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif", "tif", "tiff", "avif", "svg"];
 
 // Languages PaddleOCR's PP-OCRv5 model reads at least about as well as Tesseract
@@ -184,6 +187,11 @@ const ALL: Tool[] = [
       { key: "examFit", type: "select", choices: ["crop", "pad"], default: "crop" },
       { key: "examGray", type: "toggle", default: false },
     ],
+  },
+  {
+    // Linearized for fast web view (src/lib/pdf/structure.ts).
+    id: "linearize", slug: "optimize-pdf-for-web", category: "optimize", icon: "Zap", mode: "files",
+    runtime: "browser", accept: PDF, multiple: true, chainable: true, isNew: true, options: [],
   },
   {
     id: "repair", slug: "repair-pdf", category: "optimize", icon: "Wrench", mode: "files",
@@ -371,7 +379,50 @@ const ALL: Tool[] = [
     runtime: "browser", accept: PDF, multiple: false,
     options: [{ key: "flatten", type: "toggle", default: false }],
   },
+  // Document structure (src/lib/pdf/structure.ts).
+  {
+    id: "metadata", slug: "edit-pdf-metadata", category: "edit", icon: "Tags", mode: "files",
+    runtime: "browser", accept: PDF, multiple: true, chainable: true, isNew: true,
+    options: [
+      { key: "metaMode", type: "select", choices: ["edit", "clear"], default: "edit" },
+      // Blank keeps what the file has.
+      { key: "metaTitle", type: "text", default: "", when: { key: "metaMode", is: ["edit"] } },
+      { key: "metaAuthor", type: "text", default: "", when: { key: "metaMode", is: ["edit"] } },
+      { key: "metaSubject", type: "text", default: "", when: { key: "metaMode", is: ["edit"] } },
+      { key: "metaKeywords", type: "text", default: "", when: { key: "metaMode", is: ["edit"] } },
+    ],
+  },
+  {
+    id: "bookmarks", slug: "pdf-bookmarks", category: "edit", icon: "Bookmark", mode: "files",
+    runtime: "browser", accept: PDF, multiple: true, chainable: true, isNew: true,
+    options: [
+      { key: "bookmarkMode", type: "select", choices: ["auto", "remove"], default: "auto" },
+      { key: "bookmarkDepth", type: "number", min: 1, max: 3, default: 2, when: { key: "bookmarkMode", is: ["auto"] } },
+    ],
+  },
+  {
+    id: "flatten", slug: "flatten-pdf", category: "edit", icon: "Layers", mode: "files",
+    runtime: "browser", accept: PDF, multiple: true, chainable: true, isNew: true,
+    options: [{ key: "flattenWhat", type: "select", choices: ["all", "forms"], default: "all" }],
+  },
+  {
+    // Add: the first PDF gets the other files. Extract and remove: each PDF.
+    id: "attachments", slug: "pdf-attachments", category: "edit", icon: "Paperclip", mode: "files",
+    runtime: "browser", accept: ATTACHABLE, multiple: true, isNew: true,
+    options: [{ key: "attachMode", type: "select", choices: ["extract", "add", "remove"], default: "extract" }],
+  },
   // ── Security
+  {
+    id: "sanitize", slug: "sanitize-pdf", category: "security", icon: "ShieldX", mode: "files",
+    runtime: "browser", accept: PDF, multiple: true, chainable: true, isNew: true,
+    options: [
+      { key: "sanScripts", type: "toggle", default: true },
+      { key: "sanFiles", type: "toggle", default: true },
+      { key: "sanLinks", type: "toggle", default: true },
+      { key: "sanMetadata", type: "toggle", default: true },
+      { key: "sanForms", type: "toggle", default: false },
+    ],
+  },
   {
     id: "unlock", slug: "unlock-pdf", category: "security", icon: "LockOpen", mode: "files",
     runtime: "browser", accept: PDF, multiple: true,

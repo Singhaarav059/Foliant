@@ -179,6 +179,32 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
         font: s(o.font), markBox: b(o.markBox), tileSpacing: n(o.tileSpacing),
       }), signal);
     }
+    case "metadata": {
+      const { editMetadata } = await import("./structure");
+      return each(files, progress, (f) => editMetadata(f, { mode: s(o.metaMode), title: s(o.metaTitle), author: s(o.metaAuthor), subject: s(o.metaSubject), keywords: s(o.metaKeywords) }), signal);
+    }
+    case "bookmarks": {
+      const { bookmarks } = await import("./structure");
+      return each(files, progress, (f, p) => bookmarks(f, { mode: s(o.bookmarkMode), depth: n(o.bookmarkDepth) }, p), signal);
+    }
+    case "flatten": {
+      const { flatten } = await import("./structure");
+      return each(files, progress, (f) => flatten(f, { flattenWhat: s(o.flattenWhat) }), signal);
+    }
+    case "attachments": {
+      const { attachments } = await import("./structure");
+      return attachments(files, { attachMode: s(o.attachMode) }, progress);
+    }
+    case "sanitize": {
+      const { sanitize } = await import("./structure");
+      return each(files, progress, (f) => sanitize(f, {
+        scripts: b(o.sanScripts ?? true), files: b(o.sanFiles ?? true), links: b(o.sanLinks ?? true), metadata: b(o.sanMetadata ?? true), forms: b(o.sanForms),
+      }), signal);
+    }
+    case "linearize": {
+      const { linearize } = await import("./structure");
+      return each(files, progress, (f) => linearize(f), signal);
+    }
     case "protect": {
       const { protect } = await import("./security");
       return each(files, progress, (f) => protect(f, {
@@ -287,6 +313,13 @@ export async function prepare(id: ToolId): Promise<unknown> {
     case "protect":
     case "unlock":
       return (await import("./security")).prepare();
+    case "metadata":
+    case "bookmarks":
+    case "flatten":
+    case "attachments":
+    case "sanitize":
+    case "linearize":
+      return Promise.all([import("./structure"), (await import("./qpdf")).prepareQpdf(), (await import("./common")).pdfjs()]);
     default:
       return null;
   }

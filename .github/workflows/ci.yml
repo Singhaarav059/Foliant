@@ -229,6 +229,8 @@ jobs:
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:recipe
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:structure
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:summarize
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:ai

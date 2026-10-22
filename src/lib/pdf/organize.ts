@@ -390,7 +390,7 @@ function carryForm(out: PDFDocument, sources: Source[]) {
 }
 
 // The entries of a name tree (attached files, named destinations).
-function nameTree(doc: PDFDocument, root: PDFObject | undefined) {
+export function nameTree(doc: PDFDocument, root: PDFObject | undefined) {
   const entries: [PDFString | PDFHexString, PDFObject][] = [];
   const seen = new Set<PDFDict>();
   const visit = (o: PDFObject | undefined) => {
@@ -432,7 +432,7 @@ function carryAttachments(out: PDFDocument, sources: Source[]) {
   out.catalog.set(N("Names"), ctx.obj({ EmbeddedFiles: ctx.register(ctx.obj({ Names: list })) }));
 }
 
-type OutlineItem = {
+export type OutlineItem = {
   title: string;
   // An output page, and how to show it (the rest of the destination array).
   page?: number;
@@ -507,7 +507,7 @@ function destinations(doc: PDFDocument) {
 }
 
 // Writes bookmarks as the document's outline. A closed one's count is negative.
-function writeOutline(doc: PDFDocument, items: OutlineItem[]) {
+export function writeOutline(doc: PDFDocument, items: OutlineItem[]) {
   if (!items.length) return;
   const ctx = doc.context;
   const pages = doc.getPages();

@@ -25,6 +25,7 @@ export type ErrorCode =
   | "bad_ranges"
   | "bad_sheets"
   | "no_bookmarks"
+  | "no_attachments"
   | "empty_document"
   | "missing_image"
   | "text_edit_failed"
@@ -38,7 +39,7 @@ export type ErrorCode =
 
 const CODES = new Set<string>([
   "not_pdf", "damaged", "unrecoverable", "encrypted", "wrong_password", "already_encrypted", "password_too_long", "protect_unverified", "redaction_leak", "no_pages",
-  "image_unsupported", "page_too_large", "out_of_memory", "no_text", "no_translator", "no_images", "bad_ranges", "bad_sheets", "no_bookmarks", "empty_document",
+  "image_unsupported", "page_too_large", "out_of_memory", "no_text", "no_translator", "no_images", "bad_ranges", "bad_sheets", "no_bookmarks", "no_attachments", "empty_document",
   "missing_image", "text_edit_failed", "download_failed", "office_isolation", "office_memory", "office_stalled", "server", "network", "unknown",
 ]);
 

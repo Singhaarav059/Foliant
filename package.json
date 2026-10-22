@@ -67,6 +67,7 @@
     "test:compare": "node tests/compare.mjs",
     "test:batch": "node tests/batch.mjs",
     "test:recipe": "node tests/recipe.mjs",
+    "test:structure": "node tests/structure.mjs",
     "test:summarize": "node tests/summarize.mjs",
     "test:e2e:errors": "node tests/e2e/errors.mjs",
     "test:e2e:intake": "node tests/e2e/intake.mjs",

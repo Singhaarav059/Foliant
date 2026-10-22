@@ -68,6 +68,10 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
   const [kind, ...nums] = first?.note?.split(":") ?? [];
   const [n1, n2, n3, n4, n5] = nums.map(Number);
   const kb = (b: number) => `${(b / 1024).toFixed(1)} KB`;
+  // Sanitize: what was taken out of any of the files (src/lib/pdf/structure.ts).
+  const sanitized = outputs.some((o) => o.note?.startsWith("sanitized:"))
+    ? [...new Set(outputs.flatMap((o) => (o.note?.startsWith("sanitized:") ? o.note.slice(10).split(",").filter(Boolean) : [])))]
+    : null;
 
   return (
     <div className="rise mx-auto max-w-[760px] text-center">
@@ -100,6 +104,13 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
       {first?.note === "notSmaller" && <p className="mt-2 text-[15px] text-muted">{t("res.notSmaller")}</p>}
       {first?.note?.startsWith("textFallback:") && <p className="mt-2 text-[15px] text-muted">{t("res.textFallback", { fonts: first.note.slice(13) })}</p>}
       {first?.note === "rebuilt" && <p className="mt-2 text-[15px] text-muted">{t("res.rebuilt")}</p>}
+      {kind === "bookmarks" && <p className="mt-2 text-[15px] text-ink-2">{n1 ? t("res.bookmarks", { n: n1 }) : t("res.bookmarksNone")}</p>}
+      {kind === "attached" && <p className="mt-2 text-[15px] text-ink-2">{t("res.attached", { n: n1 })}</p>}
+      {sanitized && (
+        <p className="mt-2 text-[15px] text-ink-2">
+          {sanitized.length ? t("res.sanitized", { list: sanitized.map((k) => t(`res.sanitized.${k}`)).join(", ") }) : t("res.sanitizedNone")}
+        </p>
+      )}
       {first?.note?.startsWith("translate:") && <p className="mt-2 text-[15px] text-muted">{t(first.note === "translate:builtin" ? "res.translateBuiltin" : "res.translateModel")}</p>}
       {first?.note === "ocrNone" && <p className="mt-2 text-[15px] text-muted">{t("res.ocrNone")}</p>}
       {first?.note === "ocrDoubtful" && <p className="mt-2 text-[15px] text-muted">{t("res.ocrDoubtful")}</p>}
