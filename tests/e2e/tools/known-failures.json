@@ -7,7 +7,17 @@
   {
     "slug": "sign-pdf",
     "variant": "date",
-    "langs": ["ar"],
+    "langs": [
+      "ar"
+    ],
     "reason": "the Arabic date stamp is drawn as a picture with its digits out of order (18/10/2026 shows as 182026/10/)"
+  },
+  {
+    "slug": "add-page-numbers",
+    "variant": "n of total",
+    "langs": [
+      "te"
+    ],
+    "reason": "P2-15: no Telugu font is vendored until @fontsource/noto-sans-telugu is installed (see docs/STATUS.md), so “3లో 1” is drawn as a picture with no text to find"
   }
 ]

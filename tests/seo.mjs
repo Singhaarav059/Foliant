@@ -18,6 +18,8 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+// One dictionary per language (src/lib/i18n/dict).
+const LANGS = readdirSync(join(root, "src/lib/i18n/dict")).filter((f) => f.endsWith(".ts")).length;
 const out = join(root, "out");
 const results = { failed: 0 };
 const test = async (name, fn) => {
@@ -102,7 +104,7 @@ const moved = locales.flatMap((l) => tools.filter((s) => localSlug(s, l) !== s).
 
 await test(`the site has an absolute https address (${origin || "none"})`, () => {
   ok(/^https:\/\/[^/]+$/.test(origin), "no absolute canonical on /en");
-  eq(locales.length, 26, "languages found in out/");
+  eq(locales.length, LANGS, "languages found in out/");
   eq(tools.length >= 31, true, "tools found in src/lib/tools.ts");
 });
 
@@ -112,9 +114,9 @@ await test("es/unir-pdf: one canonical, itself", () => {
   eq(canonical[0], abs("/es/unir-pdf"), "canonical");
 });
 
-await test("es/unir-pdf: 27 absolute alternates in each language's words, x-default included", () => {
+await test("es/unir-pdf: an absolute alternate per language in its own words, x-default included", () => {
   const { alternates } = head("es/unir-pdf.html");
-  eq(alternates.length, 27, "hreflang links");
+  eq(alternates.length, LANGS + 1, "hreflang links");
   const map = Object.fromEntries(alternates);
   for (const l of locales) eq(map[l], abs(`/${l}/${localSlug("merge-pdf", l)}`), `hreflang ${l}`);
   eq(map.de, abs("/de/pdf-zusammenfuegen"), "hreflang de");
@@ -228,9 +230,9 @@ await test("every page: canonical is itself, translations of the same page", () 
 
 await test("/ is the indexable x-default home, error and /{lang}/open pages are noindex", () => {
   ok(!head("index.html").meta("robots").some((r) => /noindex/.test(r)), "/ is noindex");
-  eq(head("index.html").alternates.length, 27, "alternates on /");
+  eq(head("index.html").alternates.length, LANGS + 1, "alternates on /");
   const open = pages.filter(isError).filter((f) => !head(f).meta("robots").some((r) => /noindex/.test(r)));
-  ok(pages.filter(isError).length >= 27, "error pages missing");
+  ok(pages.filter(isError).length >= LANGS + 1, "error pages missing");
   ok(!open.length, `indexable error pages: ${open.slice(0, 4).join(", ")}`);
   const app = pages.filter(isAppOnly);
   eq(app.length, locales.length, "/{lang}/open pages");
