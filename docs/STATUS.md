@@ -12,6 +12,29 @@ main (GitHub, P0 launch blockers)
  └─ combined  ← everything below, merged and type-checked on 2026-10-21
 ```
 
+## Progress (cloud loop, branch `combined`)
+
+Each run resumes at the first item not marked done.
+
+- [x] 1. npm ci, build:static, fast tests (2026-10-22, Linux): all node test scripts, typecheck and lint pass. Fixed: test:server counted a killed zombie grandchild as alive. Notes: `npm ci` here needs `ONNXRUNTIME_NODE_INSTALL_CUDA=skip` (its CUDA download from api.nuget.org gets reset); Playwright's bundled browser build doesn't match this container, so Chromium tests run with `CHROME_PATH=/opt/pw-browsers/chromium`; test:server-routes needs `npm run build` first.
+- [ ] 2. Robustness run (`test:robust -- --known`)
+- [ ] 3. Browser e2e (Chromium, WebKit, Firefox)
+- [ ] 4a. P2-03 No limits and batch everything
+- [ ] 4b. P2-05 Folder workflows and recipe links
+- [ ] 4c. P2-07 Trust-grade redaction and PDF/A check
+- [ ] 4d. P2-09 Document structure tools
+- [ ] 4e. P2-10 Print and scan helper tools
+- [ ] 4f. P2-12 Live previews
+- [ ] 4g. P2-15 Bengali, Tamil, Telugu, Marathi, Urdu, Persian
+- [ ] 4h. P2-16 Read aloud and accessible PDFs
+- [ ] 4i. P3-01 Accessibility pass
+- [ ] 4j. P3-02 Result messages and console output
+- [ ] 4k. P3-03 Performance budget and service worker
+- [ ] 4l. P3-04 Repair truncated files and looped page trees
+- [ ] 4m. P3-07 Local form-autofill profile
+
+Notes and open questions:
+
 ## What's in `combined`
 
 | Item | What |

@@ -8,7 +8,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createServer, request } from "node:http";
 import { connect } from "node:net";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -338,7 +338,10 @@ await test("errors returned to clients say nothing about the server", async () =
 // ── Subprocesses ──────────────────────────────────────────────────────────
 
 if (process.platform !== "win32") {
-  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  // A killed process whose parent has gone stays a zombie until PID 1 reaps it,
+  // and containers whose PID 1 isn't an init never do; a zombie isn't running.
+  const zombie = (pid) => { try { return /^\d+ \(.*\) Z/.test(readFileSync(`/proc/${pid}/stat`, "utf8")); } catch { return false; } };
+  const alive = (pid) => { try { process.kill(pid, 0); return !zombie(pid); } catch { return false; } };
 
   await test("a subprocess that runs too long is killed with all its children", async () => {
     const started = Date.now();
