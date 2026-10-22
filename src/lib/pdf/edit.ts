@@ -305,6 +305,35 @@ export async function pageNumbers(
   return [{ name: `${baseName(file.name)}-numbered.pdf`, blob: await save(doc) }];
 }
 
+// ── Header and footer: a line of text at the top and/or bottom of each
+// page, with {page}, {pages}, {filename} and {date} filled in.
+export async function headerFooter(
+  file: File,
+  o: { header: string; footer: string; align: string; font?: string; fontSize: number; color: string; margin?: string; pageRange: string; skipFirst: number },
+): Promise<Output[]> {
+  const doc = await loadPdf(file, file.name);
+  const family = fontChoice(o.font);
+  const pages = doc.getPages();
+  const total = pages.length;
+  const chosen = pageSet(o.pageRange, total);
+  const [mMin, mFrac] = MARGINS[o.margin ?? "normal"] ?? MARGINS.normal;
+  const anchor = o.align === "left" ? "left" : o.align === "right" ? "right" : "center";
+  const header = fillVariables(o.header.trim(), file), footer = fillVariables(o.footer.trim(), file);
+  for (let i = 0; i < total; i++) {
+    if (!chosen.has(i) || i < Math.max(0, o.skipFirst || 0)) continue;
+    const page = pages[i];
+    const { vw, vh } = visualFrame(page);
+    const margin = Math.min(Math.max(mMin, Math.min(vw, vh) * mFrac), Math.min(vw, vh) * 0.1);
+    const size = Math.min(o.fontSize, (vh - 2 * margin) * 0.4);
+    const vx = anchor === "left" ? margin : anchor === "right" ? vw - margin : vw / 2;
+    const fill = (t: string) => t.replaceAll("{page}", String(i + 1)).replaceAll("{pages}", String(total));
+    const draw = (text: string, vy: number) => drawLabel(doc, page, family, fill(text), { vx, vy, size, color: o.color, anchor, maxWidth: vw - 2 * margin });
+    if (header) await draw(header, vh - margin - size * 0.75);
+    if (footer) await draw(footer, margin);
+  }
+  return [{ name: `${baseName(file.name)}-header-footer.pdf`, blob: await save(doc) }];
+}
+
 // Moves the content stream pdf-lib just added to the front, so it renders under the page.
 function sendLastStreamToBack(page: PDFPage, before: number) {
   const contents = page.node.Contents();

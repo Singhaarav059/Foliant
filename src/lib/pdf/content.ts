@@ -17,7 +17,9 @@ const WS = new Set([0, 9, 10, 12, 13, 32]);
 const DELIM = new Set([40, 41, 60, 62, 91, 93, 123, 125, 47, 37]);
 const ESC: Record<number, number> = { 110: 10, 114: 13, 116: 9, 98: 8, 102: 12, 40: 40, 41: 41, 92: 92 };
 
-export function* tokens(b: Uint8Array): Generator<Token> {
+// `at`, when given, is set to each token's byte range before it is yielded,
+// for callers that rewrite some operators and copy the rest as they were.
+export function* tokens(b: Uint8Array, at?: { start: number; end: number }): Generator<Token> {
   let i = 0;
   const n = b.length;
   const word = (from: number) => {
@@ -29,6 +31,7 @@ export function* tokens(b: Uint8Array): Generator<Token> {
     const c = b[i];
     if (WS.has(c)) { i++; continue; }
     if (c === 37) { while (i < n && b[i] !== 10 && b[i] !== 13) i++; continue; } // % comment
+    if (at) at.start = i;
     if (c === 40) { // (literal string): nesting and escapes
       const out: number[] = [];
       let depth = 1;
@@ -55,32 +58,36 @@ export function* tokens(b: Uint8Array): Generator<Token> {
         out.push(ch);
         i++;
       }
+      if (at) at.end = i;
       yield { str: Uint8Array.from(out) };
       continue;
     }
-    if (c === 60 && b[i + 1] === 60) { i += 2; yield { mark: "<<" }; continue; }
-    if (c === 62 && b[i + 1] === 62) { i += 2; yield { mark: ">>" }; continue; }
+    if (c === 60 && b[i + 1] === 60) { i += 2; if (at) at.end = i; yield { mark: "<<" }; continue; }
+    if (c === 62 && b[i + 1] === 62) { i += 2; if (at) at.end = i; yield { mark: ">>" }; continue; }
     if (c === 60) { // <hex string>
       let hex = "";
       for (i++; i < n && b[i] !== 62; i++) if (!WS.has(b[i])) hex += String.fromCharCode(b[i]);
       i++;
       if (hex.length % 2) hex += "0";
+      if (at) at.end = i;
       yield { str: Uint8Array.from(hex.match(/../g) ?? [], (h) => parseInt(h, 16)) };
       continue;
     }
-    if (c === 91 || c === 93) { i++; yield { mark: c === 91 ? "[" : "]" }; continue; }
+    if (c === 91 || c === 93) { i++; if (at) at.end = i; yield { mark: c === 91 ? "[" : "]" }; continue; }
     if (c === 123 || c === 125 || c === 41 || c === 62) { i++; continue; }
     if (c === 47) { // /Name, with #xx escapes
       const j = word(i + 1);
-      yield { name: String.fromCharCode(...b.subarray(i + 1, j)).replace(/#([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16))) };
+      const name = String.fromCharCode(...b.subarray(i + 1, j)).replace(/#([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
       i = j;
+      if (at) at.end = i;
+      yield { name };
       continue;
     }
     const j = word(i);
     if (j === i) { i++; continue; }
     const w = String.fromCharCode(...b.subarray(i, j));
     i = j;
-    if (/^[+-]?(\d+\.?\d*|\.\d+)$/.test(w)) { yield { num: Number(w) }; continue; }
+    if (/^[+-]?(\d+\.?\d*|\.\d+)$/.test(w)) { if (at) at.end = i; yield { num: Number(w) }; continue; }
     if (w === "BI") {
       // Inline image: its dictionary up to ID, then binary data up to EI between whitespace.
       const dict: Record<string, string | number> = {};
@@ -103,9 +110,11 @@ export function* tokens(b: Uint8Array): Generator<Token> {
       }
       while (i < n && !(WS.has(b[i - 1]) && b[i] === 69 && b[i + 1] === 73 && (i + 2 >= n || WS.has(b[i + 2])))) i++;
       i += 2;
+      if (at) at.end = i;
       yield { inline: dict };
       continue;
     }
+    if (at) at.end = i;
     yield { op: w };
   }
 }

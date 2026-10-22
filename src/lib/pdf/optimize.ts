@@ -50,7 +50,7 @@ const MAX_STREAM_BYTES = 64 << 20;
 
 // A stream's bytes with its Flate filter undone (predictors left in place),
 // or null past `limit` bytes. Unfiltered streams come back as they are.
-function inflate(stream: PDFRawStream, limit: number): Uint8Array | null {
+export function inflate(stream: PDFRawStream, limit: number): Uint8Array | null {
   const filters = filterNames(stream.dict);
   const bytes = stream.contents;
   if (!filters.length) return bytes.length <= limit ? bytes : null;

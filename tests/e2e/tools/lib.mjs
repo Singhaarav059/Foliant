@@ -4,7 +4,7 @@
 // language: options are found by the id suffix Options.tsx gives them
 // (`…-<key>`), buttons by their lucide icon class, and the workspace by its
 // layout (main > aside.card holds the options and the action button).
-import { PDFDocument, PDFName, StandardFonts } from "pdf-lib";
+import { PDFDocument, PDFName, StandardFonts, rgb } from "pdf-lib";
 import JSZip from "jszip";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -183,6 +183,20 @@ export async function makeFixtures(browser, dir) {
   dd.addOptions(["India", "Kenya", "Peru"]);
   dd.addToPage(page, { x: 130, y: 620, width: 150, height: 22 });
   writeFileSync(join(dir, "form.pdf"), await doc.save());
+
+  // Text, an empty page, text (Remove blank pages); colour text and a photo (Grayscale).
+  const mixed = await PDFDocument.create();
+  const mixedFont = await mixed.embedFont(StandardFonts.Helvetica);
+  for (const text of ["First page with text", "", "Third page with text"]) {
+    const p = mixed.addPage([595, 842]);
+    if (text) p.drawText(text, { x: 60, y: 760, size: 18, font: mixedFont });
+  }
+  writeFileSync(join(dir, "with-blank.pdf"), await mixed.save());
+  const colour = await PDFDocument.create();
+  const cp = colour.addPage([595, 842]);
+  cp.drawText("Receipt 7731", { x: 60, y: 780, size: 22, font: await colour.embedFont(StandardFonts.Helvetica), color: rgb(0.8, 0.1, 0.1) });
+  cp.drawImage(await colour.embedJpg(readFileSync(join(dir, "photo.jpg"))), { x: 60, y: 200, width: 400, height: 533 });
+  writeFileSync(join(dir, "photo-page.pdf"), await colour.save());
 
   const report = readFileSync(join(fixtures, "report.pdf"));
   writeFileSync(join(dir, "truncated.pdf"), report.subarray(0, Math.floor(report.length * 0.6)));

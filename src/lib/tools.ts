@@ -58,7 +58,8 @@ export type ToolId =
   | "pdfToJpg" | "pdfToWord" | "pdfToPpt" | "pdfToExcel" | "pdfToPdfa" | "pdfToMarkdown" | "summarize" | "chat" | "translate"
   | "rotate" | "pageNumbers" | "watermark" | "crop" | "edit" | "forms"
   | "unlock" | "protect" | "sign" | "verify" | "redact" | "compare"
-  | "metadata" | "bookmarks" | "flatten" | "attachments" | "sanitize" | "linearize";
+  | "metadata" | "bookmarks" | "flatten" | "attachments" | "sanitize" | "linearize"
+  | "nUp" | "booklet" | "removeBlank" | "mix" | "resize" | "grayscale" | "headerFooter";
 
 export type Tool = {
   id: ToolId;
@@ -150,6 +151,35 @@ const ALL: Tool[] = [
     id: "organize", slug: "organize-pdf", category: "organize", icon: "LayoutGrid", mode: "pages",
     runtime: "browser", accept: PDF, multiple: true, options: [],
   },
+  // Print and scan helpers (src/lib/pdf/impose.ts).
+  {
+    id: "nUp", slug: "n-up-pdf", category: "organize", icon: "Grid2x2", mode: "files",
+    runtime: "browser", accept: PDF, multiple: true, chainable: true, isNew: true,
+    options: [
+      { key: "nupPages", type: "select", choices: ["2", "4", "9"], default: "2" },
+      { key: "sheetSize", type: "select", choices: ["same", "a4", "letter"], default: "same" },
+      { key: "nupFrame", type: "toggle", default: false },
+    ],
+  },
+  {
+    id: "booklet", slug: "pdf-booklet", category: "organize", icon: "BookOpen", mode: "files",
+    runtime: "browser", accept: PDF, multiple: true, chainable: true, isNew: true,
+    options: [
+      { key: "sheetSize", type: "select", choices: ["same", "a4", "letter"], default: "same" },
+      { key: "binding", type: "select", choices: ["left", "right"], default: "left" },
+    ],
+  },
+  {
+    id: "removeBlank", slug: "remove-blank-pages", category: "organize", icon: "Eraser", mode: "files",
+    runtime: "browser", accept: PDF, multiple: true, chainable: true, isNew: true,
+    options: [{ key: "blankLevel", type: "select", choices: ["strict", "normal", "lenient"], default: "normal" }],
+  },
+  {
+    // Page 1 of each file, then page 2 of each…; the order of the files counts.
+    id: "mix", slug: "alternate-mix-pdf", category: "organize", icon: "Shuffle", mode: "files",
+    runtime: "browser", accept: PDF, multiple: true, minFiles: 2, isNew: true,
+    options: [{ key: "mixReverse", type: "toggle", default: false }],
+  },
   {
     id: "scan", slug: "scan-to-pdf", category: "organize", icon: "ScanLine", mode: "scan",
     runtime: "browser", accept: IMAGES, multiple: true,
@@ -191,6 +221,11 @@ const ALL: Tool[] = [
   {
     // Linearized for fast web view (src/lib/pdf/structure.ts).
     id: "linearize", slug: "optimize-pdf-for-web", category: "optimize", icon: "Zap", mode: "files",
+    runtime: "browser", accept: PDF, multiple: true, chainable: true, isNew: true, options: [],
+  },
+  {
+    // Every colour turned grey (src/lib/pdf/gray.ts).
+    id: "grayscale", slug: "grayscale-pdf", category: "optimize", icon: "Contrast", mode: "files",
     runtime: "browser", accept: PDF, multiple: true, chainable: true, isNew: true, options: [],
   },
   {
@@ -378,6 +413,27 @@ const ALL: Tool[] = [
     id: "forms", slug: "pdf-forms", category: "edit", icon: "TextCursorInput", mode: "editor",
     runtime: "browser", accept: PDF, multiple: false,
     options: [{ key: "flatten", type: "toggle", default: false }],
+  },
+  {
+    id: "headerFooter", slug: "add-header-footer", category: "edit", icon: "PanelTop", mode: "files",
+    runtime: "browser", accept: PDF, multiple: true, chainable: true, isNew: true,
+    options: [
+      // {page}, {pages}, {filename} and {date} are filled in.
+      { key: "hfHeader", type: "text", default: "" },
+      { key: "hfFooter", type: "text", default: "{page} / {pages}" },
+      { key: "hfAlign", type: "select", choices: ["center", "left", "right"], default: "center" },
+      { key: "pageRange", type: "text", default: "", placeholder: "all" },
+      { key: "hfSkipFirst", type: "number", min: 0, max: 9999, default: 0 },
+      { key: "font", type: "select", choices: ["helvetica", "arimo", "tinos", "cousine", "noto"], default: "helvetica" },
+      { key: "fontSize", type: "range", min: 6, max: 36, default: 10, unit: "pt" },
+      { key: "color", type: "color", default: "#1f2937" },
+      { key: "margin", type: "select", choices: ["small", "normal", "large"], default: "normal" },
+    ],
+  },
+  {
+    id: "resize", slug: "resize-pdf", category: "edit", icon: "Scaling", mode: "files",
+    runtime: "browser", accept: PDF, multiple: true, chainable: true, isNew: true,
+    options: [{ key: "pageSize", type: "select", choices: ["a4", "letter", "a3", "a5", "legal"], default: "a4" }],
   },
   // Document structure (src/lib/pdf/structure.ts).
   {

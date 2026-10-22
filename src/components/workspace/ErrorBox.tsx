@@ -33,6 +33,7 @@ const MESSAGES: Record<ErrorCode, [key: string, fix?: Fix]> = {
   bad_sheets: ["err.badSheets"],
   no_bookmarks: ["err.noBookmarks"],
   no_attachments: ["err.noAttachments"],
+  all_blank: ["err.allBlank"],
   empty_document: ["err.emptyDocument"],
   missing_image: ["err.missingImage"],
   text_edit_failed: ["err.textEdit"],

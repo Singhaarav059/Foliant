@@ -552,7 +552,7 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
         <button className="btn btn-quiet btn-sm" onClick={reset}>{t("res.startOver")}</button>
       </div>
     ) : (
-      <FileBoard items={items} onChange={(n) => { setItems(n); if (!n.length) reset(); }} sortable={["merge", "jpgToPdf", "scan"].includes(tool.id)}>
+      <FileBoard items={items} onChange={(n) => { setItems(n); if (!n.length) reset(); }} sortable={["merge", "jpgToPdf", "scan", "mix"].includes(tool.id)}>
         {tool.multiple && <Dropzone tool={tool} onFiles={addFiles} compact />}
         {tool.mode === "scan" && <Scanner onCapture={(f) => addFiles([f])} />}
       </FileBoard>

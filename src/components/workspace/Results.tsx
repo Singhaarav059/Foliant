@@ -69,6 +69,8 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
   const [n1, n2, n3, n4, n5] = nums.map(Number);
   const kb = (b: number) => `${(b / 1024).toFixed(1)} KB`;
   // Sanitize: what was taken out of any of the files (src/lib/pdf/structure.ts).
+  // A count summed over a batch's outputs: "blankRemoved:3".
+  const total = (prefix: string) => outputs.reduce((sum, o) => sum + (o.note?.startsWith(prefix) ? Number(o.note.slice(prefix.length)) || 0 : 0), 0);
   const sanitized = outputs.some((o) => o.note?.startsWith("sanitized:"))
     ? [...new Set(outputs.flatMap((o) => (o.note?.startsWith("sanitized:") ? o.note.slice(10).split(",").filter(Boolean) : [])))]
     : null;
@@ -105,6 +107,12 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
       {first?.note?.startsWith("textFallback:") && <p className="mt-2 text-[15px] text-muted">{t("res.textFallback", { fonts: first.note.slice(13) })}</p>}
       {first?.note === "rebuilt" && <p className="mt-2 text-[15px] text-muted">{t("res.rebuilt")}</p>}
       {kind === "bookmarks" && <p className="mt-2 text-[15px] text-ink-2">{n1 ? t("res.bookmarks", { n: n1 }) : t("res.bookmarksNone")}</p>}
+      {outputs.some((o) => o.note?.startsWith("blank")) && (
+        <p className="mt-2 text-[15px] text-ink-2">
+          {total("blankRemoved:") ? t("res.blankRemoved", { n: total("blankRemoved:") }) : t("res.blankNone")}
+        </p>
+      )}
+      {total("grayPartial:") > 0 && <p className="mt-2 text-[15px] text-muted">{t("res.grayPartial", { n: total("grayPartial:") })}</p>}
       {kind === "attached" && <p className="mt-2 text-[15px] text-ink-2">{t("res.attached", { n: n1 })}</p>}
       {sanitized && (
         <p className="mt-2 text-[15px] text-ink-2">

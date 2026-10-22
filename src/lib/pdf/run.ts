@@ -205,6 +205,37 @@ export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Pro
       const { linearize } = await import("./structure");
       return each(files, progress, (f) => linearize(f), signal);
     }
+    case "nUp": {
+      const { nUp } = await import("./impose");
+      return each(files, progress, (f, p) => nUp(f, { per: Number(o.nupPages) || 2, paper: s(o.sheetSize), frame: b(o.nupFrame) }, p), signal);
+    }
+    case "booklet": {
+      const { booklet } = await import("./impose");
+      return each(files, progress, (f, p) => booklet(f, { paper: s(o.sheetSize), binding: s(o.binding) }, p), signal);
+    }
+    case "removeBlank": {
+      const { removeBlank } = await import("./impose");
+      return each(files, progress, (f, p) => removeBlank(f, { level: s(o.blankLevel) }, p, signal), signal);
+    }
+    case "mix": {
+      const { mix } = await import("./impose");
+      return mix(files, { reverse: b(o.mixReverse) });
+    }
+    case "resize": {
+      const { resize } = await import("./impose");
+      return each(files, progress, (f) => resize(f, { paper: s(o.pageSize) }), signal);
+    }
+    case "grayscale": {
+      const { grayscale } = await import("./gray");
+      return each(files, progress, (f, p) => grayscale(f, p), signal);
+    }
+    case "headerFooter": {
+      const { headerFooter } = await import("./edit");
+      return each(files, progress, (f) => headerFooter(f, {
+        header: s(o.hfHeader), footer: s(o.hfFooter), align: s(o.hfAlign), font: s(o.font), fontSize: n(o.fontSize), color: s(o.color),
+        margin: s(o.margin), pageRange: s(o.pageRange), skipFirst: n(o.hfSkipFirst),
+      }), signal);
+    }
     case "protect": {
       const { protect } = await import("./security");
       return each(files, progress, (f) => protect(f, {
@@ -309,7 +340,16 @@ export async function prepare(id: ToolId): Promise<unknown> {
       return import("../ai/translate");
     case "pageNumbers":
     case "watermark":
+    case "headerFooter":
       return import("./edit");
+    case "nUp":
+    case "booklet":
+    case "mix":
+    case "resize":
+    case "removeBlank":
+      return Promise.all([import("./impose"), (await import("./qpdf")).prepareQpdf(), (await import("./common")).pdfjs()]);
+    case "grayscale":
+      return Promise.all([import("./gray"), (await import("./qpdf")).prepareQpdf(), (await import("./jpeg")).prepareJpeg()]);
     case "protect":
     case "unlock":
       return (await import("./security")).prepare();
