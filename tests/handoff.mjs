@@ -47,7 +47,8 @@ await test("one PDF can go to every PDF tool that takes a file", () => {
 await test("several PDFs only go to tools that take several files", () => {
   const got = ids([file("a.pdf"), file("b.PDF")]);
   if (!got.includes("merge") || !got.includes("compress")) throw new Error(got.join(", "));
-  for (const id of ["split", "sign", "redact"]) if (got.includes(id)) throw new Error(`offers ${id}`);
+  // Redact takes a batch since P2-03.
+  for (const id of ["split", "sign"]) if (got.includes(id)) throw new Error(`offers ${id}`);
 });
 
 // The exam photo kit takes photos too.
@@ -58,9 +59,9 @@ await test("photos go to the exam photo kit and JPG to PDF, by extension or by t
 
 await test("a Word file goes to Word to PDF", () => eq(ids([file("brief.docx")]).join(), "wordToPdf", "docx"));
 
-await test("mixed or unknown files go nowhere", () => {
-  eq(ids([file("a.pdf"), file("b.docx")]).length, 0, "pdf + docx");
-  eq(ids([file("notes.txt", "text/plain")]).length, 0, "txt");
+await test("mixed files go only to PDF attachments; unknown ones nowhere", () => {
+  eq(ids([file("a.pdf"), file("b.docx")]).join(), "attachments", "pdf + docx: attach the Word file");
+  eq(ids([file("notes.txt", "text/plain")]).length, 0, "txt alone");
   eq(ids([]).length, 0, "nothing");
 });
 

@@ -45,7 +45,8 @@ export function toolsFor(files: { name: string; type: string }[]): Tool[] {
   return TOOLS.filter(
     (t) =>
       t.mode !== "scan" && t.mode !== "url" && (files.length === 1 || t.multiple) &&
-      files.every((f) => t.accept.includes(extOf(f.name)) || (t.accept.includes("jpg") && f.type.startsWith("image/"))),
+      files.every((f) => t.accept.includes(extOf(f.name)) || (t.accept.includes("jpg") && f.type.startsWith("image/"))) &&
+      (!t.needsPdf || files.some((f) => extOf(f.name) === "pdf")),
   );
 }
 

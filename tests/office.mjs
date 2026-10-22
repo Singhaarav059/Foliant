@@ -22,12 +22,14 @@ execFileSync(join(root, "node_modules/.bin/tsc"), ["--outDir", out, "--module", 
 
 const files = {
   "/": `<!doctype html><script src="/jszip.js"></script>
-    <script type="importmap">{"imports":{"docx-preview":"/docx-preview.mjs","jszip":"/jszip-shim.js"}}</script>
+    <script type="importmap">{"imports":{"docx-preview":"/docx-preview.mjs","jszip":"/jszip-shim.js","/settled":"/settled.js"}}</script>
     <script type="module">import { docxPreviewHtml } from "/docx.js"; window.render = (b64) => docxPreviewHtml(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));</script>`,
   "/jszip.js": readFileSync(join(root, "node_modules/jszip/dist/jszip.min.js")),
   "/jszip-shim.js": "export default window.JSZip;",
   "/docx-preview.mjs": readFileSync(join(require.resolve("docx-preview").replace(/docx-preview\.js$/, ""), "docx-preview.mjs")),
   "/docx.js": readFileSync(join(out, "docx.js")),
+  // docx.ts imports "./settled" (src/lib/office/settled.ts); the import map sends it here.
+  "/settled.js": readFileSync(join(out, "settled.js")),
 };
 const browser = await pw.chromium.launch({ executablePath: chrome });
 const page = await browser.newPage();

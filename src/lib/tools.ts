@@ -72,6 +72,8 @@ export type Tool = {
   accept: string[]; // file extensions without the dot
   multiple: boolean;
   minFiles?: number;
+  // Takes other kinds of file only alongside a PDF (Attachments adds them to one).
+  needsPdf?: boolean;
   options: OptionDef[];
   // Can be a step in a saved workflow (no interactive canvas, PDF in → PDF out).
   chainable?: boolean;
@@ -481,7 +483,7 @@ const ALL: Tool[] = [
   {
     // Add: the first PDF gets the other files. Extract and remove: each PDF.
     id: "attachments", slug: "pdf-attachments", category: "edit", icon: "Paperclip", mode: "files",
-    runtime: "browser", accept: ATTACHABLE, multiple: true, isNew: true,
+    runtime: "browser", accept: ATTACHABLE, multiple: true, isNew: true, needsPdf: true,
     options: [{ key: "attachMode", type: "select", choices: ["extract", "add", "remove"], default: "extract" }],
   },
   // ── Security
