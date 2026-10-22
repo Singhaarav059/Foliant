@@ -5,7 +5,7 @@ import {
   MousePointer2, Type, ImagePlus, Square, Circle, Minus, Pencil, Highlighter, Eraser, Undo2, Redo2, Trash2,
   ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Signature as SignatureIcon, CalendarDays, Search, ScanEye, Crop as CropIcon,
   TextCursorInput, SquareCheck, Copy, Bold, Stamp, UserRound, Crosshair, CircleDot, SquareChevronDown, List, PenLine,
-  LetterText, BringToFront, SendToBack, RotateCcw,
+  LetterText, BringToFront, SendToBack, RotateCcw, Loader2,
 } from "lucide-react";
 import { useI18n } from "../I18n";
 import { SignaturePad, type SignatureImage } from "./SignaturePad";
@@ -14,6 +14,8 @@ import type { Suggestion } from "@/lib/pdf/formsdetect";
 import { CertificateSign, prepareCertificate, type CertChoice } from "./CertificateSign";
 import { thumbUrl, pageSizes, docFor } from "@/lib/pdf/thumbs";
 import type { EditorItem, FieldInfo, FracRect, TextBox } from "@/lib/pdf/edit";
+import type { PresetName } from "@/lib/pdf/security";
+import type { PageText } from "@/lib/pdf/text";
 import { moveLayer } from "@/lib/pdf/layers";
 import { parseRanges, type Output, type Progress } from "@/lib/pdf/common";
 import { forFile } from "@/lib/pdf/errors";
@@ -25,11 +27,11 @@ type Size = { w: number; h: number };
 // Marks from a search keep the text matched, the search they came from (and
 // its pattern, to run it again on the result) and how many boxes that text
 // got in it, so the run can tell which texts are fully marked.
-type Mark = { id: string; page: number; rect: FracRect; term?: string; search?: string; pattern?: RegExp; of?: number };
+type Mark = { id: string; page: number; rect: FracRect; term?: string; search?: string; pattern?: RegExp; preset?: PresetName; of?: number };
 
 const COLORS = ["#111827", "#d33f6a", "#2f6fed", "#12a37f", "#e2662b", "#7b4fe0", "#ffffff"];
 const uid = () => crypto.randomUUID();
-const PRESET_NAMES = ["emails", "phones", "numbers"] as const;
+const PRESET_NAMES = ["emails", "phones", "numbers", "cards", "ibans", "aadhaar", "pan", "ssn", "dates"] as const satisfies readonly PresetName[];
 // How an item on the page is announced.
 const ITEM_LABELS: Record<EditorItem["kind"], string> = {
   text: "ed.text", image: "ed.image", rect: "ed.rect", ellipse: "ed.ellipse", line: "ed.line", path: "ed.draw",
@@ -146,6 +148,9 @@ export function Editor({
   const [found, setFound] = useState<number | null>(null);
   const [matchCase, setMatchCase] = useState(false);
   const [wholeWord, setWholeWord] = useState(false);
+  // Redact: the file's text for searching, scans read with OCR first (security.ts
+  // searchable()), for the OCR languages it was read with.
+  const [readable, setReadable] = useState<{ lang: string; file: File; pages: PageText[]; scanned: number[] } | "busy" | null>(null);
   const stage = useRef<HTMLDivElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
@@ -432,16 +437,26 @@ export function Editor({
 
   // ── Redaction search across all pages.
   // `preset` names one of the quick marks; otherwise `typed` is the search box text.
+  const ocrLang = String(options.ocrLang ?? "eng");
   const markMatches = async (typed: string, preset?: (typeof PRESET_NAMES)[number]) => {
-    const [{ documentText }, { findMatches, searchPattern, PRESETS }] = await Promise.all([import("@/lib/pdf/text"), import("@/lib/pdf/security")]);
-    const doc = await docFor(file);
-    const pages = await documentText(doc);
+    if (readable === "busy") return;
+    const { searchable, searchMatches, searchPattern, PRESETS } = await import("@/lib/pdf/security");
+    let text = readable;
+    if (!text || text.lang !== ocrLang) {
+      setReadable("busy");
+      try {
+        text = { lang: ocrLang, ...(await searchable(file, ocrLang)) };
+      } finally {
+        setReadable((r) => (r === "busy" ? null : r));
+      }
+      setReadable(text);
+    }
     const pattern = preset ? PRESETS[preset] : searchPattern(typed, { matchCase, wholeWord });
-    const hits = findMatches(pages, pattern);
+    const hits = searchMatches(text.pages, { pattern, preset });
     const search = uid();
     const of = new Map<string, number>();
     for (const h of hits) of.set(h.text, (of.get(h.text) ?? 0) + 1);
-    marks.set((l) => [...l, ...hits.map((h) => ({ id: uid(), page: h.page, rect: h.rect, term: h.text, search, pattern, of: of.get(h.text) }))]);
+    marks.set((l) => [...l, ...hits.map((h) => ({ id: uid(), page: h.page, rect: h.rect, term: h.text, search, pattern, preset, of: of.get(h.text) }))]);
     // A match that wraps to the next line has a box on each line but counts once.
     setFound(new Set(hits.map((h) => h.hit)).size);
   };
@@ -532,11 +547,14 @@ export function Editor({
         const terms = [...kept.values()].filter((e) => e.n >= e.of).map(({ text, pattern }) => ({ text, pattern }));
         const redactDpi = String(options.redactDpi ?? "200");
         const total = 1 + others.length;
-        const out = await redact(file, marks.value.map((m) => ({ page: m.page, rect: m.rect })), { redactDpi, terms }, (d, n) => progress(d / Math.max(1, n), total));
+        // Searched scans are redacted from their OCR'd copy, as images, and read again.
+        const text = readable && readable !== "busy" && readable.lang === ocrLang ? readable : null;
+        const out = await redact(text?.file ?? file, marks.value.map((m) => ({ page: m.page, rect: m.rect })), { redactDpi, terms, scanned: text?.scanned, ocrLang },
+          (d, n) => progress(d / Math.max(1, n), total));
         // The other files get the searches only: boxes drawn by hand fit this file's pages.
-        const patterns = [...new Map(marks.value.filter((m) => m.pattern && m.search).map((m) => [m.search, m.pattern!])).values()];
+        const searches = [...new Map(marks.value.filter((m) => m.pattern && m.search).map((m) => [m.search, { pattern: m.pattern!, preset: m.preset }])).values()];
         for (const [i, f] of others.entries()) {
-          out.push(...(await forFile(f, () => redactSearches(f, patterns, { redactDpi }, (d, n) => progress(1 + i + d / Math.max(1, n), total)))));
+          out.push(...(await forFile(f, () => redactSearches(f, searches, { redactDpi, ocrLang }, (d, n) => progress(1 + i + d / Math.max(1, n), total)))));
         }
         return out;
       }
@@ -891,6 +909,8 @@ export function Editor({
                 ))}
               </div>
             </div>
+            {readable === "busy" && <p role="status" className="text-[14px] text-muted"><Loader2 size={14} className="me-1.5 inline animate-spin" />{t("ed.redactReading")}</p>}
+            {readable && readable !== "busy" && readable.scanned.length > 0 && <p className="text-[14px] text-ink-2">{t("ed.redactScanned", { n: readable.scanned.length })}</p>}
             {found !== null && <p className="text-[14px] text-muted">{t("ed.redactFound", { n: found })}</p>}
             {others.length > 0 && <p className="text-[14px] text-ink-2">{t("ed.redactBatch", { n: others.length })}</p>}
             <p className="rounded-xl bg-surface-2 p-3 text-[13px] text-ink-2">{t("ed.redactNote")}</p>

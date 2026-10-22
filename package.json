@@ -48,6 +48,7 @@
     "test:ocr-langs": "node tests/ocr-langs.mjs",
     "test:auto-ocr": "node tests/auto-ocr.mjs",
     "test:redact": "node tests/redact.mjs",
+    "test:redact-trust": "node tests/redact-trust.mjs",
     "test:stamps": "node tests/stamps.mjs",
     "test:office": "node tests/office.mjs",
     "test:office-route": "node tests/office-route.mjs",

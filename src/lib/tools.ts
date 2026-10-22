@@ -408,7 +408,11 @@ const ALL: Tool[] = [
     // Several files: searches and presets run on every one (src/lib/pdf/security.ts redactSearches).
     id: "redact", slug: "redact-pdf", category: "security", icon: "SquareSlash", mode: "editor",
     runtime: "browser", accept: PDF, multiple: true,
-    options: [{ key: "redactDpi", type: "select", choices: ["150", "200", "300"], default: "200" }],
+    options: [
+      { key: "redactDpi", type: "select", choices: ["150", "200", "300"], default: "200" },
+      // Scanned pages are read with OCR before searching (src/lib/pdf/security.ts searchable).
+      { key: "ocrLang", type: "multi", choices: OCR_LANGS, max: MAX_OCR_LANGS, default: "eng" },
+    ],
   },
   {
     id: "compare", slug: "compare-pdf", category: "security", icon: "GitCompare", mode: "compare",

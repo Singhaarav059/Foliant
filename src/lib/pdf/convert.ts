@@ -744,7 +744,10 @@ export async function pdfToPdfa(file: File, o: { pdfaDpi: string; keepText: bool
     await closePdf(src);
   }
   makePdfA(doc, doc.getTitle() || baseName(file.name), level);
-  const out: Output = { name: `${baseName(file.name)}-pdfa.pdf`, blob: pdfBlob(pdfaVersion(await doc.save({ useObjectStreams: false }), level)) };
+  const bytes = pdfaVersion(await doc.save({ useObjectStreams: false }), level);
+  // The result is checked again in the browser, and the report goes with it.
+  const { checkPdfa } = await import("./pdfacheck");
+  const out: Output = { name: `${baseName(file.name)}-pdfa.pdf`, blob: pdfBlob(bytes), report: await checkPdfa(bytes, level) };
   if (level !== asked) out.note = `pdfaDowngraded:${level}`;
   return [out];
 }

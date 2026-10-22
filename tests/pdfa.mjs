@@ -485,6 +485,69 @@ await test("render-options preflight: one file at a time, stops at the first tha
     eq([...(await fixForPdfA(await PDFDocument.load(bytes), lvl, true)).raster].join(","), [...(await fixForPdfA(await PDFDocument.load(bytes), lvl)).raster].join(","), `scan-only pages at ${lvl}`);
 });
 
+// The in-browser check (src/lib/pdf/pdfacheck.ts): every converted output
+// passes it, and files that break a rule are reported with the clause veraPDF names.
+const { checkPdfa } = await load("pdfacheck");
+const veraClauses = (bytes, flavour) => {
+  if (!process.env.VERAPDF) return null;
+  const file = join(mkdtempSync(join(tmpdir(), "pdfa-check-")), "in.pdf");
+  writeFileSync(file, bytes);
+  let report;
+  try {
+    report = execFileSync(process.env.VERAPDF, ["--flavour", flavour, "--format", "text", "--verbose", file], { encoding: "utf8" });
+  } catch (e) {
+    report = e.stdout?.toString() ?? "";
+  }
+  return [...report.matchAll(/FAIL (\d[\d.]*)-\d+/g)].map((m) => m[1]);
+};
+await test("the in-browser check passes every converted output", async () => {
+  for (const [flavour, bytes] of [["2b", output], ["1b", out1b.bytes], ["2u", out2u.bytes], ["3b", out3b.bytes], ["1b", out1bAF.bytes], ["2b", out2bAF.bytes], ["1b", out1bQuote.bytes]]) {
+    const r = await checkPdfa(bytes, flavour);
+    eq(JSON.stringify(r.issues), "[]", `PDF/A-${flavour} issues`);
+    eq(r.checked, flavour === "1b" ? 7 : 6, "rules checked");
+  }
+});
+// A file that says it is PDF/A but isn't: Helvetica not embedded, a script
+// that runs on opening, a half-transparent box, no output intent, no file ID.
+const claims = async (level, broken) => {
+  const d = await PDFDocument.create();
+  const f = await d.embedFont(StandardFonts.Helvetica);
+  const page = d.addPage([300, 200]);
+  page.drawText("Not embedded", { x: 20, y: 120, font: f, size: 12 });
+  if (broken.has("transparency")) page.drawRectangle({ x: 10, y: 10, width: 50, height: 50, opacity: 0.5 });
+  if (broken.has("js")) d.catalog.set(PDFName.of("OpenAction"), d.context.obj({ S: "JavaScript", JS: PDFString.of("app.alert(1)") }));
+  const xmp = `<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?><x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description rdf:about="" xmlns:pdfaid="http://www.aiim.org/pdfa/ns/id/"><pdfaid:part>${level[0]}</pdfaid:part><pdfaid:conformance>${level[1].toUpperCase()}</pdfaid:conformance></rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end="w"?>`;
+  d.catalog.set(PDFName.of("Metadata"), d.context.register(d.context.stream(new TextEncoder().encode(xmp), { Type: "Metadata", Subtype: "XML" })));
+  return d.save({ useObjectStreams: false });
+};
+await test("a font that isn't embedded is reported under its clause, as veraPDF does", async () => {
+  for (const [flavour, clause] of [["2b", "6.2.11.4.1"], ["1b", "6.3.4"]]) {
+    const bytes = await claims(flavour, new Set());
+    const r = await checkPdfa(bytes, flavour);
+    const font = r.issues.find((i) => i.rule === "fonts");
+    eq(font?.clause, clause, `PDF/A-${flavour} font clause`);
+    eq(font?.detail, "Helvetica", "names the font");
+    const vera = veraClauses(bytes, flavour);
+    if (vera) eq(vera.includes(clause), true, `veraPDF also fails ${clause} (${vera.join(", ")})`);
+  }
+});
+await test("scripts, transparency at level 1, a missing output intent and file ID are reported", async () => {
+  const bytes = await claims("1b", new Set(["js", "transparency"]));
+  const r = await checkPdfa(bytes, "1b");
+  const by = Object.fromEntries(r.issues.map((i) => [`${i.rule}:${i.detail}`, i.clause]));
+  eq(by["actions:JavaScript"], "6.6.1", "JavaScript");
+  eq(by["transparency:ExtGState"], "6.4", "transparency");
+  eq(by["intent:GTS_PDFA1"], "6.2.2", "output intent");
+  eq(by["trailer:ID"], "6.1.3", "file ID");
+  eq(r.issues.some((i) => i.rule === "pdfaid"), false, "the claim itself is fine");
+  const vera = veraClauses(bytes, "1b");
+  if (vera) for (const c of ["6.6.1", "6.4", "6.1.3", "6.3.4"]) eq(vera.includes(c), true, `veraPDF also fails ${c}`);
+  const two = await checkPdfa(await claims("2b", new Set(["js", "transparency"])), "2b");
+  eq(two.issues.some((i) => i.rule === "transparency"), false, "PDF/A-2 allows transparency");
+  eq(two.issues.find((i) => i.rule === "actions")?.clause, "6.5.1", "PDF/A-2 actions clause");
+  eq((await checkPdfa(output, "1b")).issues.map((i) => i.rule).join(), "pdfaid", "a 2b file checked as 1b fails its identification");
+});
+
 // Full validation, when a veraPDF command line is available (CI).
 if (process.env.VERAPDF) {
   const dir = mkdtempSync(join(tmpdir(), "pdfa-"));
@@ -497,7 +560,7 @@ if (process.env.VERAPDF) {
       writeFileSync(file, bytes);
       let report;
       try {
-        report = execFileSync(process.env.VERAPDF, ["--flavour", flavour, "--format", "text", file], { encoding: "utf8" });
+        report = execFileSync(process.env.VERAPDF, ["--flavour", flavour, "--format", "text", "--verbose", file], { encoding: "utf8" });
       } catch (e) {
         report = e.stdout?.toString() ?? String(e);
       }

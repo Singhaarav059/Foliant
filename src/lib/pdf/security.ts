@@ -4,7 +4,7 @@ import {
   PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFObjectCopier, PDFPage, PDFPageLeaf, PDFRawStream, PDFRef, PDFString,
   decodePDFRawStream,
 } from "pdf-lib";
-import { baseName, bytesOf, canvasToBlob, closePdf, openPdf, pdfBlob, pdfjs, renderPage, type Output, type Progress } from "./common";
+import { baseName, bytesOf, canvasToBlob, closePdf, openPdf, pdfBlob, pdfjs, renderPage, type Output, type Progress, type RedactReport } from "./common";
 import { prepareQpdf, runQpdf, QpdfError } from "./qpdf";
 import { charBox, documentText, lineChars, pageText, type PageText } from "./text";
 import { addInvisibleText } from "./textlayer";
@@ -163,7 +163,105 @@ export const PRESETS = {
   emails: /[\w.+-]+@[\w-]+\.[\w.-]+/g,
   phones: /(?:\+?\d[\d ().-]{7,}\d)/g,
   numbers: /\b\d[\d -]{6,}\d\b/g,
+  // 13 to 19 digits in groups; kept only when the Luhn check passes.
+  cards: /\b\d(?:[ -]?\d){12,18}\b/g,
+  // Country, check digits, then up to 30 letters and digits; kept only when mod 97 gives 1.
+  ibans: /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]){11,30}\b/g,
+  // Twelve digits not starting with 0 or 1, in groups of four; kept only when the Verhoeff check passes.
+  aadhaar: /\b[2-9]\d{3}[ -]?\d{4}[ -]?\d{4}\b/g,
+  // India's PAN: five letters (the fourth names the holder's kind), four digits, a letter.
+  pan: /\b[A-Z]{3}[ABCFGHJLPT][A-Z]\d{4}[A-Z]\b/g,
+  // US Social Security numbers, without the ranges never issued.
+  ssn: /\b(?!000|666|9\d\d)\d{3}-(?!00)\d{2}-(?!0000)\d{4}\b/g,
+  // 31/12/2024, 12-31-24, 2024-12-31, 31 Dec 2024; kept only when day and month can be real.
+  dates: /\b(?:\d{1,2}[./-]\d{1,2}[./-](?:\d{4}|\d{2})|\d{4}-\d{2}-\d{2}|\d{1,2} (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.? \d{4})\b/g,
 };
+export type PresetName = keyof typeof PRESETS;
+
+const onlyDigits = (s: string) => s.replace(/\D/g, "");
+
+// A length the card's network uses for its first digits (Visa, Mastercard,
+// American Express, Discover, JCB, Diners, RuPay, Maestro, UnionPay).
+function cardShape(d: string) {
+  const n = d.length;
+  const p = (s: string) => d.startsWith(s);
+  const first2 = Number(d.slice(0, 2)), first4 = Number(d.slice(0, 4));
+  if (p("4")) return n === 13 || n === 16 || n === 19;
+  if ((first2 >= 51 && first2 <= 55) || (first4 >= 2221 && first4 <= 2720)) return n === 16;
+  if (p("34") || p("37")) return n === 15;
+  if (p("35") || p("6")) return n >= 16 && n <= 19;
+  if (p("30") || p("36") || p("38") || p("39")) return n >= 14 && n <= 19;
+  if (p("81") || p("82") || p("508")) return n === 16;
+  if (p("50") || p("56") || p("57") || p("58")) return n >= 12 && n <= 19;
+  return false;
+}
+
+// The Luhn check digit (payment cards).
+export function luhn(digits: string) {
+  if (!/^\d+$/.test(digits)) return false;
+  let sum = 0;
+  for (let i = 0; i < digits.length; i++) {
+    let d = Number(digits[digits.length - 1 - i]);
+    if (i % 2) d = d * 2 > 9 ? d * 2 - 9 : d * 2;
+    sum += d;
+  }
+  return sum % 10 === 0;
+}
+
+// ISO 13616: the first four characters moved to the end, letters as 10–35, mod 97 is 1.
+export function ibanValid(text: string) {
+  const t = text.replace(/ /g, "");
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(t)) return false;
+  let rest = 0;
+  for (const ch of t.slice(4) + t.slice(0, 4)) {
+    const v = /\d/.test(ch) ? ch : String(ch.charCodeAt(0) - 55);
+    for (const d of v) rest = (rest * 10 + Number(d)) % 97;
+  }
+  return rest === 1;
+}
+
+// The Verhoeff check digit (Aadhaar).
+const VD = [
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 2, 3, 4, 0, 6, 7, 8, 9, 5], [2, 3, 4, 0, 1, 7, 8, 9, 5, 6], [3, 4, 0, 1, 2, 8, 9, 5, 6, 7], [4, 0, 1, 2, 3, 9, 5, 6, 7, 8],
+  [5, 9, 8, 7, 6, 0, 4, 3, 2, 1], [6, 5, 9, 8, 7, 1, 0, 4, 3, 2], [7, 6, 5, 9, 8, 2, 1, 0, 4, 3], [8, 7, 6, 5, 9, 3, 2, 1, 0, 4], [9, 8, 7, 6, 5, 4, 3, 2, 1, 0],
+];
+const VP = [
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 5, 7, 6, 2, 8, 3, 0, 9, 4], [5, 8, 0, 3, 7, 9, 6, 1, 4, 2], [8, 9, 1, 6, 0, 4, 3, 5, 2, 7],
+  [9, 4, 5, 3, 1, 2, 6, 8, 7, 0], [4, 2, 8, 6, 5, 7, 3, 9, 0, 1], [2, 7, 9, 3, 8, 0, 6, 4, 1, 5], [7, 0, 4, 6, 9, 1, 3, 2, 5, 8],
+];
+export function verhoeff(digits: string) {
+  if (!/^\d+$/.test(digits)) return false;
+  let c = 0;
+  for (let i = 0; i < digits.length; i++) c = VD[c][VP[i % 8][Number(digits[digits.length - 1 - i])]];
+  return c === 0;
+}
+
+// A day 1–31 and a month 1–12, in either order for day and month.
+function plausibleDate(text: string) {
+  const n = text.match(/\d+/g)?.map(Number) ?? [];
+  if (/^\d{4}-/.test(text)) return n[1] >= 1 && n[1] <= 12 && n[2] >= 1 && n[2] <= 31;
+  if (/[A-Za-z]/.test(text)) return n[0] >= 1 && n[0] <= 31;
+  const [a, b] = n;
+  return a >= 1 && b >= 1 && ((a <= 31 && b <= 12) || (a <= 12 && b <= 31));
+}
+
+// Presets whose matches must also pass a check, so a number that only looks
+// like a card, IBAN or Aadhaar isn't blacked out.
+export const PRESET_CHECKS: Partial<Record<PresetName, (text: string) => boolean>> = {
+  cards: (t) => cardShape(onlyDigits(t)) && luhn(onlyDigits(t)),
+  ibans: ibanValid,
+  aadhaar: (t) => verhoeff(onlyDigits(t)),
+  dates: plausibleDate,
+};
+
+// A search the editor ran: typed text as a pattern, or a preset with its check.
+export type Search = { pattern: RegExp; preset?: PresetName };
+
+// findMatches for a search, without the matches its preset's check rejects.
+export function searchMatches(pages: PageText[], search: Search) {
+  const valid = search.preset ? PRESET_CHECKS[search.preset] : undefined;
+  return findMatches(pages, search.pattern).filter((h) => !valid || valid(h.text));
+}
 
 // The editor's search box as a pattern: the text as typed, where any run of
 // spaces matches any whitespace (so a phrase may wrap to the next line),
@@ -183,12 +281,47 @@ export function searchPattern(query: string, o: { matchCase?: boolean; wholeWord
 // ones after a letter with a lowercase letter next; `at` takes each of a
 // version's characters back to `text`. A gap as wide as a table column becomes
 // a tab, so patterns that allow only spaces (the number presets) stay within a cell.
+// Right-to-left lines (Arabic, Hebrew) come with their characters in the order
+// the glyphs sit on the page, from the left; a search needs reading order.
+// The positions in `order` say where each character of the line in reading
+// order sits: runs of right-to-left characters, with the spaces and marks
+// between them, are reversed; when right-to-left characters outnumber the
+// others the whole line is too, with left-to-right runs (numbers, Latin
+// words) turned back.
+const RTL = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
+const LTR = /[\p{L}\p{N}]/u;
+export function readingOrder(text: string): number[] {
+  // Per UTF-16 unit, as the callers index the text; a surrogate half counts as neutral.
+  const kind = text.split("").map((ch) => (RTL.test(ch) ? "R" : LTR.test(ch) ? "L" : "N"));
+  const order = kind.map((_, i) => i);
+  if (!kind.includes("R")) return order;
+  const rtl = kind.filter((k) => k === "R").length > kind.filter((k) => k === "L").length;
+  // Maximal runs of `k`, neutrals inside them included.
+  const flip = (seq: number[], k: string) => {
+    const out = [...seq];
+    for (let i = 0; i < out.length; ) {
+      if (kind[out[i]] !== k) {
+        i++;
+        continue;
+      }
+      let j = i;
+      for (let m = i + 1; m < out.length && kind[out[m]] !== (k === "R" ? "L" : "R"); m++) if (kind[out[m]] === k) j = m;
+      out.splice(i, j - i + 1, ...out.slice(i, j + 1).reverse());
+      i = j + 1;
+    }
+    return out;
+  };
+  return rtl ? flip([...order].reverse(), "L") : flip(order, "R");
+}
+
 export function searchText(p: PageText) {
   let text = "";
   const from: ([number, number, number] | null)[] = [];
   const soft = new Set<number>();
   p.lines.forEach((line, li) => {
-    const chars = lineChars(line.runs);
+    const drawn = lineChars(line.runs);
+    const order = readingOrder(drawn.text);
+    const chars = { text: order.map((i) => drawn.text[i]).join(""), from: order.map((i) => drawn.from[i]) };
     if (li > 0) {
       if (/[\p{L}\p{N}][-\u2010\u00ad]$/u.test(text) && /^[\p{L}\p{N}]/u.test(chars.text)) {
         if (/\p{L}.$/u.test(text) && /^\p{Ll}/u.test(chars.text)) soft.add(text.length - 1);
@@ -199,6 +332,9 @@ export function searchText(p: PageText) {
     }
     chars.from.forEach((f, j) => {
       let ch = chars.text[j];
+      // A glyph its font maps to no text (a dot or joining piece of a shaped
+      // script) reads as a control character; it isn't part of any word.
+      if (/[\x00-\x08\x0e-\x1f]/.test(ch)) return;
       const [before, after] = [chars.from[j - 1], chars.from[j + 1]];
       if (!f && before && after && before[0] !== after[0]) {
         const a = line.runs[before[0]];
@@ -397,8 +533,12 @@ export class RedactionLeakError extends Error {
 // kept). If the same search finds one anywhere, every marked page is drawn as
 // an image instead; if it still finds one (a note or form field outside the
 // boxes), nothing is returned.
+// `scanned`: pages read with OCR (searchable()), always drawn as images so
+// nothing under a box survives in the picture, then read with OCR again to
+// check that no searched text is left (`ocrLang`). The result carries a
+// report of what was checked and removed.
 export async function redact(
-  file: File, marks: { page: number; rect: FracRect }[], o: { redactDpi: string; terms?: Term[] }, progress?: Progress,
+  file: File, marks: { page: number; rect: FracRect }[], o: { redactDpi: string; terms?: Term[]; scanned?: number[]; ocrLang?: string }, progress?: Progress,
 ): Promise<Output[]> {
   // The file as readers see it (what the editor showed), decrypted when it has only an owner password.
   const { bytes, doc: original } = await openForEdit(await bytesOf(file), file.name);
@@ -415,35 +555,102 @@ export async function redact(
   const terms = (o.terms ?? []).filter((t) => t.text.trim());
   const title = terms.some((t) => baseName(file.name).includes(t.text)) ? "" : baseName(file.name);
   const build = (raster: Set<number>) => assemble(bytes, pdfium?.bytes ?? null, byPage, boxes, raster, Number(o.redactDpi) / 72, title, progress);
-  let out = await build(new Set(pdfium ? pdfium.failed : byPage.keys()));
+  const scanned = (o.scanned ?? []).filter((i) => i < original.getPageCount());
+  let out = await build(new Set([...(pdfium ? pdfium.failed : byPage.keys()), ...scanned]));
   if (terms.length && (await leftovers(out, terms)).length) {
-    out = await build(new Set(byPage.keys()));
+    out = await build(new Set([...byPage.keys(), ...scanned]));
     if ((await leftovers(out, terms)).length) throw new RedactionLeakError();
   }
-  return [{ name: `${baseName(file.name)}-redacted.pdf`, blob: pdfBlob(out) }];
+  // Pictures of text are read again: OCR must not find a searched text either.
+  let ocrLeft: number | null = null;
+  if (scanned.length && terms.length) {
+    try {
+      const { autoOcr } = await import("./ocr");
+      const again = await autoOcr(new File([out as BlobPart], file.name), { ocrLang: o.ocrLang ?? "eng" });
+      ocrLeft = again.pages ? (await leftovers(new Uint8Array(await again.file.arrayBuffer()), terms)).length : 0;
+    } catch {
+      /* OCR unavailable: the report says the pictures weren't read again */
+    }
+    if (ocrLeft) throw new RedactionLeakError();
+  }
+  const report: RedactReport = {
+    kind: "redact", areas: marks.length, pages: byPage.size, terms: terms.length, textLeft: 0,
+    ocrPages: scanned.length, ocrLeft, ...(await removedParts(bytes, out)),
+  };
+  return [{ name: `${baseName(file.name)}-redacted.pdf`, blob: pdfBlob(out), report }];
+}
+
+// What a redaction took out besides the boxes: annotations and attached
+// files, and which document properties (and whether XMP metadata) went.
+async function removedParts(before: Uint8Array, after: Uint8Array) {
+  const facts = async (bytes: Uint8Array) => {
+    const doc = await PDFDocument.load(bytes, { updateMetadata: false, ignoreEncryption: true, throwOnInvalidObject: false });
+    let annots = 0, files = 0;
+    for (const p of doc.getPages()) annots += p.node.lookupMaybe(name("Annots"), PDFArray)?.size() ?? 0;
+    const count = (node: PDFDict | undefined, depth = 0): number => {
+      if (!node || depth > 32) return 0;
+      const names = node.lookupMaybe(name("Names"), PDFArray);
+      const kids = node.lookupMaybe(name("Kids"), PDFArray);
+      return (names ? Math.floor(names.size() / 2) : 0) + (kids?.asArray().reduce<number>((n, k) => n + count(doc.context.lookup(k) as PDFDict | undefined, depth + 1), 0) ?? 0);
+    };
+    files = count(doc.catalog.lookupMaybe(name("Names"), PDFDict)?.lookupMaybe(name("EmbeddedFiles"), PDFDict));
+    const info = doc.context.lookup(doc.context.trailerInfo.Info);
+    const props = info instanceof PDFDict ? info.keys().map((k) => k.decodeText()).filter((k) => ["Title", "Author", "Subject", "Keywords", "Creator"].includes(k)) : [];
+    return { annots, files, props, xmp: doc.catalog.has(name("Metadata")) };
+  };
+  const [a, b] = await Promise.all([facts(before), facts(after)]);
+  return {
+    annots: Math.max(0, a.annots - b.annots),
+    attachments: Math.max(0, a.files - b.files),
+    metadata: [...a.props.filter((k) => !b.props.includes(k)), ...(a.xmp && !b.xmp ? ["XMP"] : [])],
+  };
 }
 
 // Batch redaction: the editor's searches (typed text or presets) run again on
 // another file, every match there is blacked out, and like redact() the
 // matched texts must then be gone from the whole file.
-export async function redactSearches(file: File, patterns: RegExp[], o: { redactDpi: string }, progress?: Progress): Promise<Output[]> {
-  const doc = await openPdf(await bytesOf(file));
-  let pages: PageText[];
-  try {
-    pages = await documentText(doc);
-  } finally {
-    await closePdf(doc);
-  }
+// Scanned pages are read with OCR first (`ocrLang`), like the editor does.
+export async function redactSearches(file: File, searches: (RegExp | Search)[], o: { redactDpi: string; ocrLang?: string }, progress?: Progress): Promise<Output[]> {
+  const { file: readable, pages, scanned } = await searchable(file, o.ocrLang ?? "eng");
   const marks: { page: number; rect: FracRect }[] = [];
   const terms = new Map<string, Term>();
-  for (const pattern of patterns) {
-    for (const h of findMatches(pages, pattern)) {
+  for (const s of searches) {
+    const search = s instanceof RegExp ? { pattern: s } : s;
+    for (const h of searchMatches(pages, search)) {
       marks.push({ page: h.page, rect: h.rect });
-      terms.set(`${pattern.source}\n${h.text}`, { text: h.text, pattern });
+      terms.set(`${search.pattern.source}\n${h.text}`, { text: h.text, pattern: search.pattern });
     }
   }
   // With no match the file still comes back rewritten, without its metadata, like every redaction.
-  return redact(file, marks, { redactDpi: o.redactDpi, terms: [...terms.values()] }, progress);
+  const out = await redact(readable, marks, { redactDpi: o.redactDpi, terms: [...terms.values()], scanned, ocrLang: o.ocrLang }, progress);
+  return out.map((x) => ({ ...x, name: `${baseName(file.name)}-redacted.pdf` }));
+}
+
+// The file's text, page by page, for searching. Pages that are pictures of
+// text (scans) are read with OCR first: `file` is then a copy with their
+// words as invisible text, and `scanned` lists them, since a box on a picture
+// only works when the page is drawn again as an image. Without OCR (offline,
+// its engine not cached yet) scans just have no text to search.
+export async function searchable(file: File, ocrLang: string, progress?: Progress): Promise<{ file: File; pages: PageText[]; scanned: number[] }> {
+  const read = async (f: File) => {
+    const doc = await openPdf(await bytesOf(f));
+    try {
+      return await documentText(doc);
+    } finally {
+      await closePdf(doc);
+    }
+  };
+  const pages = await read(file);
+  if (pages.every((p) => p.lines.length)) return { file, pages, scanned: [] };
+  try {
+    const { autoOcr } = await import("./ocr");
+    const r = await autoOcr(file, { ocrLang }, progress);
+    if (!r.pages) return { file, pages, scanned: [] };
+    const after = await read(r.file);
+    return { file: r.file, pages: after, scanned: after.flatMap((p, i) => (!pages[i].lines.length && p.lines.length ? [i] : [])) };
+  } catch {
+    return { file, pages, scanned: [] };
+  }
 }
 
 // Builds the output: pages from `redacted` (PDFium's file; the original when

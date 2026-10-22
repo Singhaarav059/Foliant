@@ -8,7 +8,18 @@ import { PdfError } from "./errors";
 // `unrestricted`: an input's owner-password restrictions were left behind.
 // `skipped`: files, or pages of a file, that failed and were left out while the rest came through.
 export type Skipped = { file: string; page?: number; code: string };
-export type Output = { name: string; blob: Blob; note?: string; print?: boolean; unrestricted?: boolean; skipped?: Skipped[] };
+// `report`: what a tool checked about its result (redaction, PDF/A), shown with it.
+export type Output = { name: string; blob: Blob; note?: string; print?: boolean; unrestricted?: boolean; skipped?: Skipped[]; report?: Report };
+// Redaction: boxes drawn, searched texts, and how many of them a fresh read of
+// the result still finds (pdf.js text, and OCR of scanned pages; null when OCR
+// couldn't run); what else went: annotations, attached files, document properties.
+export type RedactReport = {
+  kind: "redact"; areas: number; pages: number; terms: number; textLeft: number; ocrPages: number; ocrLeft: number | null;
+  annots: number; attachments: number; metadata: string[];
+};
+// PDF/A: the checks run on the result (src/lib/pdf/pdfacheck.ts) and what failed, by ISO 19005 clause.
+export type PdfaCheckReport = { kind: "pdfa"; level: string; checked: number; issues: { rule: string; clause: string; detail?: string }[] };
+export type Report = RedactReport | PdfaCheckReport;
 export type Progress = (done: number, total: number) => void;
 
 let pdfjsPromise: Promise<typeof import("pdfjs-dist")> | null = null;

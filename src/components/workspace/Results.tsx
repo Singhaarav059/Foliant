@@ -6,6 +6,7 @@ import { Check, Copy, Download, FileArchive, RefreshCw, ShieldCheck, Server } fr
 import { useI18n } from "../I18n";
 import { ToolIcon } from "../ToolIcon";
 import { PdfThumb } from "../PdfThumb";
+import { ReportView } from "./ReportView";
 import { handOff } from "@/lib/handoff";
 import { humanSize, type Output } from "@/lib/pdf/common";
 import { markdownToText } from "@/lib/ai/extractive";
@@ -130,6 +131,7 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
       )}
 
       {summary && outputs.map((o, i) => <Summary key={i} output={o} named={outputs.length > 1} />)}
+      <ReportView outputs={outputs} />
 
       <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
         {summary && outputs.length === 1 ? null : outputs.length === 1 ? (
