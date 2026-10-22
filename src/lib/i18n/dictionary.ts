@@ -29,6 +29,12 @@ const loaders: Record<Exclude<Locale, "en">, () => Promise<{ default: Partial }>
   uk: () => import("./dict/uk"),
   vi: () => import("./dict/vi"),
   sw: () => import("./dict/sw"),
+  bn: () => import("./dict/bn"),
+  ta: () => import("./dict/ta"),
+  te: () => import("./dict/te"),
+  mr: () => import("./dict/mr"),
+  ur: () => import("./dict/ur"),
+  fa: () => import("./dict/fa"),
 };
 
 export async function getDictionary(locale: Locale): Promise<Dict> {

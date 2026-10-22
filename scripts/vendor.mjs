@@ -134,6 +134,18 @@ const fontGroups = {
   jp: ["noto-sans-jp", /-jp-\d+-\d/],
   kr: ["noto-sans-kr", /-kr-\d+-\d/],
 };
+// Bengali, Tamil and Telugu (P2-15) are used once their packages are
+// installed; without them, text in those scripts is drawn as an image.
+const has = (name) => {
+  try {
+    return !!pkgDir(name);
+  } catch {
+    return false;
+  }
+};
+for (const [group, pkg] of [["bengali", "noto-sans-bengali"], ["tamil", "noto-sans-tamil"], ["telugu", "noto-sans-telugu"]]) {
+  if (has(`@fontsource/${pkg}`)) fontGroups[group] = [pkg, new RegExp(`-${group}-\\d`)];
+}
 const fontsOut = join(out, "fonts");
 mkdirSync(fontsOut, { recursive: true });
 const manifest = {};

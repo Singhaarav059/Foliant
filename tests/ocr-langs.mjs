@@ -1,6 +1,7 @@
 // OCR languages: the list, its vendored models and names, how a choice of
 // several reaches Tesseract and is remembered, and reading a scanned page in
-// English and Hindi (tests/fixtures/mixed-script.pdf) with both picked.
+// English and Hindi (tests/fixtures/mixed-script.pdf) with both picked, and
+// a Bengali page alone.
 //
 //   node tests/ocr-langs.mjs
 import { existsSync, mkdtempSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -149,6 +150,29 @@ await test("English and Hindi picked: each script under 5% CER", () => {
 });
 await test("English alone can't read the Hindi (the page needs both)", () => {
   if (english.hin < 0.5) throw new Error(`Hindi ${pct(english.hin)} with English only`);
+});
+
+// Bengali (P2-15): a page set in Noto Sans Bengali (tests/fixtures/images/bengali-scan.png),
+// read with the vendored model, under 10% CER.
+const BENGALI = [
+  "আমাদের গ্রামের পাশে একটি ছোট নদী আছে।",
+  "বর্ষাকালে নদীর জল অনেক বেড়ে যায়।",
+  "শিশুরা বিকেলে মাঠে ফুটবল খেলে।",
+  "মা রান্নাঘরে ভাত আর মাছের ঝোল রান্না করছেন।",
+  "এই চিঠিটি আগামী সোমবারের মধ্যে পাঠাতে হবে।",
+  "বিদ্যালয়ের গ্রন্থাগারে অনেক পুরনো বই রয়েছে।",
+];
+await test("Bengali scan: under 10% CER", async () => {
+  const worker = await createWorker("ben", undefined, { langPath: join(vendorDir, "tessdata"), cachePath: mkdtempSync(join(tmpdir(), "tess-ben-")) });
+  try {
+    const { data } = await worker.recognize(readFileSync(join(root, "tests/fixtures/images/bengali-scan.png")));
+    const flat = (s) => s.replace(/\s+/g, "");
+    const rate = cer(flat(BENGALI.join("")), flat(data.text));
+    console.log(`      Bengali: ${pct(rate)}`);
+    if (rate >= 0.1) throw new Error(`CER ${pct(rate)}: ${data.text.slice(0, 120)}`);
+  } finally {
+    await worker.terminate();
+  }
 });
 
 process.exit(results.failed ? 1 : 0);

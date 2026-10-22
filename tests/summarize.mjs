@@ -89,12 +89,18 @@ await test("sentences: split, abbreviations and e-mail addresses kept whole", ()
   eq(s[1], "Contact jane.doe@example.com for details.", "e-mail kept in its sentence");
 });
 
-await test("language guess: English, Spanish, German, Japanese, Russian", () => {
+await test("language guess: English, Spanish, German, Japanese, Russian, Bengali, Tamil, Telugu, Urdu, Persian, Arabic", () => {
   eq(ex.guessLanguage("The report shows that the revenue of the company is growing and it will grow"), "en", "en");
   eq(ex.guessLanguage("El informe muestra que los ingresos de la empresa crecen y que seguirán creciendo en el año"), "es", "es");
   eq(ex.guessLanguage("Der Bericht zeigt, dass der Umsatz des Unternehmens wächst und nicht mit dem Jahr sinkt"), "de", "de");
   eq(ex.guessLanguage("この報告書は、会社の収益が伸びていることを示しています。"), "ja", "ja");
   eq(ex.guessLanguage("Отчёт показывает, что выручка компании растёт."), "ru", "ru");
+  eq(ex.guessLanguage("প্রতিবেদনটি দেখায় যে কোম্পানির আয় বাড়ছে।"), "bn", "bn");
+  eq(ex.guessLanguage("நிறுவனத்தின் வருமானம் வளர்ந்து வருவதாக அறிக்கை காட்டுகிறது."), "ta", "ta");
+  eq(ex.guessLanguage("కంపెనీ ఆదాయం పెరుగుతోందని నివేదిక చూపిస్తుంది."), "te", "te");
+  eq(ex.guessLanguage("رپورٹ سے پتہ چلتا ہے کہ کمپنی کی آمدنی بڑھ رہی ہے۔"), "ur", "ur");
+  eq(ex.guessLanguage("گزارش نشان می‌دهد که درآمد شرکت در حال افزایش است."), "fa", "fa");
+  eq(ex.guessLanguage("يظهر التقرير أن إيرادات الشركة تنمو."), "ar", "ar");
 });
 
 await test("markdown to plain text", () => {

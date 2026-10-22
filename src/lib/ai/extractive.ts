@@ -40,6 +40,9 @@ const SCRIPTS: [RegExp, string][] = [
   [/[؀-ۿ]/g, "ar"],
   [/[฀-๿]/g, "th"],
   [/[ऀ-ॿ]/g, "hi"],
+  [/[ঀ-৿]/g, "bn"],
+  [/[஀-௿]/g, "ta"],
+  [/[ఀ-౿]/g, "te"],
 ];
 
 // A best guess at the language (BCP 47), or undefined when unsure.
@@ -54,6 +57,8 @@ export function guessLanguage(text: string): string | undefined {
   const [lang, n] = counts.reduce((a, b) => (b[1] > a[1] ? b : a));
   if (n > letters * 0.3) {
     if (lang === "ru") return /[іїєґ]/i.test(sample) ? "uk" : "ru";
+    // Arabic script: Urdu's own letters; Persian's keheh and yeh where Arabic has kaf and yeh.
+    if (lang === "ar") return /[ٹڈڑےں]/.test(sample) ? "ur" : /[پچژگکی]/.test(sample) && !/[ةكي]/.test(sample) ? "fa" : "ar";
     return lang;
   }
   const words = sample.toLowerCase().match(/\p{L}+/gu) ?? [];

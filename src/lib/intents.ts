@@ -22,6 +22,7 @@ export const INTENTS: Intent[] = [
       hi: "मुफ़्त PDF कन्वर्टर", id: "Konverter PDF gratis", ms: "Penukar PDF percuma", pl: "Darmowy konwerter PDF",
       sv: "Gratis PDF-konverterare", th: "โปรแกรมแปลงไฟล์ PDF ฟรี", tr: "Ücretsiz PDF dönüştürücü", uk: "Безкоштовний конвертер PDF",
       vi: "Công cụ chuyển đổi PDF miễn phí", sw: "Kigeuzi cha PDF bila malipo",
+      bn: "বিনামূল্যে PDF কনভার্টার", ta: "இலவச PDF மாற்றி", te: "ఉచిత PDF కన్వర్టర్", mr: "मोफत PDF कन्व्हर्टर", ur: "مفت PDF کنورٹر", fa: "مبدل رایگان PDF",
     },
   },
   {
@@ -36,6 +37,7 @@ export const INTENTS: Intent[] = [
       hi: "PDF का साइज़ कम करें", id: "Perkecil ukuran PDF", ms: "Kecilkan saiz PDF", pl: "Zmniejsz rozmiar PDF",
       sv: "Minska storleken på en PDF", th: "ลดขนาดไฟล์ PDF", tr: "PDF boyutunu küçült", uk: "Зменшити розмір PDF",
       vi: "Giảm dung lượng PDF", sw: "Fanya PDF iwe ndogo",
+      bn: "PDF-এর আকার কমান", ta: "PDF அளவைக் குறைக்கவும்", te: "PDF పరిమాణాన్ని తగ్గించండి", mr: "PDF चा आकार कमी करा", ur: "PDF کا سائز کم کریں", fa: "کاهش حجم PDF",
     },
   },
   {
@@ -50,6 +52,7 @@ export const INTENTS: Intent[] = [
       hi: "मुफ़्त ऑनलाइन PDF एडिटर", id: "Editor PDF online gratis", ms: "Editor PDF dalam talian percuma", pl: "Darmowy edytor PDF online",
       sv: "Gratis PDF-redigerare online", th: "โปรแกรมแก้ไข PDF ออนไลน์ฟรี", tr: "Ücretsiz çevrimiçi PDF editörü", uk: "Безкоштовний онлайн-редактор PDF",
       vi: "Trình chỉnh sửa PDF trực tuyến miễn phí", sw: "Mhariri wa PDF mtandaoni bila malipo",
+      bn: "বিনামূল্যে অনলাইন PDF এডিটর", ta: "இலவச ஆன்லைன் PDF எடிட்டர்", te: "ఉచిత ఆన్‌లైన్ PDF ఎడిటర్", mr: "मोफत ऑनलाइन PDF एडिटर", ur: "مفت آن لائن PDF ایڈیٹر", fa: "ویرایشگر آنلاین رایگان PDF",
     },
   },
   {
@@ -64,6 +67,7 @@ export const INTENTS: Intent[] = [
       hi: "PDF सुरक्षा टूल", id: "Alat keamanan PDF", ms: "Alat keselamatan PDF", pl: "Narzędzia bezpieczeństwa PDF",
       sv: "Säkerhetsverktyg för PDF", th: "เครื่องมือความปลอดภัย PDF", tr: "PDF güvenlik araçları", uk: "Інструменти захисту PDF",
       vi: "Công cụ bảo mật PDF", sw: "Zana za usalama wa PDF",
+      bn: "PDF নিরাপত্তা টুল", ta: "PDF பாதுகாப்புக் கருவிகள்", te: "PDF భద్రతా సాధనాలు", mr: "PDF सुरक्षा टूल", ur: "PDF سیکیورٹی ٹولز", fa: "ابزارهای امنیت PDF",
     },
   },
 ];

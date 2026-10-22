@@ -15,8 +15,9 @@ import type { PDFDocument, PDFFont } from "pdf-lib";
 import { VENDOR } from "../vendor";
 
 type Face = { file: string; weight: number; ranges: number[] };
-type Group = "base" | "arabic" | "thai" | "sc" | "tc" | "jp" | "kr";
-type Manifest = Record<Group, Face[]>;
+// Bengali, Tamil and Telugu are listed only when their fonts were vendored.
+type Group = "base" | "arabic" | "thai" | "bengali" | "tamil" | "telugu" | "sc" | "tc" | "jp" | "kr";
+type Manifest = Partial<Record<Group, Face[]>>;
 type Kit = ReturnType<typeof fontkit.create>;
 
 export type TextRun = { font: PDFFont; text: string; x: number };
@@ -94,8 +95,8 @@ function faceOrder(m: Manifest, text: string, weight: number) {
   const cjk: Group[] = /[぀-ヿ]/.test(text) ? ["jp", "sc", "tc", "kr"]
     : /[ᄀ-ᇿ㄰-㆏가-힯]/.test(text) ? ["kr", "sc", "tc", "jp"]
     : ["sc", "tc", "jp", "kr"];
-  const groups: Group[] = ["base", "arabic", "thai", ...cjk];
-  return groups.flatMap((g) => m[g].filter((f) => f.weight === weight));
+  const groups: Group[] = ["base", "arabic", "thai", "bengali", "tamil", "telugu", ...cjk];
+  return groups.flatMap((g) => (m[g] ?? []).filter((f) => f.weight === weight));
 }
 
 async function faceFor(faces: Face[], cp: number) {
@@ -234,7 +235,7 @@ export async function notoFaceFor(cp: number, text: string, bold = false, prefer
   const m = await loadManifest();
   let faces = faceOrder(m, text, bold ? 700 : 400);
   if (prefer) {
-    const first = m[prefer].filter((f) => f.weight === (bold ? 700 : 400));
+    const first = (m[prefer] ?? []).filter((f) => f.weight === (bold ? 700 : 400));
     faces = [...first, ...faces.filter((f) => !first.includes(f))];
   }
   const face = await faceFor(faces, cp);
