@@ -1584,6 +1584,16 @@ const d: { [K in DictKey]?: string } = {
   "ws.file.fail": "Overgeslagen",
   "ed.cropBatch": "Hetzelfde gebied blijft over in {n|one:het bestand|other:alle # bestanden}.",
   "ed.redactBatch": "Zoekopdrachten en snelle markeringen gelden ook voor {n|one:het andere bestand|other:de andere # bestanden}. Met de hand getekende vakken gelden alleen voor het getoonde bestand.",
+  "wf.runFolder": "Uitvoeren op een map",
+  "wf.copyLink": "Receptlink kopiëren",
+  "wf.linkCopied": "Link gekopieerd. Wie hem opent, krijgt deze stappen; je bestanden en wachtwoorden zitten er nooit in.",
+  "wf.linkInBar": "De receptlink staat nu in de adresbalk: kopieer hem daar. Je bestanden en wachtwoorden zitten er nooit in.",
+  "wf.recipeLoaded": "Stappen geladen uit een receptlink. Voeg bestanden toe om ze uit te voeren, of sla de workflow op om hem te bewaren.",
+  "wf.recipeBad": "Die receptlink is beschadigd of komt uit een nieuwere versie, dus er zijn geen stappen geladen.",
+  "wf.folderEmpty": "Die map bevat geen pdf-bestanden.",
+  "wf.folderStatus": "Bestand {n} van {total}: {name}",
+  "wf.folderDone": "{n|one:# bestand|other:# bestanden} opgeslagen in de map ‘{folder}’.",
+  "wf.folderSkipped": "Kon niet verwerken: {list}.",
 };
 
 export default d;

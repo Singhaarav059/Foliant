@@ -1584,6 +1584,16 @@ const d: { [K in DictKey]?: string } = {
   "ws.file.fail": "건너뜀",
   "ed.cropBatch": "{n|other:#개} 파일 모두에서 같은 영역을 남깁니다.",
   "ed.redactBatch": "검색과 빠른 표시는 나머지 {n|other:#개} 파일에도 적용됩니다. 직접 그린 상자는 지금 보이는 파일에만 적용됩니다.",
+  "wf.runFolder": "폴더에 실행",
+  "wf.copyLink": "레시피 링크 복사",
+  "wf.linkCopied": "링크를 복사했습니다. 링크를 연 사람은 이 단계를 받게 됩니다. 파일과 비밀번호는 절대 포함되지 않습니다.",
+  "wf.linkInBar": "레시피 링크가 이제 주소 표시줄에 있습니다. 거기서 복사하세요. 파일과 비밀번호는 절대 포함되지 않습니다.",
+  "wf.recipeLoaded": "레시피 링크에서 단계를 불러왔습니다. 파일을 추가해 실행하거나 워크플로를 저장해 두세요.",
+  "wf.recipeBad": "이 레시피 링크는 손상되었거나 더 새로운 버전에서 만들어져 단계를 불러오지 못했습니다.",
+  "wf.folderEmpty": "이 폴더에는 PDF 파일이 없습니다.",
+  "wf.folderStatus": "파일 {n}/{total}: {name}",
+  "wf.folderDone": "폴더 “{folder}”에 파일 {n|other:#개}를 저장했습니다.",
+  "wf.folderSkipped": "처리하지 못한 파일: {list}.",
 };
 
 export default d;

@@ -1584,6 +1584,16 @@ const d: { [K in DictKey]?: string } = {
   "ws.file.fail": "Imerukwa",
   "ed.cropBatch": "Eneo lilelile linabaki kwenye {n|one:faili #|other:faili zote #}.",
   "ed.redactBatch": "Utafutaji na alama za haraka pia hutumika kwenye {n|one:faili # nyingine|other:faili # nyingine}. Visanduku unavyochora kwa mkono vinahusu faili inayoonyeshwa pekee.",
+  "wf.runFolder": "Endesha kwenye folda",
+  "wf.copyLink": "Nakili kiungo cha mapishi",
+  "wf.linkCopied": "Kiungo kimenakiliwa. Atakayekifungua atapata hatua hizi; faili zako na manenosiri hayamo ndani yake kamwe.",
+  "wf.linkInBar": "Kiungo cha mapishi sasa kiko kwenye upau wa anwani: kinakili kutoka hapo. Faili zako na manenosiri hayamo ndani yake kamwe.",
+  "wf.recipeLoaded": "Hatua zimepakiwa kutoka kiungo cha mapishi. Ongeza faili ili kuziendesha, au hifadhi mtiririko ili kuuweka.",
+  "wf.recipeBad": "Kiungo hicho cha mapishi kimeharibika au kinatoka toleo jipya zaidi, kwa hiyo hakuna hatua iliyopakiwa.",
+  "wf.folderEmpty": "Folda hiyo haina faili za PDF.",
+  "wf.folderStatus": "Faili {n} kati ya {total}: {name}",
+  "wf.folderDone": "{n|one:Faili #|other:Faili #} zimeandikwa kwenye folda “{folder}”.",
+  "wf.folderSkipped": "Haikuweza kuchakatwa: {list}.",
 };
 
 export default d;

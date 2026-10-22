@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowDown, Download, Loader2, Play, Plus, Save, Trash2, Upload, X } from "lucide-react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
+import { ArrowDown, Download, FolderOpen, Link2, Loader2, Play, Plus, Save, Trash2, Upload, X } from "lucide-react";
 import { useI18n } from "./I18n";
 import { useUser, postJson } from "./User";
 import { ToolIcon } from "./ToolIcon";
@@ -12,15 +12,17 @@ import { ErrorBox, useProblem, type Problem } from "./workspace/ErrorBox";
 import { defaultOptions, TOOLS, toolById, type ToolId } from "@/lib/tools";
 import type { Output } from "@/lib/pdf/common";
 import { sizeFromMb } from "@/lib/pdf/split-plan";
-import { markUnrestricted, PERMISSIONS, protectProblem, withoutSecrets } from "@/lib/pdf/password";
+import { markUnrestricted, PERMISSIONS, protectProblem } from "@/lib/pdf/password";
+import { cleanSteps, isRecipe, readRecipe, recipeHash, type Step } from "@/lib/recipe";
+import { canPickFolders, listPdfs, pickFolder, writeUnique } from "@/lib/folder";
 import { BRAND } from "@/lib/brand";
 import { STATIC } from "@/lib/mode";
 
-type Step = { tool: ToolId; options: Record<string, unknown> };
 type Saved = { id: number | string; name: string; steps: Step[] };
 
 const CHAINABLE = TOOLS.filter((t) => t.chainable);
 const LOCAL_KEY = "workflows";
+const noSubscribe = () => () => {};
 
 function readLocal(): Saved[] {
   try {
@@ -36,15 +38,9 @@ function writeLocal(list: Saved[]) {
     /* storage blocked: workflow still runs this session */
   }
 }
-// Imported files are untrusted: keep only steps that name a chainable tool.
-const isWorkflow = (w: unknown): w is { name: string; steps: Step[] } => {
-  const x = w as { name?: unknown; steps?: unknown };
-  return typeof x?.name === "string" && Array.isArray(x.steps) && x.steps.length > 0 &&
-    x.steps.every((s: { tool?: unknown; options?: unknown }) =>
-      CHAINABLE.some((c) => c.id === s?.tool) && typeof s.options === "object" && s.options !== null && !Array.isArray(s.options));
-};
-const stripSecrets = (steps: Step[]) =>
-  steps.map((s) => ({ tool: s.tool, options: withoutSecrets(Object.fromEntries(Object.entries(s.options).filter(([, v]) => !(v instanceof File)))) }));
+// Saved, imported and linked steps, filled out with the options added since.
+const withDefaults = (steps: Step[]) =>
+  steps.map((s) => ({ tool: s.tool, options: { ...defaultOptions(toolById(s.tool)), ...sizeFromMb(s.options), ...s.options } }));
 
 export function Workflows() {
   const { t, tOr } = useI18n();
@@ -58,6 +54,10 @@ export function Workflows() {
   const [error, setError] = useState<Problem | null>(null);
   const say = (text: string) => setError({ text });
   const [outputs, setOutputs] = useState<Output[] | null>(null);
+  // What the last folder run, recipe link or copy did.
+  const [notice, setNotice] = useState<string | null>(null);
+  // Whole folders need the File System Access API (Chromium on desktop); false while prerendering.
+  const folders = useSyncExternalStore(noSubscribe, canPickFolders, () => false);
   // The running workflow's controller: Cancel or leaving the page stops its engines.
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
@@ -84,13 +84,39 @@ export function Workflows() {
     };
   }, [ready, user]);
 
+  // A recipe link (#recipe=…) fills in its steps, to run or save.
+  const fromLink = useEffectEvent(() => {
+    const r = readRecipe(location.hash);
+    if (!r) return;
+    if (r === "bad") return setError({ text: t("wf.recipeBad") });
+    setSteps(withDefaults(r.steps));
+    setName(r.name);
+    setNotice(t("wf.recipeLoaded"));
+  });
+  // After the first render, which matches the prerendered page.
+  useEffect(() => void Promise.resolve().then(fromLink), []);
+
+  const copyLink = async () => {
+    setError(null);
+    if (!steps.length) return say(t("wf.needSteps"));
+    const link = `${location.origin}${location.pathname}${recipeHash({ name: name.trim(), steps })}`;
+    // The address bar carries it too, so it can be copied from there, or bookmarked.
+    history.replaceState(null, "", link);
+    try {
+      await navigator.clipboard.writeText(link);
+      setNotice(t("wf.linkCopied"));
+    } catch {
+      setNotice(t("wf.linkInBar"));
+    }
+  };
+
   const addStep = (id: ToolId) => setSteps((s) => [...s, { tool: id, options: defaultOptions(toolById(id)) }]);
 
   const save = async () => {
     if (!steps.length) return say(t("wf.needSteps"));
     const wfName = name.trim() || steps.map((s) => t(`tool.${s.tool}.name`)).join(" → ");
-    if (user) await postJson("/api/workflows", { name: wfName, steps: stripSecrets(steps) });
-    else writeLocal([{ id: crypto.randomUUID(), name: wfName, steps: stripSecrets(steps) }, ...readLocal()]);
+    if (user) await postJson("/api/workflows", { name: wfName, steps: cleanSteps(steps) });
+    else writeLocal([{ id: crypto.randomUUID(), name: wfName, steps: cleanSteps(steps) }, ...readLocal()]);
     setName("");
     await load();
   };
@@ -116,8 +142,8 @@ export function Workflows() {
     let list: { name: string; steps: Step[] }[] = [];
     try {
       const data = JSON.parse(await file.text());
-      list = (Array.isArray(data?.workflows) ? data.workflows : []).filter(isWorkflow)
-        .map((w: { name: string; steps: Step[] }) => ({ name: w.name.slice(0, 80), steps: stripSecrets(w.steps) }));
+      list = (Array.isArray(data?.workflows) ? data.workflows : []).filter(isRecipe)
+        .map((w: { name: string; steps: Step[] }) => ({ name: w.name.slice(0, 80), steps: cleanSteps(w.steps) }));
     } catch {
       /* not JSON */
     }
@@ -131,39 +157,99 @@ export function Workflows() {
     await load();
   };
 
-  const runAll = async () => {
-    setError(null);
-    if (!steps.length) return say(t("wf.needSteps"));
-    if (!files.length) return say(t("ws.needMore", { n: 1 }));
+  // Why the steps can't run as they are set, or null.
+  const stepsProblem = (): string | null => {
+    if (!steps.length) return t("wf.needSteps");
     const protect = steps.find((s) => s.tool === "protect");
     const o = protect?.options ?? {};
     const bad = protect && protectProblem({
       ...Object.fromEntries(PERMISSIONS.map((k) => [k, o[k] !== false])),
       openPassword: o.openPassword !== false, password: String(o.password ?? ""), confirmPassword: String(o.confirmPassword ?? ""), ownerPassword: String(o.ownerPassword ?? ""),
     });
-    if (bad?.code === "passwordEmpty") return say(t("ws.passwordEmpty"));
-    if (bad?.code === "noRestriction") return say(t("ws.noRestriction"));
-    if (bad?.code === "passwordMismatch") return say(t("ws.passwordMismatch"));
-    if (bad?.code === "ownerSameAsOpen") return say(t("ws.ownerSameAsOpen"));
-    if (bad?.code === "passwordTooLong") return say(t("ws.passwordTooLong", { max: bad.max }));
+    if (bad?.code === "passwordEmpty") return t("ws.passwordEmpty");
+    if (bad?.code === "noRestriction") return t("ws.noRestriction");
+    if (bad?.code === "passwordMismatch") return t("ws.passwordMismatch");
+    if (bad?.code === "ownerSameAsOpen") return t("ws.ownerSameAsOpen");
+    if (bad?.code === "passwordTooLong") return t("ws.passwordTooLong", { max: bad.max });
+    return null;
+  };
+
+  // Runs every step on `input`, each step on the files the one before made.
+  const chain = async (input: File[], signal: AbortSignal, onStep?: (i: number) => void) => {
     const { runTool } = await import("@/lib/pdf/run");
-    let current = files;
+    let current = input;
     let out: Output[] = [];
+    for (let i = 0; i < steps.length; i++) {
+      const s = steps[i];
+      onStep?.(i);
+      out = await runTool(s.tool, current, s.options, undefined, { page: tOr("ws.page", "Page {n}"), pageOf: tOr("ws.processingPage", "Page {n} of {total}"), nOf: tOr("fmt.nOfTotal", "{n} of {total}") }, signal);
+      current = out.map((o) => new File([o.blob], o.name, { type: "application/pdf" }));
+    }
+    return steps.some((s) => s.tool === "protect" || s.tool === "unlock") ? out : markUnrestricted(input, out);
+  };
+
+  const runAll = async () => {
+    setError(null);
+    setNotice(null);
+    const bad = stepsProblem();
+    if (bad) return say(bad);
+    if (!files.length) return say(t("ws.needMore", { n: 1 }));
     const controller = (abort.current = new AbortController());
     try {
-      for (let i = 0; i < steps.length; i++) {
-        const s = steps[i];
-        setStatus(t("wf.running", { n: i + 1, total: steps.length, tool: t(`tool.${s.tool}.name`) }));
-        out = await runTool(s.tool, current, s.options, undefined, { page: tOr("ws.page", "Page {n}"), pageOf: tOr("ws.processingPage", "Page {n} of {total}"), nOf: tOr("fmt.nOfTotal", "{n} of {total}") }, controller.signal);
-        current = out.map((o) => new File([o.blob], o.name, { type: "application/pdf" }));
-      }
-      setOutputs(steps.some((s) => s.tool === "protect" || s.tool === "unlock") ? out : await markUnrestricted(files, out));
+      setOutputs(await chain(files, controller.signal, (i) => setStatus(t("wf.running", { n: i + 1, total: steps.length, tool: t(`tool.${steps[i].tool}.name`) }))));
     } catch (e) {
       if (!controller.signal.aborted) setError(problem(e));
     } finally {
       if (abort.current === controller) abort.current = null;
       setStatus(null);
     }
+  };
+
+  // Every PDF in a folder, each through the steps on its own (all together
+  // when the first step is Merge), the results written to a second folder.
+  const runFolder = async () => {
+    setError(null);
+    setNotice(null);
+    const bad = stepsProblem();
+    if (bad) return say(bad);
+    let input: FileSystemDirectoryHandle, output: FileSystemDirectoryHandle;
+    try {
+      input = await pickFolder("read", "workflow-in");
+    } catch {
+      return; // the picker was closed
+    }
+    const list = await listPdfs(input);
+    if (!list.length) return say(t("wf.folderEmpty"));
+    try {
+      output = await pickFolder("readwrite", "workflow-out");
+    } catch {
+      return;
+    }
+    const groups = steps[0].tool === "merge" ? [list] : list.map((x) => [x]);
+    const controller = (abort.current = new AbortController());
+    const used = new Set<string>();
+    const skipped: string[] = [];
+    let written = 0;
+    try {
+      for (let g = 0; g < groups.length; g++) {
+        setStatus(t("wf.folderStatus", { n: g + 1, total: groups.length, name: groups[g].length > 1 ? input.name : groups[g][0].path }));
+        try {
+          for (const o of await chain(groups[g].map((x) => x.file), controller.signal)) {
+            await writeUnique(output, o.name, o.blob, used);
+            written++;
+          }
+        } catch (e) {
+          if (controller.signal.aborted) throw e;
+          skipped.push(groups[g].length > 1 ? input.name : groups[g][0].path);
+        }
+      }
+    } catch {
+      /* cancelled: what was written stays */
+    } finally {
+      if (abort.current === controller) abort.current = null;
+      setStatus(null);
+    }
+    setNotice(t("wf.folderDone", { n: written, folder: output.name }) + (skipped.length ? ` ${t("wf.folderSkipped", { list: skipped.join(", ") })}` : ""));
   };
 
   if (outputs) {
@@ -241,8 +327,13 @@ export function Workflows() {
             <button className="btn btn-primary" disabled={!!status} onClick={runAll}>
               {status ? <Loader2 size={17} className="animate-spin" /> : <Play size={17} />} {t("wf.run")}
             </button>
+            {folders && (
+              <button className="btn btn-quiet" disabled={!!status} onClick={runFolder}><FolderOpen size={17} /> {t("wf.runFolder")}</button>
+            )}
             <button className="btn btn-quiet" onClick={save}><Save size={17} /> {t("wf.save")}</button>
+            <button className="btn btn-quiet" onClick={copyLink}><Link2 size={17} /> {t("wf.copyLink")}</button>
           </div>
+          {notice && <p role="status" className="mt-3 text-[14px] text-ink-2">{notice}</p>}
           {status && (
             <div className="mt-3 flex items-center gap-3">
               <p className="text-[14px] text-muted" aria-live="polite">{status}</p>
@@ -258,7 +349,7 @@ export function Workflows() {
             <ul className="space-y-2">
               {saved.map((w) => (
                 <li key={w.id} className="flex items-center gap-2 rounded-xl border border-line p-2.5">
-                  <button className="min-w-0 flex-1 text-start" onClick={() => { setSteps(w.steps.map((s) => ({ tool: s.tool, options: { ...defaultOptions(toolById(s.tool)), ...sizeFromMb(s.options), ...s.options } }))); setName(w.name); }}>
+                  <button className="min-w-0 flex-1 text-start" onClick={() => { setSteps(withDefaults(w.steps)); setName(w.name); }}>
                     <p className="truncate text-[15px] font-medium">{w.name}</p>
                     <p className="truncate text-[13px] text-muted">{w.steps.map((s) => t(`tool.${s.tool}.name`)).join(" → ")}</p>
                   </button>

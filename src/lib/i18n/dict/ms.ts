@@ -1584,6 +1584,16 @@ const d: { [K in DictKey]?: string } = {
   "ws.file.fail": "Dilangkau",
   "ed.cropBatch": "Kawasan yang sama dikekalkan dalam semua {n|other:# fail}.",
   "ed.redactBatch": "Carian dan tanda pantas juga dijalankan pada {n|other:# fail} lain. Kotak yang anda lukis sendiri hanya untuk fail yang dipaparkan.",
+  "wf.runFolder": "Jalankan pada folder",
+  "wf.copyLink": "Salin pautan resipi",
+  "wf.linkCopied": "Pautan disalin. Sesiapa yang membukanya mendapat langkah ini; fail dan kata laluan anda tidak pernah termasuk di dalamnya.",
+  "wf.linkInBar": "Pautan resipi kini dalam bar alamat: salin dari situ. Fail dan kata laluan anda tidak pernah termasuk di dalamnya.",
+  "wf.recipeLoaded": "Langkah dimuatkan daripada pautan resipi. Tambah fail untuk menjalankannya, atau simpan aliran kerja untuk menyimpannya.",
+  "wf.recipeBad": "Pautan resipi itu rosak atau daripada versi yang lebih baharu, jadi tiada langkah dimuatkan.",
+  "wf.folderEmpty": "Folder itu tiada fail PDF.",
+  "wf.folderStatus": "Fail {n} daripada {total}: {name}",
+  "wf.folderDone": "{n|other:# fail} ditulis ke folder “{folder}”.",
+  "wf.folderSkipped": "Tidak dapat diproses: {list}.",
 };
 
 export default d;

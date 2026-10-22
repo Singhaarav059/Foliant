@@ -1584,6 +1584,16 @@ const d: { [K in DictKey]?: string } = {
   "ws.file.fail": "已略過",
   "ed.cropBatch": "全部 {n|other:# 個}檔案都保留同一區域。",
   "ed.redactBatch": "搜尋和快速標記也會套用到其餘 {n|other:# 個}檔案。手動繪製的框只作用於目前顯示的檔案。",
+  "wf.runFolder": "對資料夾執行",
+  "wf.copyLink": "複製配方連結",
+  "wf.linkCopied": "連結已複製。開啟它的人會得到這些步驟；你的檔案和密碼絕不會包含在內。",
+  "wf.linkInBar": "配方連結現在在網址列中，請從那裡複製。你的檔案和密碼絕不會包含在內。",
+  "wf.recipeLoaded": "已從配方連結載入步驟。加入檔案即可執行，或儲存工作流程以便日後使用。",
+  "wf.recipeBad": "這個配方連結已損壞或來自較新的版本，因此沒有載入任何步驟。",
+  "wf.folderEmpty": "這個資料夾中沒有 PDF 檔案。",
+  "wf.folderStatus": "第 {n} 個檔案，共 {total} 個：{name}",
+  "wf.folderDone": "已將 {n|other:# 個}檔案寫入資料夾「{folder}」。",
+  "wf.folderSkipped": "無法處理：{list}。",
 };
 
 export default d;

@@ -1584,6 +1584,16 @@ const d: { [K in DictKey]?: string } = {
   "ws.file.fail": "Saltato",
   "ed.cropBatch": "La stessa area viene mantenuta in {n|one:il file|other:tutti i # file}.",
   "ed.redactBatch": "Le ricerche e i segni rapidi vengono applicati anche {n|one:all’altro file|other:agli altri # file}. I riquadri disegnati a mano valgono solo per il file mostrato.",
+  "wf.runFolder": "Esegui su una cartella",
+  "wf.copyLink": "Copia il link della ricetta",
+  "wf.linkCopied": "Link copiato. Chi lo apre riceve questi passaggi; i tuoi file e le password non ne fanno mai parte.",
+  "wf.linkInBar": "Il link della ricetta ora è nella barra degli indirizzi: copialo da lì. I tuoi file e le password non ne fanno mai parte.",
+  "wf.recipeLoaded": "Passaggi caricati da un link di ricetta. Aggiungi file per eseguirli o salva il flusso per conservarlo.",
+  "wf.recipeBad": "Quel link di ricetta è danneggiato o viene da una versione più recente, quindi non è stato caricato alcun passaggio.",
+  "wf.folderEmpty": "Quella cartella non contiene file PDF.",
+  "wf.folderStatus": "File {n} di {total}: {name}",
+  "wf.folderDone": "{n|one:# file salvato|other:# file salvati} nella cartella «{folder}».",
+  "wf.folderSkipped": "Impossibile elaborare: {list}.",
 };
 
 export default d;

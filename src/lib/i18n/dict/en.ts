@@ -1536,6 +1536,16 @@ const en = {
   "wf.importBad": "That file isn't a workflow export.",
   "wf.running": "Running step {n} of {total}: {tool}",
   "wf.needSteps": "Add at least one step.",
+  "wf.runFolder": "Run on a folder",
+  "wf.copyLink": "Copy recipe link",
+  "wf.linkCopied": "Link copied. Whoever opens it gets these steps; your files and passwords are never part of it.",
+  "wf.linkInBar": "The recipe link is now in the address bar: copy it from there. Your files and passwords are never part of it.",
+  "wf.recipeLoaded": "Steps loaded from a recipe link. Add files to run them, or save the workflow to keep it.",
+  "wf.recipeBad": "That recipe link is damaged or comes from a newer version, so no steps were loaded.",
+  "wf.folderEmpty": "That folder has no PDF files in it.",
+  "wf.folderStatus": "File {n} of {total}: {name}",
+  "wf.folderDone": "{n|one:# file|other:# files} written to the folder “{folder}”.",
+  "wf.folderSkipped": "Couldn't process: {list}.",
 
   // Open with / share sheet (/{lang}/open)
   "open.title": "Open files",

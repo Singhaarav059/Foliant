@@ -1584,6 +1584,16 @@ const d: { [K in DictKey]?: string } = {
   "ws.file.fail": "Atlandı",
   "ed.cropBatch": "{n|one:# dosyanın|other:# dosyanın} tümünde aynı alan korunur.",
   "ed.redactBatch": "Aramalar ve hızlı işaretler diğer {n|one:# dosyada|other:# dosyada} da uygulanır. Elle çizdiğiniz kutular yalnızca gösterilen dosyaya uygulanır.",
+  "wf.runFolder": "Bir klasörde çalıştır",
+  "wf.copyLink": "Tarif bağlantısını kopyala",
+  "wf.linkCopied": "Bağlantı kopyalandı. Onu açan herkes bu adımları alır; dosyalarınız ve parolalarınız asla bağlantıya dahil olmaz.",
+  "wf.linkInBar": "Tarif bağlantısı artık adres çubuğunda: oradan kopyalayın. Dosyalarınız ve parolalarınız asla bağlantıya dahil olmaz.",
+  "wf.recipeLoaded": "Adımlar bir tarif bağlantısından yüklendi. Çalıştırmak için dosya ekleyin veya saklamak için iş akışını kaydedin.",
+  "wf.recipeBad": "Bu tarif bağlantısı bozuk veya daha yeni bir sürümden geliyor, bu yüzden hiçbir adım yüklenmedi.",
+  "wf.folderEmpty": "Bu klasörde PDF dosyası yok.",
+  "wf.folderStatus": "Dosya {n}/{total}: {name}",
+  "wf.folderDone": "{n|one:# dosya|other:# dosya} “{folder}” klasörüne yazıldı.",
+  "wf.folderSkipped": "İşlenemedi: {list}.",
 };
 
 export default d;

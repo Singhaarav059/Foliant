@@ -1584,6 +1584,16 @@ const d: { [K in DictKey]?: string } = {
   "ws.file.fail": "Übersprungen",
   "ed.cropBatch": "Derselbe Bereich bleibt in {n|one:der Datei|other:allen # Dateien} erhalten.",
   "ed.redactBatch": "Suchen und Schnellmarkierungen laufen auch über {n|one:die andere Datei|other:die anderen # Dateien}. Von Hand gezogene Rahmen gelten nur für die angezeigte Datei.",
+  "wf.runFolder": "Auf einen Ordner anwenden",
+  "wf.copyLink": "Rezept-Link kopieren",
+  "wf.linkCopied": "Link kopiert. Wer ihn öffnet, bekommt diese Schritte; deine Dateien und Passwörter sind nie darin enthalten.",
+  "wf.linkInBar": "Der Rezept-Link steht jetzt in der Adressleiste: Kopiere ihn von dort. Deine Dateien und Passwörter sind nie darin enthalten.",
+  "wf.recipeLoaded": "Schritte aus einem Rezept-Link geladen. Füge Dateien hinzu, um sie auszuführen, oder speichere den Workflow, um ihn zu behalten.",
+  "wf.recipeBad": "Dieser Rezept-Link ist beschädigt oder stammt aus einer neueren Version, daher wurden keine Schritte geladen.",
+  "wf.folderEmpty": "Dieser Ordner enthält keine PDF-Dateien.",
+  "wf.folderStatus": "Datei {n} von {total}: {name}",
+  "wf.folderDone": "{n|one:# Datei|other:# Dateien} im Ordner „{folder}“ gespeichert.",
+  "wf.folderSkipped": "Nicht verarbeitet: {list}.",
 };
 
 export default d;

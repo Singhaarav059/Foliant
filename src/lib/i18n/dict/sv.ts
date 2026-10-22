@@ -1584,6 +1584,16 @@ const d: { [K in DictKey]?: string } = {
   "ws.file.fail": "Hoppades över",
   "ed.cropBatch": "Samma område behålls i {n|one:filen|other:alla # filer}.",
   "ed.redactBatch": "Sökningar och snabbmarkeringar körs även på {n|one:den andra filen|other:de andra # filerna}. Rutor du ritar för hand gäller bara den visade filen.",
+  "wf.runFolder": "Kör på en mapp",
+  "wf.copyLink": "Kopiera receptlänk",
+  "wf.linkCopied": "Länken har kopierats. Den som öppnar den får de här stegen; dina filer och lösenord ingår aldrig.",
+  "wf.linkInBar": "Receptlänken finns nu i adressfältet: kopiera den därifrån. Dina filer och lösenord ingår aldrig.",
+  "wf.recipeLoaded": "Stegen har lästs in från en receptlänk. Lägg till filer för att köra dem, eller spara arbetsflödet för att behålla det.",
+  "wf.recipeBad": "Receptlänken är skadad eller kommer från en nyare version, så inga steg lästes in.",
+  "wf.folderEmpty": "Mappen innehåller inga PDF-filer.",
+  "wf.folderStatus": "Fil {n} av {total}: {name}",
+  "wf.folderDone": "{n|one:# fil|other:# filer} har skrivits till mappen ”{folder}”.",
+  "wf.folderSkipped": "Kunde inte bearbetas: {list}.",
 };
 
 export default d;

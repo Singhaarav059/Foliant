@@ -1584,6 +1584,16 @@ const d: { [K in DictKey]?: string } = {
   "ws.file.fail": "Dilewati",
   "ed.cropBatch": "Area yang sama dipertahankan di semua {n|other:# file}.",
   "ed.redactBatch": "Pencarian dan tanda cepat juga diterapkan ke {n|other:# file} lainnya. Kotak yang Anda gambar sendiri hanya berlaku untuk file yang ditampilkan.",
+  "wf.runFolder": "Jalankan di folder",
+  "wf.copyLink": "Salin tautan resep",
+  "wf.linkCopied": "Tautan disalin. Siapa pun yang membukanya mendapat langkah-langkah ini; file dan kata sandi Anda tidak pernah ikut di dalamnya.",
+  "wf.linkInBar": "Tautan resep kini ada di bilah alamat: salin dari sana. File dan kata sandi Anda tidak pernah ikut di dalamnya.",
+  "wf.recipeLoaded": "Langkah dimuat dari tautan resep. Tambahkan file untuk menjalankannya, atau simpan alur kerja agar tetap ada.",
+  "wf.recipeBad": "Tautan resep itu rusak atau berasal dari versi yang lebih baru, jadi tidak ada langkah yang dimuat.",
+  "wf.folderEmpty": "Folder itu tidak berisi file PDF.",
+  "wf.folderStatus": "File {n} dari {total}: {name}",
+  "wf.folderDone": "{n|other:# file} ditulis ke folder “{folder}”.",
+  "wf.folderSkipped": "Tidak dapat diproses: {list}.",
 };
 
 export default d;

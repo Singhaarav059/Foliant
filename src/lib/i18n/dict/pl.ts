@@ -1584,6 +1584,16 @@ const d: { [K in DictKey]?: string } = {
   "ws.file.fail": "Pominięty",
   "ed.cropBatch": "We wszystkich plikach ({n}) zostaje ten sam obszar.",
   "ed.redactBatch": "Wyszukiwania i szybkie oznaczenia obejmują też pozostałe pliki ({n}). Ramki narysowane ręcznie dotyczą tylko pokazanego pliku.",
+  "wf.runFolder": "Uruchom dla folderu",
+  "wf.copyLink": "Kopiuj link do przepisu",
+  "wf.linkCopied": "Link skopiowany. Kto go otworzy, dostanie te kroki; Twoje pliki i hasła nigdy nie są jego częścią.",
+  "wf.linkInBar": "Link do przepisu jest teraz na pasku adresu: skopiuj go stamtąd. Twoje pliki i hasła nigdy nie są jego częścią.",
+  "wf.recipeLoaded": "Kroki wczytane z linku do przepisu. Dodaj pliki, aby je uruchomić, albo zapisz przepływ, aby go zachować.",
+  "wf.recipeBad": "Ten link do przepisu jest uszkodzony lub pochodzi z nowszej wersji, więc nie wczytano żadnych kroków.",
+  "wf.folderEmpty": "W tym folderze nie ma plików PDF.",
+  "wf.folderStatus": "Plik {n} z {total}: {name}",
+  "wf.folderDone": "Zapisano pliki w folderze „{folder}”: {n}.",
+  "wf.folderSkipped": "Nie udało się przetworzyć: {list}.",
 };
 
 export default d;

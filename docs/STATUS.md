@@ -20,7 +20,7 @@ Each run resumes at the first item not marked done.
 - [x] 2. Robustness run (`test:robust -- --known`), Linux, 2026-10-22: 752/756 pass, 4 known failures (P3-04 cyclic tree, P0-09 Word odd boxes, P1-09 two memory cases), 0 new.
 - [ ] 3. Browser e2e (Chromium, WebKit, Firefox)
 - [x] 4a. P2-03 No limits and batch everything: tools that run in the browser take any size and number of files (the 200 MB / 100-file cap stays for the server build's uploads); past a device-memory budget (`src/lib/budget.ts`, navigator.deviceMemory) the workspace only warns. A batch shows each file's state while it runs. Crop (one box on every file), Redact (searches and quick marks run on every file) and OCR take several files. Copy updated in 25 languages. Tests: `test:batch`, crop/redact batch variants in `test:e2e:tools`. Not done: merge/split/rotate through qpdf for very large files (pdf-lib still parses them; it doesn't decode streams, so 2 × 300 MB fits a desktop tab).
-- [ ] 4b. P2-05 Folder workflows and recipe links
+- [x] 4b. P2-05 Folder workflows and recipe links: "Run on a folder" (Chromium desktop, File System Access API) runs the steps on every PDF in a folder and its subfolders and writes each result to a second folder, never overwriting one result with another; other browsers keep multi-select plus a ZIP. "Copy recipe link" puts the steps in the #fragment (`src/lib/recipe.ts`), never files or passwords; opening the link in a fresh profile loads them. Tests: `test:recipe`, two new cases in `tests/e2e/workflows.mjs` (recipe link in Chromium, Firefox, WebKit; 50-file folder in Chromium).
 - [ ] 4c. P2-07 Trust-grade redaction and PDF/A check
 - [ ] 4d. P2-09 Document structure tools
 - [ ] 4e. P2-10 Print and scan helper tools

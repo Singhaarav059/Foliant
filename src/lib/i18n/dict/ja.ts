@@ -1584,6 +1584,16 @@ const d: { [K in DictKey]?: string } = {
   "ws.file.fail": "スキップ",
   "ed.cropBatch": "{n|other:# 個}のファイルすべてで同じ範囲を残します。",
   "ed.redactBatch": "検索とクイックマークは、ほかの {n|other:# 個}のファイルにも適用されます。手で描いた枠は、表示中のファイルだけに適用されます。",
+  "wf.runFolder": "フォルダーで実行",
+  "wf.copyLink": "レシピのリンクをコピー",
+  "wf.linkCopied": "リンクをコピーしました。開いた人にはこの手順が読み込まれます。ファイルやパスワードがリンクに含まれることはありません。",
+  "wf.linkInBar": "レシピのリンクをアドレスバーに表示しました。そこからコピーしてください。ファイルやパスワードがリンクに含まれることはありません。",
+  "wf.recipeLoaded": "レシピのリンクから手順を読み込みました。ファイルを追加して実行するか、ワークフローを保存して残せます。",
+  "wf.recipeBad": "このレシピのリンクは壊れているか新しいバージョンのものなので、手順は読み込まれませんでした。",
+  "wf.folderEmpty": "このフォルダーにはPDFファイルがありません。",
+  "wf.folderStatus": "ファイル {n}/{total}：{name}",
+  "wf.folderDone": "フォルダー「{folder}」に {n|other:# 個}のファイルを書き出しました。",
+  "wf.folderSkipped": "処理できなかったファイル：{list}。",
 };
 
 export default d;

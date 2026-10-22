@@ -1584,6 +1584,16 @@ const d: { [K in DictKey]?: string } = {
   "ws.file.fail": "Omès",
   "ed.cropBatch": "Es conserva la mateixa zona a {n|one:el fitxer|other:tots els # fitxers}.",
   "ed.redactBatch": "Les cerques i les marques ràpides també s’apliquen {n|one:a l’altre fitxer|other:als altres # fitxers}. Els requadres dibuixats a mà només afecten el fitxer mostrat.",
+  "wf.runFolder": "Executa en una carpeta",
+  "wf.copyLink": "Copia l’enllaç de la recepta",
+  "wf.linkCopied": "Enllaç copiat. Qui l’obri obtindrà aquests passos; els teus fitxers i contrasenyes mai no en formen part.",
+  "wf.linkInBar": "L’enllaç de la recepta ara és a la barra d’adreces: copia’l des d’allà. Els teus fitxers i contrasenyes mai no en formen part.",
+  "wf.recipeLoaded": "Passos carregats d’un enllaç de recepta. Afegeix fitxers per executar-los o desa el flux per conservar-lo.",
+  "wf.recipeBad": "Aquest enllaç de recepta està malmès o ve d’una versió més nova, així que no s’ha carregat cap pas.",
+  "wf.folderEmpty": "Aquesta carpeta no conté fitxers PDF.",
+  "wf.folderStatus": "Fitxer {n} de {total}: {name}",
+  "wf.folderDone": "{n|one:# fitxer desat|other:# fitxers desats} a la carpeta «{folder}».",
+  "wf.folderSkipped": "No s’han pogut processar: {list}.",
 };
 
 export default d;

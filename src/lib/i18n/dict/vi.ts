@@ -1584,6 +1584,16 @@ const d: { [K in DictKey]?: string } = {
   "ws.file.fail": "Đã bỏ qua",
   "ed.cropBatch": "Cùng một vùng được giữ lại trên cả {n|other:# tệp}.",
   "ed.redactBatch": "Các tìm kiếm và đánh dấu nhanh cũng áp dụng cho {n|other:# tệp} còn lại. Các khung bạn tự vẽ chỉ áp dụng cho tệp đang hiển thị.",
+  "wf.runFolder": "Chạy trên thư mục",
+  "wf.copyLink": "Sao chép liên kết công thức",
+  "wf.linkCopied": "Đã sao chép liên kết. Ai mở nó sẽ nhận được các bước này; tệp và mật khẩu của bạn không bao giờ nằm trong đó.",
+  "wf.linkInBar": "Liên kết công thức giờ nằm trên thanh địa chỉ: hãy sao chép từ đó. Tệp và mật khẩu của bạn không bao giờ nằm trong đó.",
+  "wf.recipeLoaded": "Đã tải các bước từ liên kết công thức. Thêm tệp để chạy, hoặc lưu quy trình để giữ lại.",
+  "wf.recipeBad": "Liên kết công thức này bị hỏng hoặc đến từ phiên bản mới hơn, nên không bước nào được tải.",
+  "wf.folderEmpty": "Thư mục đó không có tệp PDF nào.",
+  "wf.folderStatus": "Tệp {n}/{total}: {name}",
+  "wf.folderDone": "Đã ghi {n|other:# tệp} vào thư mục “{folder}”.",
+  "wf.folderSkipped": "Không xử lý được: {list}.",
 };
 
 export default d;

@@ -1584,6 +1584,16 @@ const d: { [K in DictKey]?: string } = {
   "ws.file.fail": "已跳过",
   "ed.cropBatch": "全部 {n|other:# 个}文件都保留同一区域。",
   "ed.redactBatch": "搜索和快速标记也会应用到其余 {n|other:# 个}文件。手动绘制的框只作用于当前显示的文件。",
+  "wf.runFolder": "对文件夹运行",
+  "wf.copyLink": "复制配方链接",
+  "wf.linkCopied": "链接已复制。打开它的人会得到这些步骤；你的文件和密码绝不会包含在内。",
+  "wf.linkInBar": "配方链接现在在地址栏中，请从那里复制。你的文件和密码绝不会包含在内。",
+  "wf.recipeLoaded": "已从配方链接载入步骤。添加文件即可运行，或保存工作流以便以后使用。",
+  "wf.recipeBad": "该配方链接已损坏或来自更新的版本，因此没有载入任何步骤。",
+  "wf.folderEmpty": "该文件夹中没有 PDF 文件。",
+  "wf.folderStatus": "第 {n} 个文件，共 {total} 个：{name}",
+  "wf.folderDone": "已将 {n|other:# 个}文件写入文件夹“{folder}”。",
+  "wf.folderSkipped": "无法处理：{list}。",
 };
 
 export default d;
