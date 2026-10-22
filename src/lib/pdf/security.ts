@@ -6,7 +6,7 @@ import {
 } from "pdf-lib";
 import { baseName, bytesOf, canvasToBlob, closePdf, openPdf, pdfBlob, pdfjs, renderPage, type Output, type Progress } from "./common";
 import { prepareQpdf, runQpdf, QpdfError } from "./qpdf";
-import { charBox, lineChars, pageText, type PageText } from "./text";
+import { charBox, documentText, lineChars, pageText, type PageText } from "./text";
 import { addInvisibleText } from "./textlayer";
 import { runsToWords } from "./convert";
 import { visualFrame, type FracRect } from "./edit";
@@ -421,6 +421,29 @@ export async function redact(
     if ((await leftovers(out, terms)).length) throw new RedactionLeakError();
   }
   return [{ name: `${baseName(file.name)}-redacted.pdf`, blob: pdfBlob(out) }];
+}
+
+// Batch redaction: the editor's searches (typed text or presets) run again on
+// another file, every match there is blacked out, and like redact() the
+// matched texts must then be gone from the whole file.
+export async function redactSearches(file: File, patterns: RegExp[], o: { redactDpi: string }, progress?: Progress): Promise<Output[]> {
+  const doc = await openPdf(await bytesOf(file));
+  let pages: PageText[];
+  try {
+    pages = await documentText(doc);
+  } finally {
+    await closePdf(doc);
+  }
+  const marks: { page: number; rect: FracRect }[] = [];
+  const terms = new Map<string, Term>();
+  for (const pattern of patterns) {
+    for (const h of findMatches(pages, pattern)) {
+      marks.push({ page: h.page, rect: h.rect });
+      terms.set(`${pattern.source}\n${h.text}`, { text: h.text, pattern });
+    }
+  }
+  // With no match the file still comes back rewritten, without its metadata, like every redaction.
+  return redact(file, marks, { redactDpi: o.redactDpi, terms: [...terms.values()] }, progress);
 }
 
 // Builds the output: pages from `redacted` (PDFium's file; the original when

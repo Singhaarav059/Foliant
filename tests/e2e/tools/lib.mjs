@@ -126,7 +126,12 @@ export async function inspect(path) {
         const ib = await z.file(n).async("nodebuffer");
         const ie = n.split(".").pop().toLowerCase();
         const e = { name: n, ext: ie, bytes: ib.length };
-        if (ie === "pdf") e.pages = (await PDFDocument.load(ib)).getPageCount();
+        if (ie === "pdf") {
+          const d = await PDFDocument.load(ib);
+          e.pages = d.getPageCount();
+          e.crop = d.getPages().map((p) => { const c = p.getCropBox(); return [c.x, c.y, c.width, c.height].map(Math.round); });
+          e.text = await pdfText(ib);
+        }
         if (ie === "jpg" && !(ib[0] === 0xff && ib[1] === 0xd8)) throw new Error(`${n} is not a JPEG`);
         if (ie === "png" && ib.subarray(1, 4).toString("latin1") !== "PNG") throw new Error(`${n} is not a PNG`);
         if (ie === "webp" && ib.subarray(8, 12).toString("latin1") !== "WEBP") throw new Error(`${n} is not a WebP`);

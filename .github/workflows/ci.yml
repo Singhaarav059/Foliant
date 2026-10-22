@@ -225,6 +225,8 @@ jobs:
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:compare
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:batch
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:summarize
       - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:ai

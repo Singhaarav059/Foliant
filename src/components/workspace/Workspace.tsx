@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowRight, Download, Loader2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, Download, Loader2, X } from "lucide-react";
 import { useI18n } from "../I18n";
 import { useUser, postJson } from "../User";
 import { Dropzone, useFileIntake } from "./Dropzone";
@@ -20,7 +20,9 @@ import { Results } from "./Results";
 import { PrintResults } from "./PrintResults";
 import { PasteHtml } from "./PasteHtml";
 import { peekHandoff, restoreHandoff } from "@/lib/handoff";
-import { fileExt, type Output, type Progress } from "@/lib/pdf/common";
+import { fileExt, humanSize, type Output, type Progress } from "@/lib/pdf/common";
+import type { FileState, Track } from "@/lib/pdf/run";
+import { overBudget } from "@/lib/budget";
 import { fileError } from "@/lib/pdf/errors";
 import { markUnrestricted, PERMISSIONS, protectProblem } from "@/lib/pdf/password";
 import { pageCount } from "@/lib/pdf/thumbs";
@@ -73,6 +75,10 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
   // Office → PDF in the static build, which has a fidelity choice.
   const office = tool.options.some((o) => o.key === "fidelity");
   const notes = useSplitHints(tool, files[0], options, setOptions);
+  // More than this device comfortably holds at once: a warning, never a refusal.
+  const heavy = useMemo(() => (tool.runtime === "browser" ? overBudget(files) : null), [files, tool.runtime]);
+  // Each file's state in a batch, while it runs.
+  const [fileStates, setFileStates] = useState<FileState[]>([]);
 
   useEffect(() => {
     if (tool.runtime === "browser") return;
@@ -89,7 +95,8 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
         setError({ text: t("ws.wrongType", { name: f.name }) });
         continue;
       }
-      if (f.size > LIMITS.mb * 1024 * 1024) {
+      // Tools that run on the device take any size; only the server has a cap.
+      if (tool.runtime === "server" && f.size > LIMITS.mb * 1024 * 1024) {
         setError({ text: t("ws.tooBig", { name: f.name, mb: LIMITS.mb }) });
         continue;
       }
@@ -97,7 +104,7 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
     }
     if (!ok.length) return;
     const next = tool.multiple ? [...(base ?? items), ...ok.map((file) => ({ id: uid(), file }))] : [{ id: uid(), file: ok[0] }];
-    const maxFiles = tool.mode === "compare" ? 2 : LIMITS.files;
+    const maxFiles = tool.mode === "compare" ? 2 : tool.runtime === "server" ? LIMITS.files : Infinity;
     if (next.length > maxFiles) {
       setError({ text: t("ws.tooMany", { n: maxFiles }) });
       next.length = maxFiles;
@@ -215,15 +222,17 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
     setStage(items.length || url ? "work" : "select");
   };
 
-  const execute = async (job: (p: Progress, signal: AbortSignal) => Promise<Output[]>) => {
+  const execute = async (job: (p: Progress, signal: AbortSignal, track: Track) => Promise<Output[]>) => {
     stop();
     const ticket = run.current;
     const controller = (abort.current = new AbortController());
     setError(null);
     setProgress({ value: 0 });
+    setFileStates(files.map(() => "wait"));
+    const track: Track = (i, state) => ticket === run.current && setFileStates((list) => list.map((s, k) => (k === i ? state : s)));
     setStage("busy");
     try {
-      const made = await job((done, total) => ticket === run.current && setProgress((p) => ({ ...p, value: total ? Math.min(1, done / total) : 0 })), controller.signal);
+      const made = await job((done, total) => ticket === run.current && setProgress((p) => ({ ...p, value: total ? Math.min(1, done / total) : 0 })), controller.signal, track);
       const out = tool.id === "protect" || tool.id === "unlock" ? made : await markUnrestricted(files, made);
       if (ticket !== run.current) return;
       if (!out.length) throw new Error(t("res.error"));
@@ -277,9 +286,9 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
         return convertOffice({ ...job, reloaded: true });
       }
     }
-    void execute(async (progress, signal) => {
+    void execute(async (progress, signal, track) => {
       const { runTool } = await import("@/lib/pdf/run");
-      return runTool(tool.id, job.files, { ...job.options, fidelity: route === "print" ? "standard" : job.options.fidelity }, progress, undefined, signal);
+      return runTool(tool.id, job.files, { ...job.options, fidelity: route === "print" ? "standard" : job.options.fidelity }, progress, undefined, signal, track);
     });
   };
 
@@ -339,9 +348,9 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
       });
       return;
     }
-    void execute(async (progress, signal) => {
+    void execute(async (progress, signal, track) => {
       const { runTool } = await import("@/lib/pdf/run");
-      return runTool(tool.id, files, { ...options, url }, progress, { page: tOr("ws.page", "Page {n}"), pageOf: tOr("ws.processingPage", "Page {n} of {total}"), nOf: tOr("fmt.nOfTotal", "{n} of {total}") }, signal);
+      return runTool(tool.id, files, { ...options, url }, progress, { page: tOr("ws.page", "Page {n}"), pageOf: tOr("ws.processingPage", "Page {n} of {total}"), nOf: tOr("fmt.nOfTotal", "{n} of {total}") }, signal, track);
     });
   };
 
@@ -361,6 +370,11 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
   }
 
   const errorBox = error && <ErrorBox problem={error} toolId={tool.id} />;
+  const heavyNote = heavy && (
+    <p role="note" className="mx-auto mb-5 flex max-w-[760px] items-start gap-2 rounded-xl border border-line bg-surface p-4 text-[14px] text-ink-2">
+      <AlertTriangle size={16} className="mt-0.5 shrink-0" /> {t("ws.bigBatch", { size: humanSize(heavy) })}
+    </p>
+  );
 
   const printable = ask?.files.every((f) => LIGHT_OFFICE.includes(fileExt(f.name)));
   const consent = ask && (
@@ -398,6 +412,19 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
           <div className="h-full rounded-full bg-ink transition-[width] duration-300" style={{ width: `${Math.max(4, progress.value * 100)}%` }} />
         </div>
         <p className="eyebrow mt-2.5">{Math.round(progress.value * 100)}%</p>
+        {fileStates.length > 1 && fileStates.some((st) => st !== "wait") && (
+          <ul aria-label={t("ws.fileQueue")} className="mt-6 max-h-[40vh] w-full overflow-y-auto rounded-xl border border-line bg-surface text-start text-[14px]">
+            {files.map((f, i) => (
+              <li key={i} className="flex items-center gap-3 border-b border-line px-4 py-2 last:border-b-0">
+                <span className="min-w-0 flex-1 truncate">{f.name}</span>
+                <span className={`shrink-0 ${fileStates[i] === "fail" ? "text-danger" : fileStates[i] === "done" ? "text-success" : "text-muted"}`}>
+                  {fileStates[i] === "work" ? <Loader2 size={14} className="me-1 inline animate-spin" /> : null}
+                  {t(`ws.file.${fileStates[i] ?? "wait"}`)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
         <button className="btn btn-quiet btn-sm mt-6" onClick={() => { stop(); setStage("work"); }}>{t("ws.cancel")}</button>
       </div>
     );
@@ -493,7 +520,23 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
         {tool.options.length > 0 && (
           <div className="mb-4 max-w-[420px]"><Options restore defs={tool.options} values={options} onChange={(k, v) => setOptions((o) => ({ ...o, [k]: v }))} /></div>
         )}
-        <Editor key={items[0].id} toolId={tool.id} file={files[0]} options={options} actionLabel={t(`tool.${tool.id}.action`)} onRun={execute}
+        {/* Crop and redact take a batch: the first file is on the canvas, the rest get the same box or searches. */}
+        {tool.multiple && (
+          <ul aria-label={t("ws.fileQueue")} className="mb-4 flex flex-wrap items-center gap-2">
+            <li><Dropzone tool={tool} onFiles={addFiles} compact /></li>
+            {items.length > 1 && items.map((it) => (
+              <li key={it.id} className="inline-flex max-w-[260px] items-center gap-1 rounded-lg border border-line bg-surface py-1 pe-1 ps-3 text-[13px]">
+                <span className="truncate" title={it.file.name}>{it.file.name}</span>
+                <button className="icon-btn h-7 w-7 shrink-0 hover:text-danger" aria-label={`${t("ws.remove")} ${it.file.name}`}
+                  onClick={() => setItems((list) => list.filter((x) => x.id !== it.id))}>
+                  <X size={14} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {heavyNote}
+        <Editor key={items[0].id} toolId={tool.id} file={files[0]} others={files.slice(1)} options={options} actionLabel={t(`tool.${tool.id}.action`)} onRun={execute}
           onError={(e) => void drop(items[0].id, files[0], e)} />
       </div>
     );
@@ -519,6 +562,7 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
     <div>
       {dropHint}
       {warn}
+      {heavyNote}
       {errorBox}
       {consent}
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">

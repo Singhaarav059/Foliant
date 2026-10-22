@@ -16,16 +16,20 @@ const n = (v: unknown) => Number(v);
 // only when every file does; `strict` fails it on the first (Office's
 // Automatic, which then prints the whole batch instead). Cancelling (`signal`)
 // always stops it.
-async function each(files: File[], progress: Progress | undefined, fn: (f: File, p: Progress) => Promise<Output[]>, signal?: AbortSignal, strict = false) {
+// `track` hears each file start, finish or fail, for a per-file list.
+async function perFile(files: File[], progress: Progress | undefined, fn: (f: File, p: Progress) => Promise<Output[]>, signal?: AbortSignal, strict = false, track?: Track) {
   const out: Output[] = [];
   const skipped: Skipped[] = [];
   let first: unknown;
   for (let i = 0; i < files.length; i++) {
     signal?.throwIfAborted();
+    track?.(i, "work");
     try {
       out.push(...(await forFile(files[i], () => fn(files[i], (d, t) => progress?.(i + d / Math.max(1, t), files.length)))));
+      track?.(i, "done");
     } catch (e) {
       if (signal?.aborted) throw signal.reason;
+      track?.(i, "fail");
       if (strict || files.length === 1) throw e;
       first ??= e;
       skipped.push({ file: files[i].name, code: toPdfError(e, files[i].name).code });
@@ -58,10 +62,14 @@ async function withOcr(f: File, o: Opts, p: Progress, convert: (f: File, p: Prog
 }
 
 export type Labels = { page: string; pageOf: string; nOf: string };
+export type FileState = "wait" | "work" | "done" | "fail";
+export type Track = (index: number, state: FileState) => void;
 
 // `signal` cancels the run: the engines it started stop (workers are
 // terminated, renders cancelled, documents closed) and runTool rejects with its reason.
-export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Progress, labels?: Labels, signal?: AbortSignal): Promise<Output[]> {
+export async function runTool(id: ToolId, files: File[], o: Opts, progress?: Progress, labels?: Labels, signal?: AbortSignal, track?: Track): Promise<Output[]> {
+  const each = (list: File[], p: Progress | undefined, fn: (f: File, p: Progress) => Promise<Output[]>, sig?: AbortSignal, strict = false) =>
+    perFile(list, p, fn, sig, strict, track);
   switch (id) {
     case "merge": {
       const { merge } = await import("./organize");

@@ -191,7 +191,7 @@ const ALL: Tool[] = [
   },
   {
     id: "ocr", slug: "ocr-pdf", category: "optimize", icon: "ScanText", mode: "files",
-    runtime: "browser", accept: PDF, multiple: false, chainable: true,
+    runtime: "browser", accept: PDF, multiple: true, chainable: true,
     options: [
       { key: "ocrLang", type: "multi", choices: OCR_LANGS, max: MAX_OCR_LANGS, default: "eng" },
       // PaddleOCR (src/lib/pdf/paddle.ts); downloads about 36 MB the first time.
@@ -357,8 +357,9 @@ const ALL: Tool[] = [
     ],
   },
   {
+    // Several files: the box drawn on the first applies to every one.
     id: "crop", slug: "crop-pdf", category: "edit", icon: "Crop", mode: "editor",
-    runtime: "browser", accept: PDF, multiple: false,
+    runtime: "browser", accept: PDF, multiple: true,
     options: [{ key: "cropScope", type: "select", choices: ["all", "current"], default: "all" }],
   },
   {
@@ -404,8 +405,9 @@ const ALL: Tool[] = [
     runtime: "browser", accept: PDF, multiple: false, options: [], isNew: true,
   },
   {
+    // Several files: searches and presets run on every one (src/lib/pdf/security.ts redactSearches).
     id: "redact", slug: "redact-pdf", category: "security", icon: "SquareSlash", mode: "editor",
-    runtime: "browser", accept: PDF, multiple: false,
+    runtime: "browser", accept: PDF, multiple: true,
     options: [{ key: "redactDpi", type: "select", choices: ["150", "200", "300"], default: "200" }],
   },
   {
@@ -493,5 +495,7 @@ export function optionVisible(o: OptionDef, values: Record<string, unknown>, def
   return !parent || parent === o || optionVisible(parent, values, defs);
 }
 
-// Per task. On-device tools are bounded mainly by the device's memory.
+// Per task, for tools that run on the server. Tools that run on the device
+// have no cap: past the device's memory budget (src/lib/budget.ts) the
+// workspace only warns.
 export const LIMITS = { files: 100, mb: 200 };

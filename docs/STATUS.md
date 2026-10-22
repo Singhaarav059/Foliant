@@ -19,7 +19,7 @@ Each run resumes at the first item not marked done.
 - [x] 1. npm ci, build:static, fast tests (2026-10-22, Linux): all node test scripts, typecheck and lint pass. Fixed: test:server counted a killed zombie grandchild as alive. Notes: `npm ci` here needs `ONNXRUNTIME_NODE_INSTALL_CUDA=skip` (its CUDA download from api.nuget.org gets reset); Playwright's bundled browser build doesn't match this container, so Chromium tests run with `CHROME_PATH=/opt/pw-browsers/chromium`; test:server-routes needs `npm run build` first.
 - [x] 2. Robustness run (`test:robust -- --known`), Linux, 2026-10-22: 752/756 pass, 4 known failures (P3-04 cyclic tree, P0-09 Word odd boxes, P1-09 two memory cases), 0 new.
 - [ ] 3. Browser e2e (Chromium, WebKit, Firefox)
-- [ ] 4a. P2-03 No limits and batch everything
+- [x] 4a. P2-03 No limits and batch everything: tools that run in the browser take any size and number of files (the 200 MB / 100-file cap stays for the server build's uploads); past a device-memory budget (`src/lib/budget.ts`, navigator.deviceMemory) the workspace only warns. A batch shows each file's state while it runs. Crop (one box on every file), Redact (searches and quick marks run on every file) and OCR take several files. Copy updated in 25 languages. Tests: `test:batch`, crop/redact batch variants in `test:e2e:tools`. Not done: merge/split/rotate through qpdf for very large files (pdf-lib still parses them; it doesn't decode streams, so 2 × 300 MB fits a desktop tab).
 - [ ] 4b. P2-05 Folder workflows and recipe links
 - [ ] 4c. P2-07 Trust-grade redaction and PDF/A check
 - [ ] 4d. P2-09 Document structure tools

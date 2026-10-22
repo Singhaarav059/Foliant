@@ -1,4 +1,5 @@
-// Redact PDF: the e-mail preset, or a searched word at 300 dpi, is gone from the text.
+// Redact PDF: the e-mail preset, or a searched word at 300 dpi, is gone from
+// the text; with two files, the search redacts both.
 import { must } from "./lib.mjs";
 
 const spec = {
@@ -15,6 +16,18 @@ const spec = {
       check: (r) => {
         must(r.type === "pdf" && r.pages === 3, `${r.type} ${r.pages}p`);
         must(!/jane\.doe@example\.com/.test(r.text) && /Quarterly/.test(r.text), "e-mail still there, or all text gone");
+      },
+    },
+    "two files, one search": {
+      files: ["report.pdf", "report-v2.pdf"],
+      set: async (h) => {
+        await h.page.locator("main aside form input.field").fill("Revenue");
+        await h.page.locator("main aside form button").click();
+        await h.page.waitForTimeout(500);
+      },
+      check: (r) => {
+        must(r.type === "zip" && r.entries.length === 2, `${r.type} with ${r.entries?.length} files`);
+        for (const e of r.entries) must(!/Revenue/.test(e.text) && /Quarterly/.test(e.text), `${e.name}: word still there, or all text gone`);
       },
     },
     "search, 300 dpi": {

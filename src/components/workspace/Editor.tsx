@@ -16,6 +16,7 @@ import { thumbUrl, pageSizes, docFor } from "@/lib/pdf/thumbs";
 import type { EditorItem, FieldInfo, FracRect, TextBox } from "@/lib/pdf/edit";
 import { moveLayer } from "@/lib/pdf/layers";
 import { parseRanges, type Output, type Progress } from "@/lib/pdf/common";
+import { forFile } from "@/lib/pdf/errors";
 import { isFieldKind, type FieldKind } from "@/lib/pdf/formsmeta";
 import type { ToolId } from "@/lib/tools";
 
@@ -94,10 +95,12 @@ function useHistory<T>(initial: T) {
 export const prepareEditor = (toolId: ToolId) =>
   Promise.all([import("@/lib/pdf/edit"), toolId === "redact" ? import("@/lib/pdf/security").then((s) => s.prepare()) : null, toolId === "sign" ? prepareCertificate() : null]);
 
+// `others`: more files for a batch (crop, redact), which get the same crop box
+// or the same searches as `file`, the one on the canvas.
 export function Editor({
-  toolId, file, options, actionLabel, onRun, onError,
+  toolId, file, others = [], options, actionLabel, onRun, onError,
 }: {
-  toolId: ToolId; file: File; options: Record<string, unknown>; actionLabel: string;
+  toolId: ToolId; file: File; others?: File[]; options: Record<string, unknown>; actionLabel: string;
   onRun: (job: (p: Progress) => Promise<Output[]>) => void;
   // The file can't be opened (not a PDF, damaged, password-protected).
   onError: (e: unknown) => void;
@@ -516,7 +519,7 @@ export function Editor({
     onRun(async (progress) => {
       const edit = await import("@/lib/pdf/edit");
       if (toolId === "redact") {
-        const { redact } = await import("@/lib/pdf/security");
+        const { redact, redactSearches } = await import("@/lib/pdf/security");
         // A searched text whose every hit is still marked must be gone from the whole file; redact() checks.
         const kept = new Map<string, { text: string; pattern?: RegExp; of: number; n: number }>();
         for (const m of marks.value) {
@@ -527,12 +530,26 @@ export function Editor({
           kept.set(k, e);
         }
         const terms = [...kept.values()].filter((e) => e.n >= e.of).map(({ text, pattern }) => ({ text, pattern }));
-        return redact(file, marks.value.map((m) => ({ page: m.page, rect: m.rect })), { redactDpi: String(options.redactDpi ?? "200"), terms }, progress);
+        const redactDpi = String(options.redactDpi ?? "200");
+        const total = 1 + others.length;
+        const out = await redact(file, marks.value.map((m) => ({ page: m.page, rect: m.rect })), { redactDpi, terms }, (d, n) => progress(d / Math.max(1, n), total));
+        // The other files get the searches only: boxes drawn by hand fit this file's pages.
+        const patterns = [...new Map(marks.value.filter((m) => m.pattern && m.search).map((m) => [m.search, m.pattern!])).values()];
+        for (const [i, f] of others.entries()) {
+          out.push(...(await forFile(f, () => redactSearches(f, patterns, { redactDpi }, (d, n) => progress(1 + i + d / Math.max(1, n), total)))));
+        }
+        return out;
       }
       if (toolId === "crop") {
         const all = crops.get(-1);
-        if (options.cropScope !== "current" && all) return edit.crop(file, all);
-        return edit.crop(file, new Map([...crops].filter(([k]) => k >= 0)));
+        const box = options.cropScope !== "current" && all ? all : new Map([...crops].filter(([k]) => k >= 0));
+        // The same box on every file of a batch, as fractions of each page.
+        const out: Output[] = [];
+        for (const [i, f] of [file, ...others].entries()) {
+          out.push(...(await forFile(f, () => edit.crop(f, box))));
+          progress(i + 1, 1 + others.length);
+        }
+        return out;
       }
       if (toolId === "forms") return edit.fillForm(file, values, items.value, Boolean(options.flatten));
       if (toolId === "sign" && cert) {
@@ -875,6 +892,7 @@ export function Editor({
               </div>
             </div>
             {found !== null && <p className="text-[14px] text-muted">{t("ed.redactFound", { n: found })}</p>}
+            {others.length > 0 && <p className="text-[14px] text-ink-2">{t("ed.redactBatch", { n: others.length })}</p>}
             <p className="rounded-xl bg-surface-2 p-3 text-[13px] text-ink-2">{t("ed.redactNote")}</p>
           </div>
         )}
@@ -882,6 +900,7 @@ export function Editor({
         {toolId === "crop" && (
           <div className="space-y-3">
             <p className="text-[14px] text-muted">{t("ed.cropHint")}</p>
+            {others.length > 0 && <p className="text-[14px] text-ink-2">{t("ed.cropBatch", { n: others.length + 1 })}</p>}
             <div className="flex gap-2">
               <button className="btn btn-quiet btn-sm" onClick={autoCrop}><CropIcon size={16} /> {t("ed.cropAuto")}</button>
               <button className="btn btn-quiet btn-sm" onClick={() => setCrops(new Map())}>{t("ed.cropReset")}</button>
