@@ -12,6 +12,8 @@
 //     section's in Word; docx-preview leaves it blank. References are copied forward.
 //  3. It drops page-number fields. PAGE and NUMPAGES become markers that are
 //     filled in per page after rendering.
+import { fontsSettled } from "./settled";
+
 const PAGE = "\u2063PAGE\u2063";
 const PAGES = "\u2063NUMPAGES\u2063";
 
@@ -74,7 +76,7 @@ async function prepare(data: Uint8Array): Promise<Uint8Array> {
 // footer and columns) until every page fits its height. A single block taller
 // than a page stays put; the browser splits it when printing.
 async function paginate(root: HTMLElement) {
-  await document.fonts.ready;
+  await fontsSettled(document);
   const px = (v: string) => (v.endsWith("pt") ? (parseFloat(v) * 96) / 72 : v.endsWith("mm") ? (parseFloat(v) * 96) / 25.4 : parseFloat(v));
   const queue = [...root.querySelectorAll<HTMLElement>(":scope > section.docx")];
   for (let guard = 0; queue.length && guard < 2000; guard++) {

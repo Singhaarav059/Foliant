@@ -20,6 +20,7 @@ import {
 } from "pdf-lib";
 import { layoutText } from "../pdf/fonts";
 import { fontBase, fontFaces, fontFile, inSubset, subsetsOf, type Family, type Subset } from "./faces";
+import { fontsSettled } from "./settled";
 
 const PT = 0.75; // CSS px → PDF points
 
@@ -463,21 +464,6 @@ export function materializeMarkers(root: Element) {
     el.prepend(span);
     el.classList.add("np-marker");
   }
-}
-
-// document.fonts.ready, except that WebKit can leave it pending for good once
-// a face fails (seen with Carlito's Greek Extended subset in a sandboxed
-// frame), so this also ends when no face is still loading, or after 20 s.
-function fontsSettled(doc: Document) {
-  return new Promise<void>((done) => {
-    const started = Date.now();
-    void doc.fonts.ready.then(() => done());
-    const poll = () => {
-      if (![...doc.fonts].some((f) => f.status === "loading") || Date.now() - started > 20000) done();
-      else setTimeout(poll, 50);
-    };
-    setTimeout(poll, 50);
-  });
 }
 
 // ── HTML the converters wrote (PowerPoint, Excel), laid out in a hidden
