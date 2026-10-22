@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "{n|one:# पेज टैग किया गया|other:# पेज टैग किए गए}: हेडिंग, पैराग्राफ़, सूचियाँ, लिंक और फ़ॉर्म फ़ील्ड, साथ में भाषा और शीर्षक सेट किए गए।",
   "res.taggedFigures": "{n|one:# तस्वीर को|other:# तस्वीरों को} अब भी विवरण (alt टेक्स्ट) चाहिए।",
   "res.tagKept": "यह PDF पहले से टैग की हुई थी, इसलिए उसके टैग रखे गए; भाषा, शीर्षक और PDF/UA के निशान सेट किए गए।",
+  "nav.home": "होम",
+  "nav.breadcrumb": "ब्रेडक्रंब",
+  "ws.moveItem": "{name} को खिसकाएँ",
+  "ws.filesHeading": "{n|one:# फ़ाइल जोड़ी गई|other:# फ़ाइलें जोड़ी गईं}",
+  "ed.bold": "बोल्ड",
+  "color.black": "काला",
+  "color.red": "लाल",
+  "color.blue": "नीला",
+  "color.green": "हरा",
+  "color.orange": "नारंगी",
+  "color.purple": "बैंगनी",
+  "color.white": "सफ़ेद",
+  "color.custom": "कस्टम रंग",
 };
 
 export default d;

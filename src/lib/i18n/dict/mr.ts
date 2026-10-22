@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "{n|one:# पान टॅग केले|other:# पाने टॅग केली}: शीर्षके, परिच्छेद, याद्या, लिंक आणि फॉर्म फील्ड, आणि भाषा व शीर्षक सेट केले.",
   "res.taggedFigures": "{n|one:# चित्राला|other:# चित्रांना} अजून वर्णन (alt मजकूर) हवे आहे.",
   "res.tagKept": "ही PDF आधीच टॅग केलेली होती, म्हणून तिचे टॅग ठेवले; भाषा, शीर्षक आणि PDF/UA खुणा सेट केल्या.",
+  "nav.home": "मुख्यपृष्ठ",
+  "nav.breadcrumb": "ब्रेडक्रंब",
+  "ws.moveItem": "{name} हलवा",
+  "ws.filesHeading": "{n|one:# फाइल जोडली|other:# फाइली जोडल्या}",
+  "ed.bold": "ठळक",
+  "color.black": "काळा",
+  "color.red": "लाल",
+  "color.blue": "निळा",
+  "color.green": "हिरवा",
+  "color.orange": "नारिंगी",
+  "color.purple": "जांभळा",
+  "color.white": "पांढरा",
+  "color.custom": "सानुकूल रंग",
 };
 
 export default d;

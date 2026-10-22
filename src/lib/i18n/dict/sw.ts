@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "{n|one:Ukurasa # umewekewa lebo|other:Kurasa # zimewekewa lebo}: vichwa, aya, orodha, viungo na sehemu za fomu, pamoja na lugha na kichwa kuwekwa.",
   "res.taggedFigures": "{n|one:Picha # bado inahitaji|other:Picha # bado zinahitaji} maelezo (maandishi mbadala).",
   "res.tagKept": "PDF hii tayari ilikuwa na lebo, kwa hivyo lebo zake zimehifadhiwa; lugha, kichwa na alama za PDF/UA zimewekwa.",
+  "nav.home": "Mwanzo",
+  "nav.breadcrumb": "Njia ya urambazaji",
+  "ws.moveItem": "Hamisha {name}",
+  "ws.filesHeading": "{n|one:Faili # imeongezwa|other:Faili # zimeongezwa}",
+  "ed.bold": "Herufi nzito",
+  "color.black": "Nyeusi",
+  "color.red": "Nyekundu",
+  "color.blue": "Bluu",
+  "color.green": "Kijani",
+  "color.orange": "Rangi ya chungwa",
+  "color.purple": "Zambarau",
+  "color.white": "Nyeupe",
+  "color.custom": "Rangi maalum",
 };
 
 export default d;

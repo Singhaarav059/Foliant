@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "{n|one:# pagina|other:# pagina’s} getagd: koppen, alinea’s, lijsten, links en formuliervelden, met taal en titel ingesteld.",
   "res.taggedFigures": "{n|one:# afbeelding heeft|other:# afbeeldingen hebben} nog een beschrijving (alt-tekst) nodig.",
   "res.tagKept": "Deze pdf was al getagd, dus de tags zijn behouden; de taal, titel en PDF/UA-markeringen zijn ingesteld.",
+  "nav.home": "Home",
+  "nav.breadcrumb": "Kruimelpad",
+  "ws.moveItem": "{name} verplaatsen",
+  "ws.filesHeading": "{n|one:# bestand toegevoegd|other:# bestanden toegevoegd}",
+  "ed.bold": "Vet",
+  "color.black": "Zwart",
+  "color.red": "Rood",
+  "color.blue": "Blauw",
+  "color.green": "Groen",
+  "color.orange": "Oranje",
+  "color.purple": "Paars",
+  "color.white": "Wit",
+  "color.custom": "Aangepaste kleur",
 };
 
 export default d;

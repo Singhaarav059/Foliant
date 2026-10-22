@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "{n|other:#쪽}에 태그를 붙였습니다. 제목, 문단, 목록, 링크, 양식 필드에 태그를 붙이고 언어와 제목을 설정했습니다.",
   "res.taggedFigures": "그림 {n|other:#개}에 아직 설명(대체 텍스트)이 필요합니다.",
   "res.tagKept": "이 PDF에는 이미 태그가 있어 기존 태그를 그대로 두었습니다. 언어, 제목, PDF/UA 표시를 설정했습니다.",
+  "nav.home": "홈",
+  "nav.breadcrumb": "탐색 경로",
+  "ws.moveItem": "{name} 이동",
+  "ws.filesHeading": "{n|other:파일 #개 추가됨}",
+  "ed.bold": "굵게",
+  "color.black": "검정",
+  "color.red": "빨강",
+  "color.blue": "파랑",
+  "color.green": "초록",
+  "color.orange": "주황",
+  "color.purple": "보라",
+  "color.white": "흰색",
+  "color.custom": "사용자 지정 색상",
 };
 
 export default d;

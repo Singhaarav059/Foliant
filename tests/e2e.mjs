@@ -164,8 +164,10 @@ for (const name of engines) {
       links: [...document.querySelectorAll("header a[hreflang]")].map((a) => `${a.hreflang}=${a.getAttribute("href")}|${a.lang}`),
       alternates: [...document.querySelectorAll("link[rel=alternate][hreflang]")].filter((l) => l.hreflang !== "x-default").map((l) => `${l.hreflang}=${new URL(l.href).pathname}|${l.hreflang}`),
     }));
-    if (links.length !== 26 || links.sort().join() !== alternates.sort().join()) throw new Error(`${links.length} links, e.g. ${links.find((l) => !alternates.includes(l))}`);
-    return "26 links, same as hreflang";
+    // One per dictionary (src/lib/i18n/dict).
+    const langs = readdirSync(join(fixtures, "../../src/lib/i18n/dict")).filter((f) => f.endsWith(".ts")).length;
+    if (links.length !== langs || links.sort().join() !== alternates.sort().join()) throw new Error(`${links.length} links, e.g. ${links.find((l) => !alternates.includes(l))}`);
+    return `${langs} links, same as hreflang`;
   });
 
   await test("intent page links to the tools in its language", async () => {

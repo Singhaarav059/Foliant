@@ -178,7 +178,7 @@ await suite(async ({ browser, test: run }) => {
     });
     await test("OCR, high accuracy: Cancel stops PaddleOCR", async () => {
       await open(page, "/en/ocr-pdf");
-      const accurate = () => page.locator(`main label[for$="-ocrEngine"] + [role=radiogroup] [role=radio]`).nth(1).click();
+      const accurate = () => page.locator(`main label[id$="-ocrEngine-label"] + [role=radiogroup] [role=radio]`).nth(1).click();
       return cancelled("ocr", { files: [scans], again: ["scanned.pdf"], set: accurate, ms: 8000 });
     });
     await test("Compress: Cancel stops the image loop", async () => {

@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "Đã gắn thẻ {n|other:# trang}: tiêu đề, đoạn văn, danh sách, liên kết và trường biểu mẫu, kèm thiết lập ngôn ngữ và tên tài liệu.",
   "res.taggedFigures": "Còn {n|other:# hình ảnh} cần mô tả (văn bản thay thế).",
   "res.tagKept": "PDF này đã được gắn thẻ từ trước nên các thẻ được giữ nguyên; ngôn ngữ, tên tài liệu và các dấu PDF/UA đã được thiết lập.",
+  "nav.home": "Trang chủ",
+  "nav.breadcrumb": "Đường dẫn điều hướng",
+  "ws.moveItem": "Di chuyển {name}",
+  "ws.filesHeading": "{n|other:Đã thêm # tệp}",
+  "ed.bold": "In đậm",
+  "color.black": "Đen",
+  "color.red": "Đỏ",
+  "color.blue": "Xanh dương",
+  "color.green": "Xanh lá",
+  "color.orange": "Cam",
+  "color.purple": "Tím",
+  "color.white": "Trắng",
+  "color.custom": "Màu tùy chỉnh",
 };
 
 export default d;

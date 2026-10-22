@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "أُضيفت الوسوم إلى {n|zero:# صفحة|one:صفحة واحدة|two:صفحتين|few:# صفحات|many:# صفحة|other:# صفحة}: العناوين والفقرات والقوائم والروابط وحقول النماذج، مع ضبط اللغة والعنوان.",
   "res.taggedFigures": "{n|zero:لا تحتاج أي صورة|one:لا تزال صورة واحدة تحتاج|two:لا تزال صورتان تحتاجان|few:لا تزال # صور تحتاج|many:لا تزال # صورة تحتاج|other:لا تزال # صورة تحتاج} إلى وصف (نص بديل).",
   "res.tagKept": "كان ملف PDF هذا موسومًا بالفعل، لذا حُفظت وسومه؛ وضُبطت اللغة والعنوان وعلامات PDF/UA.",
+  "nav.home": "الصفحة الرئيسية",
+  "nav.breadcrumb": "مسار التنقل",
+  "ws.moveItem": "نقل {name}",
+  "ws.filesHeading": "{n|zero:لم يُضف أي ملف|one:أُضيف ملف واحد|two:أُضيف ملفان|few:أُضيفت # ملفات|many:أُضيف # ملفًا|other:أُضيف # ملف}",
+  "ed.bold": "غامق",
+  "color.black": "أسود",
+  "color.red": "أحمر",
+  "color.blue": "أزرق",
+  "color.green": "أخضر",
+  "color.orange": "برتقالي",
+  "color.purple": "بنفسجي",
+  "color.white": "أبيض",
+  "color.custom": "لون مخصص",
 };
 
 export default d;

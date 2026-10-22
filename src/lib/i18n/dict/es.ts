@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "{n|one:Se etiquetó # página|other:Se etiquetaron # páginas}: títulos, párrafos, listas, enlaces y campos de formulario, con el idioma y el título establecidos.",
   "res.taggedFigures": "{n|one:# imagen necesita|other:# imágenes necesitan} todavía una descripción (texto alternativo).",
   "res.tagKept": "Este PDF ya estaba etiquetado, así que se conservaron sus etiquetas; se establecieron el idioma, el título y las marcas de PDF/UA.",
+  "nav.home": "Inicio",
+  "nav.breadcrumb": "Ruta de navegación",
+  "ws.moveItem": "Mover {name}",
+  "ws.filesHeading": "{n|one:# archivo añadido|many:# de archivos añadidos|other:# archivos añadidos}",
+  "ed.bold": "Negrita",
+  "color.black": "Negro",
+  "color.red": "Rojo",
+  "color.blue": "Azul",
+  "color.green": "Verde",
+  "color.orange": "Naranja",
+  "color.purple": "Morado",
+  "color.white": "Blanco",
+  "color.custom": "Color personalizado",
 };
 
 export default d;

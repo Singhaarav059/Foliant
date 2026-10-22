@@ -19,7 +19,7 @@ export const helpers = (page, fx) => ({
   pick: (files, nth = 0) => page.locator("input[type=file]").nth(nth).setInputFiles(files.map(fx)),
   action: () => page.locator("main aside.card button.btn-primary").first(),
   toggle: (key) => page.locator(`main label[for$="-${key}"]`).first().click(),
-  radio: (key, i) => page.locator(`main label[for$="-${key}"] + [role=radiogroup] [role=radio]`).nth(i).click(),
+  radio: (key, i) => page.locator(`main label[id$="-${key}-label"] + [role=radiogroup] [role=radio]`).nth(i).click(),
   select: (key, v) => page.locator(`main select[id$="-${key}"]`).first().selectOption(v),
   fill: (key, v) => page.locator(`main input[id$="-${key}"]`).first().fill(v),
   icon: (name, scope = "main") => page.locator(`${scope} button:has(svg.lucide-${name})`).first(),

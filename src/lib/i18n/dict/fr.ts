@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "{n|one:# page balisée|other:# pages balisées} : titres, paragraphes, listes, liens et champs de formulaire, avec la langue et le titre définis.",
   "res.taggedFigures": "{n|one:# image a encore|other:# images ont encore} besoin d’une description (texte alternatif).",
   "res.tagKept": "Ce PDF était déjà balisé, ses balises ont donc été conservées ; la langue, le titre et les marques PDF/UA ont été définis.",
+  "nav.home": "Accueil",
+  "nav.breadcrumb": "Fil d’Ariane",
+  "ws.moveItem": "Déplacer {name}",
+  "ws.filesHeading": "{n|one:# fichier ajouté|many:# de fichiers ajoutés|other:# fichiers ajoutés}",
+  "ed.bold": "Gras",
+  "color.black": "Noir",
+  "color.red": "Rouge",
+  "color.blue": "Bleu",
+  "color.green": "Vert",
+  "color.orange": "Orange",
+  "color.purple": "Violet",
+  "color.white": "Blanc",
+  "color.custom": "Couleur personnalisée",
 };
 
 export default d;

@@ -117,6 +117,9 @@ jobs:
       - name: Read aloud
         if: success() || failure()
         run: npm run test:e2e:listen -- ${{ matrix.browser }}
+      - name: Accessibility (axe-core, keyboard)
+        if: success() || failure()
+        run: npm run test:e2e:a11y -- ${{ matrix.browser }}
       - name: Page board
         if: success() || failure()
         run: npm run test:e2e:pageboard -- ${{ matrix.browser }}

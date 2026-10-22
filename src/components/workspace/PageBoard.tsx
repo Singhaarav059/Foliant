@@ -25,13 +25,14 @@ function PageCard({
 }) {
   const { t } = useI18n();
   const sortable = mode === "organize";
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.key, disabled: !sortable });
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: item.key, disabled: !sortable });
   const selectable = mode === "extract" || mode === "remove";
   const marked = selectable && selected;
   const tint = FILE_TINTS[item.file % FILE_TINTS.length];
   const rotate = (item.rotate + turn) % 360;
-  // Only a draggable card is a button: dnd-kit's aria-disabled would otherwise disable the arrows inside it.
-  const drag = sortable ? { ...attributes, ...listeners } : {};
+  // A draggable card drags from anywhere, and its thumbnail is the sortable
+  // button for the keyboard, so the rotate and delete buttons aren't inside one.
+  const drag = sortable ? listeners : {};
   return (
     <li
       ref={setNodeRef}
@@ -41,8 +42,10 @@ function PageCard({
     >
       <button
         type="button"
+        ref={sortable ? setActivatorNodeRef : undefined}
+        {...(sortable ? attributes : {})}
         onClick={selectable ? (e) => onToggle(e.shiftKey) : undefined}
-        tabIndex={selectable ? 0 : -1}
+        tabIndex={selectable || sortable ? 0 : -1}
         aria-pressed={selectable ? selected : undefined}
         aria-label={t("ws.page", { n: index + 1 })}
         className={`relative grid h-[180px] w-[136px] place-items-center rounded-lg transition-[box-shadow] ${selectable ? "cursor-pointer" : "cursor-[inherit]"} ${marked ? (mode === "remove" ? "shadow-[0_0_0_3px_var(--danger)]" : "shadow-[0_0_0_3px_var(--accent)]") : "hover:shadow-[0_0_0_2px_var(--line-strong)]"} ${isDragging ? "shadow-card" : ""}`}

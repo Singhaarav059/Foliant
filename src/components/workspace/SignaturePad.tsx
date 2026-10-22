@@ -1,5 +1,6 @@
 "use client";
 
+import { colorKey } from "@/lib/colors";
 import { useEffect, useId, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { useI18n } from "../I18n";
@@ -262,7 +263,7 @@ export function SignaturePad({ kind, onDone, onClose }: { kind: "signature" | "i
         )}
         <div className="mt-4 flex items-center gap-2">
           {tab !== "upload" && INKS.map((c) => (
-            <button key={c} aria-label={c} aria-pressed={ink === c} onClick={() => setInk(c)}
+            <button key={c} aria-label={t(colorKey(c))} aria-pressed={ink === c} onClick={() => setInk(c)}
               className="h-7 w-7 rounded-full ring-offset-2 ring-offset-[var(--surface)] aria-pressed:ring-2 aria-pressed:ring-[var(--ink)]" style={{ background: c }} />
           ))}
           {tab === "draw" && (

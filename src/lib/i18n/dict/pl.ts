@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "Oznaczono {n|one:# stronę|few:# strony|many:# stron|other:# strony}: nagłówki, akapity, listy, linki i pola formularzy, z ustawionym językiem i tytułem.",
   "res.taggedFigures": "{n|one:# obraz nadal potrzebuje|few:# obrazy nadal potrzebują|many:# obrazów nadal potrzebuje|other:# obrazu nadal potrzebuje} opisu (tekstu alternatywnego).",
   "res.tagKept": "Ten PDF miał już znaczniki, więc je zachowano; ustawiono język, tytuł i oznaczenia PDF/UA.",
+  "nav.home": "Strona główna",
+  "nav.breadcrumb": "Ścieżka nawigacji",
+  "ws.moveItem": "Przenieś {name}",
+  "ws.filesHeading": "{n|one:Dodano # plik|few:Dodano # pliki|many:Dodano # plików|other:Dodano # pliku}",
+  "ed.bold": "Pogrubienie",
+  "color.black": "Czarny",
+  "color.red": "Czerwony",
+  "color.blue": "Niebieski",
+  "color.green": "Zielony",
+  "color.orange": "Pomarańczowy",
+  "color.purple": "Fioletowy",
+  "color.white": "Biały",
+  "color.custom": "Własny kolor",
 };
 
 export default d;

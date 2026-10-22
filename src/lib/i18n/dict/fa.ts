@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "{n|one:# صفحه|other:# صفحه} برچسب‌گذاری شد: تیترها، پاراگراف‌ها، فهرست‌ها، پیوندها و فیلدهای فرم، همراه با تنظیم زبان و عنوان.",
   "res.taggedFigures": "{n|one:# تصویر|other:# تصویر} هنوز به توضیح (متن جایگزین) نیاز دارد.",
   "res.tagKept": "این PDF از قبل برچسب‌دار بود، پس برچسب‌هایش حفظ شد؛ زبان، عنوان و نشانه‌های PDF/UA تنظیم شدند.",
+  "nav.home": "خانه",
+  "nav.breadcrumb": "مسیر راهبری",
+  "ws.moveItem": "جابه‌جا کردن {name}",
+  "ws.filesHeading": "{n|one:# فایل افزوده شد|other:# فایل افزوده شد}",
+  "ed.bold": "پررنگ",
+  "color.black": "سیاه",
+  "color.red": "قرمز",
+  "color.blue": "آبی",
+  "color.green": "سبز",
+  "color.orange": "نارنجی",
+  "color.purple": "بنفش",
+  "color.white": "سفید",
+  "color.custom": "رنگ سفارشی",
 };
 
 export default d;

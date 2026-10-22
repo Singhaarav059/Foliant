@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "{n|other:# ページ}にタグを付けました。見出し、段落、リスト、リンク、フォームフィールドをタグ付けし、言語とタイトルを設定しました。",
   "res.taggedFigures": "{n|other:# 個}の画像にまだ説明（代替テキスト）が必要です。",
   "res.tagKept": "この PDF にはすでにタグが付いていたため、タグはそのまま残しました。言語、タイトル、PDF/UA の表示を設定しました。",
+  "nav.home": "ホーム",
+  "nav.breadcrumb": "パンくずリスト",
+  "ws.moveItem": "{name} を移動",
+  "ws.filesHeading": "{n|other:# 個のファイルを追加しました}",
+  "ed.bold": "太字",
+  "color.black": "黒",
+  "color.red": "赤",
+  "color.blue": "青",
+  "color.green": "緑",
+  "color.orange": "オレンジ",
+  "color.purple": "紫",
+  "color.white": "白",
+  "color.custom": "カスタムカラー",
 };
 
 export default d;

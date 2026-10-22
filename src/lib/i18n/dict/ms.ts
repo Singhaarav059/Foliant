@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "{n|other:# halaman} ditag: tajuk, perenggan, senarai, pautan dan medan borang, dengan bahasa dan tajuk dokumen ditetapkan.",
   "res.taggedFigures": "{n|other:# gambar} masih memerlukan penerangan (teks alt).",
   "res.tagKept": "PDF ini sudah bertag, jadi tagnya dikekalkan; bahasa, tajuk dan tanda PDF/UA telah ditetapkan.",
+  "nav.home": "Laman utama",
+  "nav.breadcrumb": "Serbuk roti",
+  "ws.moveItem": "Alihkan {name}",
+  "ws.filesHeading": "{n|other:# fail ditambah}",
+  "ed.bold": "Tebal",
+  "color.black": "Hitam",
+  "color.red": "Merah",
+  "color.blue": "Biru",
+  "color.green": "Hijau",
+  "color.orange": "Oren",
+  "color.purple": "Ungu",
+  "color.white": "Putih",
+  "color.custom": "Warna tersuai",
 };
 
 export default d;

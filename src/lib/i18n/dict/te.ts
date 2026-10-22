@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "{n|one:# పేజీ ట్యాగ్ చేయబడింది|other:# పేజీలు ట్యాగ్ చేయబడ్డాయి}: హెడింగ్‌లు, పేరాలు, జాబితాలు, లింక్‌లు, ఫారమ్ ఫీల్డ్‌లు; భాష, టైటిల్ సెట్ చేయబడ్డాయి.",
   "res.taggedFigures": "{n|one:# చిత్రానికి|other:# చిత్రాలకు} ఇంకా వివరణ (alt టెక్స్ట్) అవసరం.",
   "res.tagKept": "ఈ PDF ఇప్పటికే ట్యాగ్ చేయబడి ఉంది, కాబట్టి దాని ట్యాగ్‌లు ఉంచబడ్డాయి; భాష, టైటిల్, PDF/UA గుర్తులు సెట్ చేయబడ్డాయి.",
+  "nav.home": "హోమ్",
+  "nav.breadcrumb": "బ్రెడ్‌క్రంబ్",
+  "ws.moveItem": "{name}ను తరలించు",
+  "ws.filesHeading": "{n|one:# ఫైల్ జోడించబడింది|other:# ఫైల్‌లు జోడించబడ్డాయి}",
+  "ed.bold": "బోల్డ్",
+  "color.black": "నలుపు",
+  "color.red": "ఎరుపు",
+  "color.blue": "నీలం",
+  "color.green": "ఆకుపచ్చ",
+  "color.orange": "నారింజ",
+  "color.purple": "ఊదా",
+  "color.white": "తెలుపు",
+  "color.custom": "అనుకూల రంగు",
 };
 
 export default d;

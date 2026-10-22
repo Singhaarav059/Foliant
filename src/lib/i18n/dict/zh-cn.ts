@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "已为 {n|other:# 页}添加标签：标题、段落、列表、链接和表单字段，并设置了语言和标题。",
   "res.taggedFigures": "还有 {n|other:# 张}图片需要描述（替代文字）。",
   "res.tagKept": "此 PDF 已有标签，因此保留了原有标签；已设置语言、标题和 PDF/UA 标识。",
+  "nav.home": "首页",
+  "nav.breadcrumb": "面包屑导航",
+  "ws.moveItem": "移动 {name}",
+  "ws.filesHeading": "{n|other:已添加 # 个文件}",
+  "ed.bold": "粗体",
+  "color.black": "黑色",
+  "color.red": "红色",
+  "color.blue": "蓝色",
+  "color.green": "绿色",
+  "color.orange": "橙色",
+  "color.purple": "紫色",
+  "color.white": "白色",
+  "color.custom": "自定义颜色",
 };
 
 export default d;

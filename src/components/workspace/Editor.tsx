@@ -1,5 +1,6 @@
 "use client";
 
+import { colorKey } from "@/lib/colors";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   MousePointer2, Type, ImagePlus, Square, Circle, Minus, Pencil, Highlighter, Eraser, Undo2, Redo2, Trash2,
@@ -988,7 +989,7 @@ export function Editor({
           <div className="space-y-3">
             <div className="flex flex-wrap gap-1.5">
               {COLORS.map((c) => (
-                <button key={c} aria-label={c} aria-pressed={(selected?.color ?? style.color) === c}
+                <button key={c} aria-label={t(colorKey(c))} aria-pressed={(selected?.color ?? style.color) === c}
                   onClick={() => { setStyle((s) => ({ ...s, color: c })); if (selected) patch(selected.id, { color: c }); }}
                   className="h-7 w-7 rounded-full border border-line ring-offset-2 ring-offset-[var(--surface)] aria-pressed:ring-2 aria-pressed:ring-[var(--ink)]" style={{ background: c }} />
               ))}
@@ -1000,7 +1001,7 @@ export function Editor({
                   <input type="number" min={6} max={96} className="field h-9 w-20" value={selected?.fontSize ?? style.fontSize}
                     onChange={(e) => { const v = Math.max(6, Math.min(96, Number(e.target.value) || 12)); setStyle((s) => ({ ...s, fontSize: v })); if (selected) patch(selected.id, { fontSize: v }); }} />
                 </label>
-                <button className="icon-btn border border-line" aria-pressed={selected?.bold ?? style.bold} aria-label="Bold"
+                <button className="icon-btn border border-line" aria-pressed={selected?.bold ?? style.bold} aria-label={t("ed.bold")}
                   onClick={() => { const b = !(selected?.bold ?? style.bold); setStyle((s) => ({ ...s, bold: b })); if (selected) patch(selected.id, { bold: b }); }}>
                   <Bold size={16} />
                 </button>

@@ -113,7 +113,7 @@ function ToolPage({ tool, t, lang }: { tool: Tool; t: Dict; lang: Locale }) {
   return (
     <div className="mx-auto max-w-[1240px] px-4 sm:px-6">
       <header className="mx-auto flex max-w-[760px] flex-col items-center pb-10 pt-12 text-center sm:pt-16">
-        <nav aria-label="Breadcrumb" className="eyebrow flex items-center gap-2">
+        <nav aria-label={t["nav.breadcrumb"]} className="eyebrow flex items-center gap-2">
           <Link href={`/${lang}`} className="transition-colors hover:text-ink">{t["nav.allTools"]}</Link>
           <span aria-hidden className="text-line-strong">/</span>
           <span>{k(`cat.${tool.category}`)}</span>
@@ -161,7 +161,7 @@ function IntentPage({ intent, t, lang }: { intent: Intent; t: Dict; lang: Locale
   const k = (s: string) => t[s as DictKey];
   return (
     <div className="mx-auto max-w-[960px] px-4 pb-10 pt-12 sm:px-6 sm:pt-16">
-      <nav aria-label="Breadcrumb" className="eyebrow">
+      <nav aria-label={t["nav.breadcrumb"]} className="eyebrow">
         <Link href={`/${lang}`} className="transition-colors hover:text-ink">{t["nav.allTools"]}</Link>
       </nav>
       <h1 className="mt-5 text-balance text-[2.4rem] font-semibold leading-[1.05] tracking-[-0.04em] sm:text-[3rem]">{intent.title[lang]}</h1>

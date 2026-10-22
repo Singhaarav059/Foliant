@@ -1,5 +1,6 @@
 "use client";
 
+import { colorKey } from "@/lib/colors";
 import { useId, useRef, useState } from "react";
 import { Eye, EyeOff, ImagePlus, Sparkles, X } from "lucide-react";
 import { passwordStrength, suggestPassword } from "@/lib/pdf/password";
@@ -22,6 +23,9 @@ export function Options({
       {visible.map((d) => {
         const id = `${uid}-${d.key}`;
         const label = t(`opt.${d.key}`);
+        // A short choice list shows as radio buttons, named by the label above them.
+        const asGroup = d.type === "select" && d.choices.length <= 3 && d.choices.every((c) => (t(`choice.${d.key}.${c}`)).length < 60) &&
+          !["dpi", "pdfaDpi", "redactDpi", "rotation", "screenWidth"].includes(d.key);
         const value = values[d.key];
         if (d.type === "toggle") {
           return (
@@ -37,14 +41,14 @@ export function Options({
         }
         return (
           <div key={d.key}>
-            <label id={`${id}-label`} htmlFor={id} className="mb-1.5 flex items-baseline justify-between text-[13px] font-medium text-ink-2">
+            <label id={`${id}-label`} htmlFor={asGroup || d.type === "position" ? undefined : id} className="mb-1.5 flex items-baseline justify-between text-[13px] font-medium text-ink-2">
               {label}
               {d.type === "range" && <span className="tabular font-normal text-muted">{String(value)}{d.unit}</span>}
             </label>
             {d.type === "select" && (
-              d.choices.length <= 3 && d.choices.every((c) => (t(`choice.${d.key}.${c}`)).length < 60) && !["dpi", "pdfaDpi", "redactDpi", "rotation", "screenWidth"].includes(d.key) ? (
-                <div role="radiogroup" className="grid gap-1.5">
-                  {d.choices.map((c) => {
+              asGroup ? (
+                <div role="radiogroup" aria-labelledby={`${id}-label`} className="grid gap-1.5" onKeyDown={(e) => radioKeys(e, d.choices, String(value), (c) => onChange(d.key, c))}>
+                  {d.choices.map((c, i) => {
                     const on = value === c;
                     // "Title: description". Chinese and Japanese strings use the fullwidth colon.
                     const full = tOr(`choice.${d.key}.${c}`, c);
@@ -56,6 +60,7 @@ export function Options({
                         key={c}
                         role="radio"
                         aria-checked={on}
+                        tabIndex={on || (i === 0 && !d.choices.includes(String(value))) ? 0 : -1}
                         onClick={() => onChange(d.key, c)}
                         className={`rounded-lg border px-3 py-2.5 text-start text-[14px] transition-colors ${on ? "border-brand bg-[color-mix(in_oklab,var(--brand)_8%,var(--surface))]" : "border-line hover:border-line-strong"}`}
                       >
@@ -127,7 +132,7 @@ export function Options({
                 {["#1f2937", "#d33f6a", "#2f6fed", "#12a37f", "#e2662b", "#7b4fe0"].map((c) => (
                   <button
                     key={c}
-                    aria-label={c}
+                    aria-label={t(colorKey(c))}
                     aria-pressed={value === c}
                     onClick={() => onChange(d.key, c)}
                     className="h-8 w-8 rounded-full ring-offset-2 ring-offset-[var(--surface)] aria-pressed:ring-2 aria-pressed:ring-[var(--ink)]"
@@ -138,15 +143,14 @@ export function Options({
               </div>
             )}
             {d.type === "position" && (
-              <div className={`grid w-[156px] gap-1.5 ${d.grid === 9 ? "grid-cols-3" : "grid-cols-3"}`} role="radiogroup" aria-label={label}>
-                {(d.grid === 9
-                  ? ["top-left", "top-center", "top-right", "middle-left", "middle-center", "middle-right", "bottom-left", "bottom-center", "bottom-right"]
-                  : ["top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right"]
-                ).map((p, i) => (
+              <div className={`grid w-[156px] gap-1.5 ${d.grid === 9 ? "grid-cols-3" : "grid-cols-3"}`} role="radiogroup" aria-labelledby={`${id}-label`}
+                onKeyDown={(e) => radioKeys(e, positions(d.grid), String(value), (p) => onChange(d.key, p))}>
+                {positions(d.grid).map((p, i) => (
                   <button
                     key={p}
                     role="radio"
                     aria-checked={value === p}
+                    tabIndex={value === p ? 0 : -1}
                     aria-label={t(`pos.${p}`)}
                     title={t(`pos.${p}`)}
                     onClick={() => onChange(d.key, p)}
@@ -241,4 +245,21 @@ function PasswordOption({ id, value, onChange }: { id: string; value: string; on
       {suggested && suggested === value && <p className="mt-2 text-[13px] text-muted">{t("pw.suggested")}</p>}
     </div>
   );
+}
+
+const positions = (grid?: number) => grid === 9
+  ? ["top-left", "top-center", "top-right", "middle-left", "middle-center", "middle-right", "bottom-left", "bottom-center", "bottom-right"]
+  : ["top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right"];
+
+// Arrow keys move the choice within a radio group, and focus with it (one tab
+// stop per group, as WAI-ARIA's radio group pattern has it). Right and Down
+// go to the next choice, Left and Up to the previous; Home and End to the ends.
+function radioKeys(e: React.KeyboardEvent<HTMLElement>, choices: string[], value: string, set: (c: string) => void) {
+  const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+  const at = Math.max(0, choices.indexOf(value));
+  const next = e.key === "Home" ? 0 : e.key === "End" ? choices.length - 1 : step ? (at + step + choices.length) % choices.length : -1;
+  if (next < 0) return;
+  e.preventDefault();
+  set(choices[next]);
+  (e.currentTarget.querySelectorAll<HTMLElement>("[role=radio]")[next])?.focus();
 }

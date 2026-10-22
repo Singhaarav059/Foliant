@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "{n|one:# صفحہ ٹیگ کیا گیا|other:# صفحات ٹیگ کیے گئے}: سرخیاں، پیراگراف، فہرستیں، لنکس اور فارم فیلڈز، زبان اور عنوان سیٹ کرنے کے ساتھ۔",
   "res.taggedFigures": "{n|one:# تصویر کو|other:# تصاویر کو} ابھی وضاحت (alt ٹیکسٹ) کی ضرورت ہے۔",
   "res.tagKept": "یہ PDF پہلے سے ٹیگ شدہ تھی، اس لیے اس کے ٹیگز برقرار رکھے گئے؛ زبان، عنوان اور PDF/UA کے نشانات سیٹ کر دیے گئے۔",
+  "nav.home": "ہوم",
+  "nav.breadcrumb": "بریڈکرمب",
+  "ws.moveItem": "{name} منتقل کریں",
+  "ws.filesHeading": "{n|one:# فائل شامل کی گئی|other:# فائلیں شامل کی گئیں}",
+  "ed.bold": "بولڈ",
+  "color.black": "سیاہ",
+  "color.red": "سرخ",
+  "color.blue": "نیلا",
+  "color.green": "سبز",
+  "color.orange": "نارنجی",
+  "color.purple": "جامنی",
+  "color.white": "سفید",
+  "color.custom": "حسب ضرورت رنگ",
 };
 
 export default d;

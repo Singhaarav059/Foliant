@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "{n|one:# sayfa etiketlendi|other:# sayfa etiketlendi}: başlıklar, paragraflar, listeler, bağlantılar ve form alanları; dil ve başlık ayarlandı.",
   "res.taggedFigures": "{n|one:# resim hâlâ|other:# resim hâlâ} açıklamaya (alternatif metin) ihtiyaç duyuyor.",
   "res.tagKept": "Bu PDF zaten etiketliydi, bu yüzden etiketleri korundu; dil, başlık ve PDF/UA işaretleri ayarlandı.",
+  "nav.home": "Ana sayfa",
+  "nav.breadcrumb": "İçerik haritası",
+  "ws.moveItem": "{name} öğesini taşı",
+  "ws.filesHeading": "{n|one:# dosya eklendi|other:# dosya eklendi}",
+  "ed.bold": "Kalın",
+  "color.black": "Siyah",
+  "color.red": "Kırmızı",
+  "color.blue": "Mavi",
+  "color.green": "Yeşil",
+  "color.orange": "Turuncu",
+  "color.purple": "Mor",
+  "color.white": "Beyaz",
+  "color.custom": "Özel renk",
 };
 
 export default d;

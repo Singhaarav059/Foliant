@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "{n|one:# sida|other:# sidor} taggades: rubriker, stycken, listor, länkar och formulärfält, med språk och titel angivna.",
   "res.taggedFigures": "{n|one:# bild behöver|other:# bilder behöver} fortfarande en beskrivning (alternativtext).",
   "res.tagKept": "PDF-filen var redan taggad, så dess taggar behölls; språk, titel och PDF/UA-märkning angavs.",
+  "nav.home": "Startsida",
+  "nav.breadcrumb": "Brödsmulor",
+  "ws.moveItem": "Flytta {name}",
+  "ws.filesHeading": "{n|one:# fil tillagd|other:# filer tillagda}",
+  "ed.bold": "Fetstil",
+  "color.black": "Svart",
+  "color.red": "Röd",
+  "color.blue": "Blå",
+  "color.green": "Grön",
+  "color.orange": "Orange",
+  "color.purple": "Lila",
+  "color.white": "Vit",
+  "color.custom": "Anpassad färg",
 };
 
 export default d;

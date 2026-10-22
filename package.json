@@ -97,6 +97,7 @@
     "test:e2e:textedit": "node tests/e2e/textedit.mjs",
     "test:e2e:preview": "node tests/e2e/preview.mjs",
     "test:e2e:listen": "node tests/e2e/listen.mjs",
+    "test:e2e:a11y": "node tests/e2e/a11y.mjs",
     "test:e2e:csp": "node tests/e2e/csp.mjs",
     "test:e2e:promise": "node tests/e2e/promise.mjs",
     "test:ai": "node tests/ai.mjs",

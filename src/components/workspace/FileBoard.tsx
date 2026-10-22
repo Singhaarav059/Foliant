@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent,
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowDownAZ, FileSpreadsheet, FileText, Presentation, X, Globe } from "lucide-react";
+import { ArrowDownAZ, FileSpreadsheet, FileText, GripVertical, Presentation, X, Globe } from "lucide-react";
 import { PdfThumb } from "../PdfThumb";
 import { useI18n } from "../I18n";
 import { fileExt, humanSize } from "@/lib/pdf/common";
@@ -49,15 +49,22 @@ function Pages({ file }: { file: File }) {
 
 function Card({ item, onRemove, sortable }: { item: Item; onRemove: () => void; sortable: boolean }) {
   const { t } = useI18n();
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id, disabled: !sortable });
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: item.id, disabled: !sortable });
+  // The card drags from anywhere; for the keyboard it's the handle that is the
+  // sortable button, so no control sits inside another.
   return (
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 10 : undefined }}
       className={`group relative flex w-[164px] flex-col items-center rounded-xl border bg-surface p-4 transition-[border-color,box-shadow] ${isDragging ? "border-brand shadow-card" : "border-line"} ${sortable ? "cursor-grab touch-none active:cursor-grabbing" : ""}`}
-      {...attributes}
-      {...listeners}
+      {...(sortable ? listeners : {})}
     >
+      {sortable && (
+        <button ref={setActivatorNodeRef} {...attributes} aria-label={t("ws.moveItem", { name: item.file.name })}
+          className="absolute start-2 top-2 z-10 grid h-7 w-7 place-items-center rounded-md text-muted hover:text-ink">
+          <GripVertical size={15} />
+        </button>
+      )}
       <button
         aria-label={`${t("ws.remove")} ${item.file.name}`}
         onPointerDown={(e) => e.stopPropagation()}
@@ -86,12 +93,17 @@ export function FileBoard({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const ids = useMemo(() => items.map((i) => i.id), [items]);
+  // When files are added or removed, focus goes to the board's (hidden) heading,
+  // which says how many there are, rather than falling back to the page.
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => heading.current?.focus(), [items.length]);
   const onDragEnd = (e: DragEndEvent) => {
     if (!e.over || e.active.id === e.over.id) return;
     onChange(arrayMove(items, ids.indexOf(String(e.active.id)), ids.indexOf(String(e.over.id))));
   };
   return (
     <div>
+      <h2 ref={heading} tabIndex={-1} data-files-heading className="sr-only">{t("ws.filesHeading", { n: items.length })}</h2>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {children}
         {sortable && items.length > 1 && (

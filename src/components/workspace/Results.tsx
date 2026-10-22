@@ -46,6 +46,10 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
   // Summaries are read on the page; downloading is the user's choice.
   const summary = tool.id === "summarize";
 
+  // Focus moves to the heading, so keyboard and screen-reader users land on the result.
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => heading.current?.focus(), []);
+
   // Single file: start the download right away, like users expect.
   const autoSaved = useRef<Output[] | null>(null);
   useEffect(() => {
@@ -76,11 +80,11 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
     : null;
 
   return (
-    <div className="rise mx-auto max-w-[760px] text-center">
+    <div className="rise mx-auto max-w-[760px] text-center" role="status">
       <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-[color-mix(in_oklab,var(--success)_14%,var(--surface))] text-success">
         <Check size={20} strokeWidth={2.25} />
       </span>
-      <h2 className="mt-5 text-[1.75rem] font-semibold tracking-[-0.035em]">
+      <h2 ref={heading} tabIndex={-1} data-result className="mt-5 text-[1.75rem] font-semibold tracking-[-0.035em] outline-none">
         {summary ? t(outputs.length > 1 ? "res.summaryTitlePlural" : "res.summaryTitle") : outputs.length > 1 ? t("res.doneTitlePlural") : t("res.doneTitle")}
       </h2>
       {saved && (

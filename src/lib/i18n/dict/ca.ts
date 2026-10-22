@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "{n|one:S’ha etiquetat # pàgina|other:S’han etiquetat # pàgines}: títols, paràgrafs, llistes, enllaços i camps de formulari, amb la llengua i el títol establerts.",
   "res.taggedFigures": "{n|one:# imatge encara necessita|other:# imatges encara necessiten} una descripció (text alternatiu).",
   "res.tagKept": "Aquest PDF ja estava etiquetat, així que s’han conservat les etiquetes; s’han establert la llengua, el títol i les marques de PDF/UA.",
+  "nav.home": "Inici",
+  "nav.breadcrumb": "Ruta de navegació",
+  "ws.moveItem": "Mou {name}",
+  "ws.filesHeading": "{n|one:# fitxer afegit|many:# de fitxers afegits|other:# fitxers afegits}",
+  "ed.bold": "Negreta",
+  "color.black": "Negre",
+  "color.red": "Vermell",
+  "color.blue": "Blau",
+  "color.green": "Verd",
+  "color.orange": "Taronja",
+  "color.purple": "Lila",
+  "color.white": "Blanc",
+  "color.custom": "Color personalitzat",
 };
 
 export default d;

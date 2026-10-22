@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "已為 {n|other:# 頁}加上標記：標題、段落、清單、連結和表單欄位，並設定了語言和標題。",
   "res.taggedFigures": "還有 {n|other:# 張}圖片需要描述（替代文字）。",
   "res.tagKept": "這份 PDF 已有標記，因此保留了原有標記；已設定語言、標題和 PDF/UA 標示。",
+  "nav.home": "首頁",
+  "nav.breadcrumb": "導覽路徑",
+  "ws.moveItem": "移動 {name}",
+  "ws.filesHeading": "{n|other:已新增 # 個檔案}",
+  "ed.bold": "粗體",
+  "color.black": "黑色",
+  "color.red": "紅色",
+  "color.blue": "藍色",
+  "color.green": "綠色",
+  "color.orange": "橙色",
+  "color.purple": "紫色",
+  "color.white": "白色",
+  "color.custom": "自訂顏色",
 };
 
 export default d;

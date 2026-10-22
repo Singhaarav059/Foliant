@@ -65,7 +65,7 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-[color-mix(in_oklab,var(--bg)_86%,transparent)] backdrop-blur-md backdrop-saturate-150">
       <div className="mx-auto flex h-16 max-w-[1240px] items-center gap-2 px-4 sm:px-6">
-        <Link href={href("/")} className="me-4 rounded-md" aria-label="Home">
+        <Link href={href("/")} className="me-4 rounded-md" aria-label={t("nav.home")}>
           <Logo />
         </Link>
 

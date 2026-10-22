@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "ใส่แท็กแล้ว {n|other:# หน้า}: หัวข้อ ย่อหน้า รายการ ลิงก์ และช่องฟอร์ม พร้อมตั้งค่าภาษาและชื่อเรื่อง",
   "res.taggedFigures": "ยังมีรูปภาพ {n|other:# รูป} ที่ต้องมีคำอธิบาย (ข้อความแสดงแทน)",
   "res.tagKept": "PDF นี้มีแท็กอยู่แล้ว จึงคงแท็กเดิมไว้ และตั้งค่าภาษา ชื่อเรื่อง และเครื่องหมาย PDF/UA แล้ว",
+  "nav.home": "หน้าแรก",
+  "nav.breadcrumb": "เส้นทางนำทาง",
+  "ws.moveItem": "ย้าย {name}",
+  "ws.filesHeading": "{n|other:เพิ่มไฟล์แล้ว # ไฟล์}",
+  "ed.bold": "ตัวหนา",
+  "color.black": "ดำ",
+  "color.red": "แดง",
+  "color.blue": "น้ำเงิน",
+  "color.green": "เขียว",
+  "color.orange": "ส้ม",
+  "color.purple": "ม่วง",
+  "color.white": "ขาว",
+  "color.custom": "สีที่กำหนดเอง",
 };
 
 export default d;

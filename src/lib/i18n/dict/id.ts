@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "{n|other:# halaman} diberi tag: judul, paragraf, daftar, tautan, dan kolom formulir, dengan bahasa dan judul dokumen diatur.",
   "res.taggedFigures": "{n|other:# gambar} masih memerlukan deskripsi (teks alt).",
   "res.tagKept": "PDF ini sudah bertag, jadi tag-nya dipertahankan; bahasa, judul, dan penanda PDF/UA telah diatur.",
+  "nav.home": "Beranda",
+  "nav.breadcrumb": "Breadcrumb",
+  "ws.moveItem": "Pindahkan {name}",
+  "ws.filesHeading": "{n|other:# file ditambahkan}",
+  "ed.bold": "Tebal",
+  "color.black": "Hitam",
+  "color.red": "Merah",
+  "color.blue": "Biru",
+  "color.green": "Hijau",
+  "color.orange": "Oranye",
+  "color.purple": "Ungu",
+  "color.white": "Putih",
+  "color.custom": "Warna khusus",
 };
 
 export default d;

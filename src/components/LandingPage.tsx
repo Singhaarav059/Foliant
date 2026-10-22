@@ -27,7 +27,7 @@ export function LandingPage({ intent, t, lang }: { intent: Landing; t: Dict; lan
   return (
     <div className="mx-auto max-w-[1240px] px-4 sm:px-6">
       <header className="mx-auto flex max-w-[760px] flex-col items-center pb-10 pt-12 text-center sm:pt-16">
-        <nav aria-label="Breadcrumb" className="eyebrow flex items-center gap-2">
+        <nav aria-label={t["nav.breadcrumb"]} className="eyebrow flex items-center gap-2">
           <Link href={`/${lang}`} className="transition-colors hover:text-ink">{t["nav.allTools"]}</Link>
           <span aria-hidden className="text-line-strong">/</span>
           <Link href={pageUrl(lang, `/${tool.slug}`)} className="transition-colors hover:text-ink">{t[`tool.${tool.id}.name` as DictKey]}</Link>

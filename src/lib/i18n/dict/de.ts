@@ -2001,6 +2001,19 @@ const d: { [K in DictKey]?: string } = {
   "res.tagged": "{n|one:# Seite|other:# Seiten} getaggt: Überschriften, Absätze, Listen, Links und Formularfelder, mit gesetzter Sprache und gesetztem Titel.",
   "res.taggedFigures": "{n|one:# Bild braucht|other:# Bilder brauchen} noch eine Beschreibung (Alternativtext).",
   "res.tagKept": "Diese PDF war bereits getaggt, daher wurden ihre Tags beibehalten; Sprache, Titel und PDF/UA-Kennzeichnung wurden gesetzt.",
+  "nav.home": "Startseite",
+  "nav.breadcrumb": "Brotkrümelnavigation",
+  "ws.moveItem": "{name} verschieben",
+  "ws.filesHeading": "{n|one:# Datei hinzugefügt|other:# Dateien hinzugefügt}",
+  "ed.bold": "Fett",
+  "color.black": "Schwarz",
+  "color.red": "Rot",
+  "color.blue": "Blau",
+  "color.green": "Grün",
+  "color.orange": "Orange",
+  "color.purple": "Lila",
+  "color.white": "Weiß",
+  "color.custom": "Eigene Farbe",
 };
 
 export default d;
