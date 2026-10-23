@@ -55,49 +55,48 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-[color-mix(in_oklab,var(--bg)_86%,transparent)] backdrop-blur-md backdrop-saturate-150">
+    <header className="header-scroll sticky top-0 z-40 border-b border-line bg-[color-mix(in_oklab,var(--bg)_82%,transparent)] backdrop-blur-[14px] backdrop-saturate-150">
       <div className="mx-auto flex h-16 max-w-[1240px] items-center gap-2 px-4 sm:px-6">
-        <Link href={href("/")} className="me-4 rounded-md" aria-label={t("nav.home")}>
+        <Link href={href("/")} className="me-6 rounded-md" aria-label={t("nav.home")}>
           <Logo />
         </Link>
 
-        <nav className="hidden items-center gap-0.5 md:flex">
+        <nav className="hidden items-center gap-5 md:flex">
           <div ref={toolsRef} className="relative">
             <button
-              className="btn btn-sm btn-ghost gap-1 aria-expanded:bg-surface-2 aria-expanded:text-ink"
+              className="link-u inline-flex items-center gap-1 py-1 text-[14px] text-ink-2 transition-colors hover:text-ink aria-expanded:bg-[length:100%_1px] aria-expanded:text-ink"
               aria-expanded={menu === "tools"}
               onClick={() => setMenu(menu === "tools" ? null : "tools")}
             >
               {t("nav.allTools")}
-              <ChevronDown size={14} strokeWidth={2} className={`text-muted transition-transform duration-200 ${menu === "tools" ? "rotate-180" : ""}`} />
+              <ChevronDown size={14} strokeWidth={2} className={`text-muted transition-transform duration-300 ease-(--ease-spring) ${menu === "tools" ? "rotate-180" : ""}`} />
             </button>
             {menu === "tools" && (
-              <div className="rise fixed inset-x-0 top-[72px] mx-auto max-w-[1200px] px-4 sm:px-6">
-                <div className="card grid max-h-[75vh] grid-cols-3 gap-x-8 gap-y-7 overflow-auto p-7 shadow-card lg:grid-cols-6">
-                  {CATEGORIES.map((c) => (
-                    <div key={c.id}>
-                      <p className="mb-2.5 text-[13px] text-muted">
-                        {t(`cat.${c.id}`)}
+              <div className="fixed inset-x-0 top-[72px] mx-auto max-w-[1200px] px-4 sm:px-6">
+                <div className="unfold card grid max-h-[75vh] grid-cols-3 gap-x-8 gap-y-8 overflow-auto p-8 shadow-lift lg:grid-cols-6">
+                  {CATEGORIES.map((c, ci) => (
+                    <div key={c.id} className="stagger">
+                      <p className="mb-3 flex items-baseline gap-2" style={{ "--i": ci } as React.CSSProperties}>
+                        <span className="eyebrow text-accent">{String(ci + 1).padStart(2, "0")}</span>
+                        <span className="font-display text-[1.3rem] leading-none tracking-[-0.01em]">{t(`cat.${c.id}`)}</span>
                       </p>
-                      <ul className="space-y-0.5">
-                        {TOOLS.filter((x) => x.category === c.id).map((tool) => (
-                          <li key={tool.id}>
-                            <Link
-                              href={href(`/${tool.slug}`)}
-                              className="-mx-2 block rounded-md px-2 py-1.5 text-[14px] text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink"
-                            >
-                              {t(`tool.${tool.id}.name`)}
-                            </Link>
-                          </li>
-                        ))}
-                      </ul>
+                      {TOOLS.filter((x) => x.category === c.id).map((tool, i) => (
+                        <Link
+                          key={tool.id}
+                          href={href(`/${tool.slug}`)}
+                          style={{ "--i": ci + i * 0.6 } as React.CSSProperties}
+                          className="-mx-2 block rounded-lg px-2 py-1.5 text-[14px] text-ink-2 transition-[background-color,color,translate] duration-300 ease-(--ease-out) hover:translate-x-0.5 hover:bg-surface-2 hover:text-ink rtl:hover:-translate-x-0.5"
+                        >
+                          {t(`tool.${tool.id}.name`)}
+                        </Link>
+                      ))}
                     </div>
                   ))}
                 </div>
               </div>
             )}
           </div>
-          <Link href={href("/workflows")} aria-current={pathname.endsWith("/workflows") ? "page" : undefined} className="btn btn-sm btn-ghost aria-[current]:text-ink">
+          <Link href={href("/workflows")} aria-current={pathname.endsWith("/workflows") ? "page" : undefined} className="link-u py-1 text-[14px] text-ink-2 transition-colors hover:text-ink aria-[current]:text-ink">
             {t("nav.workflows")}
           </Link>
         </nav>
@@ -105,7 +104,7 @@ export function Header() {
         <div className="ms-auto flex items-center gap-1">
           <div ref={langRef} className="relative hidden sm:block">
             <button
-              className="icon-btn h-9 w-auto gap-1.5 px-2.5 text-[13px] aria-expanded:bg-surface-2"
+              className="icon-btn h-9 w-auto gap-1.5 px-3 text-[13px] aria-expanded:bg-surface-2"
               aria-label={t("nav.language")}
               aria-expanded={menu === "lang"}
               onClick={() => setMenu(menu === "lang" ? null : "lang")}
@@ -114,7 +113,7 @@ export function Header() {
               <span className="font-mono uppercase">{locale === "zh-cn" ? "简" : locale === "zh-tw" ? "繁" : locale}</span>
             </button>
             {menu === "lang" && (
-              <div className="rise absolute end-0 top-11 card grid w-[420px] grid-cols-2 gap-0.5 p-1.5 shadow-card">
+              <div className="unfold absolute end-0 top-11 card grid w-[420px] grid-cols-2 gap-0.5 p-1.5 shadow-lift">
                 {/* Plain links to this page in each language: they work without
                     scripts, open in a new tab, and a language change loads a
                     new root layout (<html lang>) anyway. */}
@@ -126,7 +125,7 @@ export function Header() {
                     lang={l.code}
                     aria-current={l.code === locale ? "true" : undefined}
                     onClick={close}
-                    className={`rounded-md px-3 py-1.5 text-start text-[14px] hover:bg-surface-2 ${l.code === locale ? "bg-surface-2 font-medium text-ink" : "text-ink-2"}`}
+                    className={`rounded-lg px-3 py-1.5 text-start text-[14px] transition-colors hover:bg-surface-2 ${l.code === locale ? "bg-surface-2 font-medium text-ink" : "text-ink-2"}`}
                   >
                     {l.name}
                   </a>
@@ -142,7 +141,7 @@ export function Header() {
       </div>
 
       {menu === "mobile" && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-bg md:hidden" role="dialog" aria-modal>
+        <div className="rise fixed inset-0 z-50 flex flex-col bg-bg md:hidden" role="dialog" aria-modal>
           <div className="flex h-16 items-center justify-between border-b border-line px-4">
             <Logo />
             <button className="icon-btn" aria-label={t("nav.close")} onClick={close}>
@@ -153,9 +152,12 @@ export function Header() {
             <div className="mb-6 flex gap-2">
               <Link href={href("/workflows")} className="btn btn-quiet btn-sm flex-1">{t("nav.workflows")}</Link>
             </div>
-            {CATEGORIES.map((c) => (
-              <div key={c.id} className="mb-7">
-                <p className="eyebrow mb-1">{t(`cat.${c.id}`)}</p>
+            {CATEGORIES.map((c, ci) => (
+              <div key={c.id} className="stagger mb-8" style={{ "--i": ci } as React.CSSProperties}>
+                <p className="mb-1 flex items-baseline gap-2">
+                  <span className="eyebrow text-accent">{String(ci + 1).padStart(2, "0")}</span>
+                  <span className="font-display text-[1.6rem] leading-tight">{t(`cat.${c.id}`)}</span>
+                </p>
                 <ul>
                   {TOOLS.filter((x) => x.category === c.id).map((tool) => (
                     <li key={tool.id}>

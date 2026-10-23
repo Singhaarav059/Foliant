@@ -8,6 +8,7 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { ServiceWorker } from "@/components/ServiceWorker";
 import { ExtensionHandoff } from "@/components/ExtensionHandoff";
+import { PointerLight } from "@/components/PointerLight";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { hasLocale, isRtl, LOCALE_CODES } from "@/lib/i18n/locales";
 import { BRAND, SITE_URL } from "@/lib/brand";
@@ -40,8 +41,8 @@ export async function generateMetadata({ params }: LayoutProps<"/[lang]">): Prom
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f7f7f5" },
-    { media: "(prefers-color-scheme: dark)", color: "#121211" },
+    { media: "(prefers-color-scheme: light)", color: "#f3f0e8" },
+    { media: "(prefers-color-scheme: dark)", color: "#110f0c" },
   ],
 };
 
@@ -63,6 +64,7 @@ export default async function RootLayout({ children, params }: LayoutProps<"/[la
           </main>
           <Footer />
           <ServiceWorker />
+          <PointerLight />
         </I18nProvider>
       </body>
     </html>

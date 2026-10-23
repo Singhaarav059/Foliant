@@ -113,13 +113,26 @@ export function Dropzone({ tool, onFiles, compact = false, over = false }: { too
   return (
     <div
       data-over={over || undefined}
-      className="dropzone relative mx-auto flex max-w-[760px] flex-col items-center rounded-2xl border border-dashed border-line-strong bg-surface px-4 py-16 text-center transition-[border-color,background-color] duration-200 data-[over]:border-solid data-[over]:border-ink sm:px-6 sm:py-24"
+      className="dropzone group/drop relative mx-auto flex max-w-[780px] flex-col items-center rounded-[28px] bg-surface px-4 py-16 text-center shadow-card transition-[background-color,box-shadow,scale] duration-500 ease-(--ease-out) data-[over]:scale-[1.015] data-[over]:shadow-lift sm:px-6 sm:py-24"
     >
+      <svg aria-hidden className="dropzone-edge pointer-events-none absolute inset-0 h-full w-full overflow-visible">
+        <rect width="100%" height="100%" rx="28" fill="none" stroke="var(--line-strong)" strokeWidth="1" />
+      </svg>
+      {/* Two sheets that lift apart while files are dragged over. */}
+      <div aria-hidden className="relative mb-9 h-16 w-12">
+        <span className="absolute inset-0 rounded-[4px] border border-line-strong bg-bg transition-transform duration-700 ease-(--ease-spring) -rotate-6 group-hover/drop:-translate-x-1.5 group-hover/drop:-rotate-12 group-data-[over]/drop:-translate-x-4 group-data-[over]/drop:-rotate-[18deg]" />
+        <span className="absolute inset-0 overflow-hidden rounded-[4px] border border-line-strong bg-surface transition-transform duration-700 ease-(--ease-spring) rotate-3 group-hover/drop:translate-x-1.5 group-hover/drop:rotate-6 group-data-[over]/drop:-translate-y-3 group-data-[over]/drop:translate-x-4 group-data-[over]/drop:rotate-12">
+          <span className="absolute end-0 top-0 h-3.5 w-3.5 bg-accent [clip-path:polygon(0_0,100%_100%,0_100%)]" />
+          <span className="absolute inset-x-2 top-5 h-px bg-line-strong" />
+          <span className="absolute inset-x-2 top-7 h-px bg-line-strong" />
+          <span className="absolute start-2 end-4 top-9 h-px bg-line-strong" />
+        </span>
+      </div>
       <label className={`btn btn-lg btn-primary max-w-full whitespace-normal ${focus}`}>
         {picker}
         <Upload size={18} strokeWidth={1.75} /> {tool.multiple ? t("ws.select") : t("ws.selectOne")}
       </label>
-      <p className="mt-3.5 text-[15px] text-muted">{over ? t("ws.dropActive") : tool.multiple ? t("ws.drop") : t("ws.dropOne")}</p>
+      <p className="mt-4 font-display text-[1.35rem] text-muted transition-colors group-data-[over]/drop:text-ink">{over ? t("ws.dropActive") : tool.multiple ? t("ws.drop") : t("ws.dropOne")}</p>
       <p className="eyebrow mt-10">
         {t("ws.accepts", { types: tool.accept.filter((e) => e !== "jpeg").map((e) => e.toUpperCase()).join(" · ") })}
       </p>

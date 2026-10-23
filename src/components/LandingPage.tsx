@@ -32,7 +32,7 @@ export function LandingPage({ intent, t, lang }: { intent: Landing; t: Dict; lan
           <span aria-hidden className="text-line-strong">/</span>
           <Link href={pageUrl(lang, `/${tool.slug}`)} className="transition-colors hover:text-ink">{t[`tool.${tool.id}.name` as DictKey]}</Link>
         </nav>
-        <h1 className="mt-5 text-balance text-[2.25rem] font-semibold leading-[1.05] tracking-[-0.04em] sm:text-[3rem]">{name}</h1>
+        <h1 className="mt-5 display text-[2.9rem] sm:text-[4.2rem]">{name}</h1>
         <p className="mt-3 max-w-[520px] text-pretty text-[17px] leading-relaxed text-ink-2">{x("desc")}</p>
         <p className="mt-4 flex items-center gap-1.5 text-[13px] text-muted">
           <ShieldCheck size={14} strokeWidth={1.75} className="text-success" />
@@ -44,11 +44,11 @@ export function LandingPage({ intent, t, lang }: { intent: Landing; t: Dict; lan
 
       <section className="mx-auto mt-28 max-w-[960px]">
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: toolJsonLd({ lang, slug: intent.slug, home: t["nav.allTools"], content }) }} />
-        <h2 className="mb-4 text-[20px] font-semibold tracking-[-0.02em]">{content.howTo}</h2>
-        <ol className="grid border-y border-line sm:grid-cols-3">
+        <h2 className="reveal mb-6 display text-[1.9rem] sm:text-[2.2rem]">{content.howTo}</h2>
+        <ol className="reveal grid border-y border-line sm:grid-cols-3">
           {steps.map((s, i) => (
             <li key={i} className="flex flex-col gap-2 border-line py-6 not-first:border-t sm:px-6 sm:not-first:border-s sm:not-first:border-t-0 sm:first:ps-0">
-              <span className="eyebrow">{String(i + 1).padStart(2, "0")}</span>
+              <span className="serif text-[2.4rem] leading-none text-accent">{String(i + 1).padStart(2, "0")}</span>
               <span className="text-pretty text-[15px] leading-relaxed text-ink-2">{s}</span>
             </li>
           ))}
@@ -56,11 +56,11 @@ export function LandingPage({ intent, t, lang }: { intent: Landing; t: Dict; lan
 
         <div className="mt-14 grid gap-10 md:grid-cols-[3fr_2fr]">
           <section>
-            <h2 className="text-[20px] font-semibold tracking-[-0.02em]">{format(t["tp.about"], { name })}</h2>
+            <h2 className="display text-[1.9rem] sm:text-[2.2rem]">{format(t["tp.about"], { name })}</h2>
             <p className="mt-3 max-w-[64ch] text-pretty text-[16px] leading-relaxed text-ink-2">{x("intro")}</p>
             <p className="mt-3 max-w-[64ch] text-pretty text-[16px] leading-relaxed text-ink-2">{x(String(intent.kb))}</p>
           </section>
-          <section className="card self-start p-5">
+          <section className="reveal card self-start p-6 shadow-card">
             <h2 className="flex items-center gap-2 text-[16px] font-medium tracking-[-0.01em]">
               <ShieldCheck size={16} strokeWidth={1.75} className="text-success" aria-hidden />
               {t["tp.private"]}
@@ -70,10 +70,10 @@ export function LandingPage({ intent, t, lang }: { intent: Landing; t: Dict; lan
         </div>
 
         <section className="mt-14">
-          <h2 className="text-[20px] font-semibold tracking-[-0.02em]">{format(t["tp.faq"], { name })}</h2>
+          <h2 className="display text-[1.9rem] sm:text-[2.2rem]">{format(t["tp.faq"], { name })}</h2>
           <dl className="mt-4 divide-y divide-line border-y border-line">
             {faq.map(({ q, a }) => (
-              <div key={q} className="py-5">
+              <div key={q} className="reveal py-6">
                 <dt className="text-[16px] font-medium tracking-[-0.01em]">{q}</dt>
                 <dd className="mt-2 max-w-[64ch] text-pretty text-[15px] leading-relaxed text-ink-2">{a}</dd>
               </div>
@@ -84,7 +84,7 @@ export function LandingPage({ intent, t, lang }: { intent: Landing; t: Dict; lan
         <ul className="mt-14 grid gap-2 sm:grid-cols-3">
           {[...others.map((i) => ({ href: `/${lang}/${i.slug}`, label: landingText(t, i, "h1") })), { href: pageUrl(lang, `/${tool.slug}`), label: t[`tool.${tool.id}.name` as DictKey] }].map((l) => (
             <li key={l.href}>
-              <Link href={l.href} className="group card flex items-center gap-3 p-3 transition-colors hover:border-line-strong">
+              <Link href={l.href} className="spot group card flex items-center gap-3 p-3 transition-[border-color,box-shadow,translate] duration-500 ease-(--ease-out) hover:-translate-y-0.5 hover:border-line-strong hover:shadow-card">
                 <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{l.label}</span>
                 <ArrowRight size={14} className="text-muted opacity-0 transition-opacity group-hover:opacity-100 rtl:rotate-180" />
               </Link>

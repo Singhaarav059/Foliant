@@ -29,23 +29,23 @@ export function ToolGrid() {
 
   return (
     <section aria-label={t("nav.allTools")}>
-      <div className="sticky top-16 z-20 -mx-4 bg-[color-mix(in_oklab,var(--bg)_90%,transparent)] px-4 py-3 backdrop-blur-md sm:-mx-6 sm:px-6">
+      <div className="sticky top-16 z-20 -mx-4 bg-[color-mix(in_oklab,var(--bg)_82%,transparent)] px-4 py-3 backdrop-blur-[14px] sm:-mx-6 sm:px-6">
         <label className="relative block">
           <span className="sr-only">{t("home.searchPlaceholder")}</span>
-          <Search size={17} strokeWidth={1.75} className="pointer-events-none absolute start-3.5 top-1/2 -translate-y-1/2 text-muted" />
+          <Search size={17} strokeWidth={1.75} className="pointer-events-none absolute start-4.5 top-1/2 -translate-y-1/2 text-muted" />
           <input
             type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder={t("home.searchPlaceholder")}
-            className="field h-12 rounded-xl ps-10 pe-10 text-[16px] [&::-webkit-search-cancel-button]:hidden"
+            className="field h-14 rounded-full ps-11 pe-12 text-[16px] shadow-card [&::-webkit-search-cancel-button]:hidden"
           />
           {q && (
             <button
               type="button"
               onClick={() => setQ("")}
               aria-label={t("nav.close")}
-              className="icon-btn absolute end-1.5 top-1/2 h-9 w-9 -translate-y-1/2"
+              className="icon-btn absolute end-2.5 top-1/2 h-9 w-9 -translate-y-1/2"
             >
               <X size={16} />
             </button>
@@ -54,32 +54,33 @@ export function ToolGrid() {
       </div>
 
       {sections.length === 0 ? (
-        <p className="py-24 text-center text-[15px] text-muted">{t("home.noResults")}</p>
+        <p className="rise py-28 text-center font-display text-[2rem] text-muted">{t("home.noResults")}</p>
       ) : (
         sections.map((s) => (
           <section
             key={s.id}
             aria-labelledby={`cat-${s.id}`}
-            className="grid gap-x-12 gap-y-4 border-t border-line pb-10 pt-6 first-of-type:border-t-0 lg:grid-cols-[200px_1fr]"
+            className="grid gap-x-12 gap-y-5 pb-14 pt-10 lg:grid-cols-[240px_1fr]"
           >
-            <header className="flex items-baseline gap-3 lg:sticky lg:top-[140px] lg:h-max lg:flex-col lg:gap-1.5">
-              <span className="eyebrow">{s.index}</span>
-              <h2 id={`cat-${s.id}`} className="text-[15px] font-medium tracking-[-0.01em]">{t(`cat.${s.id}`)}</h2>
+            <header className="relative flex items-baseline gap-3 lg:sticky lg:top-[150px] lg:h-max lg:flex-col lg:gap-2">
+              <span aria-hidden className="reveal-line absolute inset-x-0 -top-10 h-px bg-line lg:-end-12" />
+              <span className="serif text-[1.1rem] leading-none text-accent">{s.index}</span>
+              <h2 id={`cat-${s.id}`} className="display text-[2rem] sm:text-[2.4rem]">{t(`cat.${s.id}`)}</h2>
               <span className="eyebrow ms-auto lg:ms-0">{s.tools.length}</span>
             </header>
-            <ul className="grid gap-x-8 sm:grid-cols-2 xl:grid-cols-3">
+            <ul className="grid gap-x-3 gap-y-1 sm:grid-cols-2 xl:grid-cols-3">
               {s.tools.map((tool) => (
-                <li key={tool.id} className="border-t border-line first:border-t-0 sm:[&:nth-child(2)]:border-t-0 xl:[&:nth-child(3)]:border-t-0">
+                <li key={tool.id} className="reveal">
                   <Link
                     href={href(`/${tool.slug}`)}
                     data-tool={tool.id}
-                    className="group -mx-3 flex gap-3.5 rounded-xl px-3 py-4 transition-colors duration-150 hover:bg-surface"
+                    className="spot group flex h-full gap-3.5 rounded-2xl border border-transparent px-3.5 py-4 transition-[border-color,box-shadow,translate] duration-500 ease-(--ease-out) hover:-translate-y-0.5 hover:border-line hover:shadow-card"
                   >
-                    <ToolIcon tool={tool} size={36} />
+                    <ToolIcon tool={tool} size={40} />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
                         <span className="text-[15px] font-medium tracking-[-0.01em]">{t(`tool.${tool.id}.name`)}</span>
-                        {tool.isNew && <span className="text-[12px] font-medium text-accent">{t("home.new")}</span>}
+                        {tool.isNew && <span className="font-display text-[14px] italic text-accent">{t("home.new")}</span>}
                         {tool.runtime === "server" && (
                           <Server size={12} className="text-muted" aria-label={t("home.serverBadge")} />
                         )}

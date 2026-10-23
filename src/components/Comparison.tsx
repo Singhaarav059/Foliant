@@ -31,17 +31,15 @@ function whereText(c: Competitor, t: Dict) {
 
 export function Comparison({ t, lang }: { t: Dict; lang: string }) {
   const local = TOOLS.filter((x) => x.runtime === "browser").length;
-  const cell = "px-3 py-3 align-top";
+  const cell = "px-4 py-3.5 align-top";
   const link = "underline decoration-line-strong underline-offset-2 transition-colors hover:text-ink";
   return (
-    <section data-comparison aria-labelledby="comparison" className="mt-16 grid gap-6 border-t border-line pt-12 lg:grid-cols-[200px_1fr] lg:gap-x-12">
-      <div>
-        <h2 id="comparison" className="eyebrow">{t["vs.title"]}</h2>
-      </div>
+    <section data-comparison aria-labelledby="comparison" className="mt-24">
       <div className="min-w-0">
-        <p className="max-w-[60ch] text-pretty text-[15px] leading-relaxed text-muted">{t["vs.subtitle"]}</p>
+        <h2 id="comparison" className="reveal display max-w-[20ch] text-[2.4rem] sm:text-[3.4rem]">{t["vs.title"]}</h2>
+        <p className="reveal mt-5 max-w-[60ch] text-pretty text-[15px] leading-relaxed text-muted">{t["vs.subtitle"]}</p>
         {/* Wide on phones: the table scrolls inside its own box, not the page. */}
-        <div className="mt-6 overflow-x-auto rounded-xl border border-line">
+        <div className="reveal mt-8 overflow-x-auto rounded-[20px] border border-line bg-surface/40">
           <table className="w-full min-w-[720px] border-collapse text-start text-[14px]">
             <thead className="bg-surface text-[13px] text-muted">
               <tr>
@@ -51,7 +49,7 @@ export function Comparison({ t, lang }: { t: Dict; lang: string }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
-              <tr data-own className="bg-surface">
+              <tr data-own className="bg-surface shadow-[inset_3px_0_0_var(--accent)] rtl:shadow-[inset_-3px_0_0_var(--accent)]">
                 <th scope="row" className={`${cell} text-start font-medium`}>{BRAND.name}</th>
                 <td className={cell}>{t["vs.allTools"]}</td>
                 <td className={cell}>{format(t["vs.ours"], { mb: LIMITS.mb, files: LIMITS.files })}</td>
@@ -60,7 +58,7 @@ export function Comparison({ t, lang }: { t: Dict; lang: string }) {
                 <td className={`${cell} text-muted`}>{t["vs.live"]}</td>
               </tr>
               {COMPARISON.map((c) => (
-                <tr key={`${c.service}:${c.tool ?? "all"}`} data-competitor={c.service}>
+                <tr key={`${c.service}:${c.tool ?? "all"}`} data-competitor={c.service} className="transition-colors duration-300 hover:bg-surface">
                   <th scope="row" className={`${cell} text-start font-medium`}>{c.service}</th>
                   <td className={cell}>{c.tool ? t[`tool.${c.tool}.name` as DictKey] : t["vs.allTools"]}</td>
                   <td className={cell}>{limitText(c, t)}</td>

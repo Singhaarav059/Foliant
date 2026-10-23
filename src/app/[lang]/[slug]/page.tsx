@@ -19,6 +19,7 @@ import { englishSlug, localSlug, movedTo } from "@/lib/i18n/slugs";
 import { INTENTS, intentBySlug, type Intent } from "@/lib/intents";
 import { LANDINGS, landingBySlug } from "@/lib/landings";
 import { LandingPage, landingText } from "@/components/LandingPage";
+import { Words } from "@/components/Motion";
 
 // Tools and intent pages at their slugs in each language; the old English
 // slugs are redirects (scripts/static-extras.mjs, src/proxy.server.ts).
@@ -118,13 +119,13 @@ function ToolPage({ tool, t, lang }: { tool: Tool; t: Dict; lang: Locale }) {
           <span aria-hidden className="text-line-strong">/</span>
           <span>{k(`cat.${tool.category}`)}</span>
         </nav>
-        <h1 className="mt-5 text-balance text-[2.25rem] font-semibold leading-[1.05] tracking-[-0.04em] sm:text-[3rem]">{k(`tool.${tool.id}.name`)}</h1>
-        <p className="mt-3 max-w-[520px] text-pretty text-[17px] leading-relaxed text-ink-2">{k(descKey(tool))}</p>
-        <p className="mt-4 flex items-center gap-1.5 text-[13px] text-muted">
+        <h1 className="mt-5 display text-[2.9rem] sm:text-[4.2rem]"><Words text={k(`tool.${tool.id}.name`)} /></h1>
+        <p className="fade-up mt-4 max-w-[520px] text-pretty text-[17px] leading-relaxed text-ink-2">{k(descKey(tool))}</p>
+        <p className="fade-up mt-4 flex items-center gap-1.5 text-[13px] text-muted" style={{ "--d": "420ms" } as React.CSSProperties}>
           <Badge size={14} strokeWidth={1.75} className={tool.runtime === "browser" ? "text-success" : ""} />
           {tool.runtime === "browser" ? t["home.privateBadge"] : t["home.serverBadge"]}
         </p>
-        <div className="mt-3"><PrivacyChip /></div>
+        <div className="fade-up mt-3" style={{ "--d": "500ms" } as React.CSSProperties}><PrivacyChip /></div>
       </header>
 
       <Workspace toolId={tool.id} />
@@ -137,7 +138,7 @@ function ToolPage({ tool, t, lang }: { tool: Tool; t: Dict; lang: Locale }) {
             <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {related.map((r) => (
                 <li key={r.id}>
-                  <Link href={pageUrl(lang, `/${r.slug}`)} className="group card flex items-center gap-3 p-3 transition-colors hover:border-line-strong">
+                  <Link href={pageUrl(lang, `/${r.slug}`)} className="spot group card flex items-center gap-3 p-3 transition-[border-color,box-shadow,translate] duration-500 ease-(--ease-out) hover:-translate-y-0.5 hover:border-line-strong hover:shadow-card">
                     <ToolIcon tool={r} size={32} />
                     <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{k(`tool.${r.id}.name`)}</span>
                     <ArrowRight size={14} className="text-muted opacity-0 transition-opacity group-hover:opacity-100 rtl:rotate-180" />
@@ -164,11 +165,11 @@ function IntentPage({ intent, t, lang }: { intent: Intent; t: Dict; lang: Locale
       <nav aria-label={t["nav.breadcrumb"]} className="eyebrow">
         <Link href={`/${lang}`} className="transition-colors hover:text-ink">{t["nav.allTools"]}</Link>
       </nav>
-      <h1 className="mt-5 text-balance text-[2.4rem] font-semibold leading-[1.05] tracking-[-0.04em] sm:text-[3rem]">{intent.title[lang]}</h1>
+      <h1 className="mt-5 display text-[2.9rem] sm:text-[4.2rem]"><Words text={intent.title[lang]} /></h1>
       <p className="mt-4 max-w-[640px] text-pretty text-[17px] leading-relaxed text-ink-2">{intentDescription(intent, t)}</p>
       <ul className="mt-12 divide-y divide-line border-y border-line">
         {toolsOf(intent).map((tool) => (
-          <li key={tool.id} className="flex gap-4 py-7">
+          <li key={tool.id} className="reveal group flex gap-4 py-7">
             <ToolIcon tool={tool} size={40} />
             <div className="min-w-0 flex-1">
               <h2 className="text-[18px] font-medium tracking-[-0.015em]">
@@ -191,9 +192,9 @@ function InfoPage({ slug, t, lang }: { slug: Info; t: Dict; lang: Locale }) {
   const k = (s: string, vars?: Record<string, string | number>) => format(t[s as DictKey] ?? s, vars);
   const wrap = (title: string, body: React.ReactNode, subtitle?: string) => (
     <div className="mx-auto max-w-[860px] px-4 pb-10 pt-12 sm:px-6 sm:pt-16">
-      <h1 className="text-balance text-[2.4rem] font-semibold leading-[1.05] tracking-[-0.04em] sm:text-[3rem]">{title}</h1>
-      {subtitle && <p className="mt-4 max-w-[560px] text-pretty text-[17px] leading-relaxed text-ink-2">{subtitle}</p>}
-      <div className="mt-12">{body}</div>
+      <h1 className="display text-[2.9rem] sm:text-[4.2rem]"><Words text={title} /></h1>
+      {subtitle && <p className="fade-up mt-5 max-w-[560px] text-pretty text-[17px] leading-relaxed text-ink-2">{subtitle}</p>}
+      <div className="fade-up mt-14" style={{ "--d": "450ms" } as React.CSSProperties}>{body}</div>
     </div>
   );
 
@@ -201,9 +202,9 @@ function InfoPage({ slug, t, lang }: { slug: Info; t: Dict; lang: Locale }) {
     return wrap(t["feat.title"], (
       <div className="grid gap-x-10 sm:grid-cols-2">
         {[1, 2, 3, 4, 5, 6, 7].map((n) => (
-          <div key={n} className="border-t border-line py-6">
-            <span className="eyebrow">{String(n).padStart(2, "0")}</span>
-            <h2 className="mt-2 text-[16px] font-medium tracking-[-0.01em]">{k(`feat.f${n}t`)}</h2>
+          <div key={n} className="reveal border-t border-line py-7">
+            <span className="serif text-[2rem] leading-none text-accent">{String(n).padStart(2, "0")}</span>
+            <h2 className="mt-3 text-[17px] font-medium tracking-[-0.01em]">{k(`feat.f${n}t`)}</h2>
             <p className="mt-1.5 text-pretty text-[15px] leading-relaxed text-muted">{k(`feat.f${n}b`)}</p>
           </div>
         ))}
@@ -215,10 +216,10 @@ function InfoPage({ slug, t, lang }: { slug: Info; t: Dict; lang: Locale }) {
       <div className="divide-y divide-line border-y border-line">
         {/* The static build has no server (question 1). */}
         {(STATIC ? [2, 3, 4, 5, 6, 7, 8] : [1, 2, 3, 4, 5, 6, 7, 8]).map((n) => (
-          <details key={n} className="group py-5 [&_summary::-webkit-details-marker]:hidden">
+          <details key={n} className="reveal group py-6 [&_summary::-webkit-details-marker]:hidden">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[16px] font-medium tracking-[-0.01em]">
               {k(`faq.q${n}`)}
-              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-line text-muted transition-transform duration-200 group-open:rotate-45" aria-hidden>+</span>
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line text-muted transition-[rotate,background-color,color] duration-500 ease-(--ease-spring) group-open:rotate-45 group-open:bg-ink group-open:text-bg" aria-hidden>+</span>
             </summary>
             <p className="mt-3 max-w-[64ch] text-pretty text-[15px] leading-relaxed text-ink-2">{k(STATIC && n === 1 ? "faq.a1Local" : `faq.a${n}`, { mb: LIMITS.mb })}</p>
           </details>
@@ -268,7 +269,7 @@ function InfoPage({ slug, t, lang }: { slug: Info; t: Dict; lang: Locale }) {
             <h2 className="eyebrow mb-3">{k(`cat.${c.id}`)}</h2>
             <ul className="divide-y divide-line border-y border-line">
               {TOOLS.filter((x) => x.category === c.id).map((tool) => (
-                <li key={tool.id} className="group flex items-center gap-4 py-4">
+                <li key={tool.id} className="reveal group flex items-center gap-4 py-4">
                   <ToolIcon tool={tool} size={40} />
                   <div className="min-w-0 flex-1">
                     <p className="font-medium tracking-[-0.01em]">{k(`tool.${tool.id}.name`)}</p>

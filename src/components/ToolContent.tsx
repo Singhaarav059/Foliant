@@ -50,11 +50,11 @@ export function ToolContent({ tool, t, lang }: { tool: Tool; t: Dict; lang: Loca
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: toolJsonLd({ lang, slug: tool.slug, home: t["nav.allTools"], content: c }) }} />
 
-      <h2 className="mb-4 text-[20px] font-semibold tracking-[-0.02em]">{c.howTo}</h2>
-      <ol className="grid border-y border-line sm:grid-cols-3">
+      <h2 className="reveal mb-6 display text-[1.9rem] sm:text-[2.2rem]">{c.howTo}</h2>
+      <ol className="reveal grid border-y border-line sm:grid-cols-3">
         {c.steps.map((s, i) => (
           <li key={i} className="flex flex-col gap-2 border-line py-6 not-first:border-t sm:px-6 sm:not-first:border-s sm:not-first:border-t-0 sm:first:ps-0">
-            <span className="eyebrow">{String(i + 1).padStart(2, "0")}</span>
+            <span className="serif text-[2.4rem] leading-none text-accent">{String(i + 1).padStart(2, "0")}</span>
             <span className="text-pretty text-[15px] leading-relaxed text-ink-2">{s}</span>
           </li>
         ))}
@@ -62,10 +62,10 @@ export function ToolContent({ tool, t, lang }: { tool: Tool; t: Dict; lang: Loca
 
       <div className="mt-14 grid gap-10 md:grid-cols-[3fr_2fr]">
         <section>
-          <h2 className="text-[20px] font-semibold tracking-[-0.02em]">{format(t["tp.about"], { name: c.name })}</h2>
+          <h2 className="display text-[1.9rem] sm:text-[2.2rem]">{format(t["tp.about"], { name: c.name })}</h2>
           <p className="mt-3 max-w-[64ch] text-pretty text-[16px] leading-relaxed text-ink-2">{c.intro}</p>
         </section>
-        <section className="card self-start p-5">
+        <section className="reveal card self-start p-6 shadow-card">
           <h2 className="flex items-center gap-2 text-[16px] font-medium tracking-[-0.01em]">
             <Badge size={16} strokeWidth={1.75} className={c.onServer ? "text-muted" : "text-success"} aria-hidden />
             {t["tp.private"]}
@@ -76,10 +76,10 @@ export function ToolContent({ tool, t, lang }: { tool: Tool; t: Dict; lang: Loca
 
       {c.faq.length > 0 && (
         <section className="mt-14">
-          <h2 className="text-[20px] font-semibold tracking-[-0.02em]">{format(t["tp.faq"], { name: c.name })}</h2>
+          <h2 className="display text-[1.9rem] sm:text-[2.2rem]">{format(t["tp.faq"], { name: c.name })}</h2>
           <dl className="mt-4 divide-y divide-line border-y border-line">
             {c.faq.map(({ q, a }) => (
-              <div key={q} className="py-5">
+              <div key={q} className="reveal py-6">
                 <dt className="text-[16px] font-medium tracking-[-0.01em]">{q}</dt>
                 <dd className="mt-2 max-w-[64ch] text-pretty text-[15px] leading-relaxed text-ink-2">{a}</dd>
               </div>
