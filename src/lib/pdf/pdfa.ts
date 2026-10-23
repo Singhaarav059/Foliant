@@ -442,6 +442,9 @@ function associateFiles(doc: PDFDocument, removed: Set<string>) {
     return ok;
   };
 
+  // File specifications taken out of a list, deleted at the end unless something else uses them.
+  const dropped = new Set<PDFRef>();
+
   // The attachments list: each file kept is associated with the document.
   const af = afList(doc.catalog, doc)?.asArray().slice() ?? [];
   const names = doc.catalog.lookupMaybe(N("Names"), PDFDict);
@@ -451,6 +454,7 @@ function associateFiles(doc: PDFDocument, removed: Set<string>) {
       const spec = ctx.lookup(value);
       if (!(spec instanceof PDFDict) || !embeds(spec, key)) {
         removed.add("external file references");
+        if (value instanceof PDFRef) dropped.add(value);
         continue;
       }
       const ref = value instanceof PDFRef ? value : ctx.register(spec);
@@ -468,7 +472,10 @@ function associateFiles(doc: PDFDocument, removed: Set<string>) {
     if (!list) return;
     const keep = list.filter((r) => {
       const spec = ctx.lookup(r);
-      if (!(spec instanceof PDFDict) || !embeds(spec)) return false;
+      if (!(spec instanceof PDFDict) || !embeds(spec)) {
+        if (r instanceof PDFRef) dropped.add(r);
+        return false;
+      }
       associated.add(spec);
       return true;
     });
@@ -489,6 +496,22 @@ function associateFiles(doc: PDFDocument, removed: Set<string>) {
     }
   });
   if (extra.length) doc.catalog.set(N("AF"), ctx.obj([...(afList(doc.catalog, doc)?.asArray() ?? []), ...extra]));
+
+  // veraPDF checks every file specification in the file, used or not (6.8-3, 6.8-4):
+  // one left behind with no AFRelationship and in no AF list fails both.
+  if (!dropped.size) return;
+  const used = new Set<PDFRef>();
+  const walk = (o: PDFObject | undefined, depth: number) => {
+    if (o instanceof PDFRef) {
+      if (dropped.has(o)) used.add(o);
+    } else if (depth < 32) {
+      const kids = o instanceof PDFDict ? o.values() : o instanceof PDFArray ? o.asArray() : o instanceof PDFStream ? o.dict.values() : [];
+      for (const k of kids) walk(k, depth + 1);
+    }
+  };
+  for (const [ref, o] of ctx.enumerateIndirectObjects()) if (!dropped.has(ref)) walk(o, 0);
+  walk(ctx.trailerInfo.Root, 0);
+  for (const ref of dropped) if (!used.has(ref)) ctx.delete(ref);
 }
 
 function cleanDocument(doc: PDFDocument, removed: Set<string>, part: number) {
