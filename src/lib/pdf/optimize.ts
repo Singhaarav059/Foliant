@@ -436,12 +436,19 @@ async function salvage(input: Uint8Array): Promise<Uint8Array | null> {
   // Up to the end of the last complete object, then a trailer naming the catalog.
   const end = latin.lastIndexOf("endobj");
   if (end < 0) return null;
-  let body = latin.slice(0, end + 6);
+  const body = latin.slice(0, end + 6);
   const root = [...body.matchAll(/(\d+)\s+(\d+)\s+obj\s*<<(?:(?!endobj)[\s\S])*?\/Type\s*\/Catalog\b/g)].at(-1);
   const highest = Math.max(0, ...[...body.matchAll(/(\d+)\s+\d+\s+obj\b/g)].map((m) => Number(m[1])));
-  body += `\ntrailer\n<< /Size ${highest + 1}${root ? ` /Root ${root[1]} ${root[2]} R` : ""} >>\n%%EOF\n`;
+  // The original bytes, not the text: "latin1" decodes as windows-1252, so 0x80-0x9F
+  // wouldn't survive the round trip and compressed streams would come back corrupt.
+  const trailer = new TextEncoder().encode(`\ntrailer\n<< /Size ${highest + 1}${root ? ` /Root ${root[1]} ${root[2]} R` : ""} >>\n%%EOF\n`);
+  const cut = new Uint8Array(end + 6 + trailer.length);
+  cut.set(input.subarray(0, end + 6));
+  cut.set(trailer, end + 6);
   // Parsed into objects only: a PDFDocument would walk the old page tree, and a looped one never ends.
-  const ctx = await PDFParser.forBytesWithOptions(Uint8Array.from(body, (c) => c.charCodeAt(0)), Infinity, false).parseDocument();
+  const ctx = await PDFParser.forBytesWithOptions(cut, Infinity, false).parseDocument();
+  // New objects get numbers past the cut-off ones too, which pages may still refer to.
+  for (const m of latin.slice(end).matchAll(/(\d+)\s+\d+\s+obj\b/g)) ctx.largestObjectNumber = Math.max(ctx.largestObjectNumber, Number(m[1]));
   const N = (n: string) => PDFName.of(n);
   const pages = ctx.enumerateIndirectObjects()
     .filter(([, o]) => o instanceof PDFDict && o.get(N("Type")) === N("Page"))
