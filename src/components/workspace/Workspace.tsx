@@ -30,22 +30,38 @@ const uid = () => crypto.randomUUID();
 
 // Each mode's view is loaded when a tool uses it (P3-03), so a tool that only
 // lists files doesn't carry the editor, the page board or the scanner.
-const Editor = dynamic(() => import("./Editor").then((m) => m.Editor), { ssr: false });
-const PageBoard = dynamic(() => import("./PageBoard").then((m) => m.PageBoard), { ssr: false });
-const Scanner = dynamic(() => import("./Scanner").then((m) => m.Scanner), { ssr: false });
-const CompareView = dynamic(() => import("./CompareView").then((m) => m.CompareView), { ssr: false });
-const SignatureCheck = dynamic(() => import("./SignatureCheck").then((m) => m.SignatureCheck), { ssr: false });
-const ChatView = dynamic(() => import("./ChatView").then((m) => m.ChatView), { ssr: false });
-const ListenView = dynamic(() => import("./ListenView").then((m) => m.ListenView), { ssr: false });
-const PrintResults = dynamic(() => import("./PrintResults").then((m) => m.PrintResults), { ssr: false });
-const PasteHtml = dynamic(() => import("./PasteHtml").then((m) => m.PasteHtml), { ssr: false });
-const Results = dynamic(() => import("./Results").then((m) => m.Results), { ssr: false });
-const StampPreview = dynamic(() => import("./StampPreview").then((m) => m.StampPreview), { ssr: false });
-const prepareEditor = (id: ToolId) => import("./Editor").then((m) => m.prepareEditor(id));
-const prepareCompare = () => import("./CompareView").then((m) => m.prepareCompare());
-const prepareCheck = () => import("./SignatureCheck").then((m) => m.prepareCheck());
-const prepareChat = () => import("./ChatView").then((m) => m.prepareChat());
-const prepareListen = () => import("./ListenView").then((m) => m.prepareListen());
+// One import() per view, shared by the view and by the offline warm-up: Turbopack
+// gives each import() call its own chunk, and warming a copy the page never
+// loads left the view out of the offline cache.
+const load = {
+  Editor: () => import("./Editor"),
+  PageBoard: () => import("./PageBoard"),
+  Scanner: () => import("./Scanner"),
+  CompareView: () => import("./CompareView"),
+  SignatureCheck: () => import("./SignatureCheck"),
+  ChatView: () => import("./ChatView"),
+  ListenView: () => import("./ListenView"),
+  PrintResults: () => import("./PrintResults"),
+  PasteHtml: () => import("./PasteHtml"),
+  Results: () => import("./Results"),
+  StampPreview: () => import("./StampPreview"),
+};
+const Editor = dynamic(() => load.Editor().then((m) => m.Editor), { ssr: false });
+const PageBoard = dynamic(() => load.PageBoard().then((m) => m.PageBoard), { ssr: false });
+const Scanner = dynamic(() => load.Scanner().then((m) => m.Scanner), { ssr: false });
+const CompareView = dynamic(() => load.CompareView().then((m) => m.CompareView), { ssr: false });
+const SignatureCheck = dynamic(() => load.SignatureCheck().then((m) => m.SignatureCheck), { ssr: false });
+const ChatView = dynamic(() => load.ChatView().then((m) => m.ChatView), { ssr: false });
+const ListenView = dynamic(() => load.ListenView().then((m) => m.ListenView), { ssr: false });
+const PrintResults = dynamic(() => load.PrintResults().then((m) => m.PrintResults), { ssr: false });
+const PasteHtml = dynamic(() => load.PasteHtml().then((m) => m.PasteHtml), { ssr: false });
+const Results = dynamic(() => load.Results().then((m) => m.Results), { ssr: false });
+const StampPreview = dynamic(() => load.StampPreview().then((m) => m.StampPreview), { ssr: false });
+const prepareEditor = (id: ToolId) => load.Editor().then((m) => m.prepareEditor(id));
+const prepareCompare = () => load.CompareView().then((m) => m.prepareCompare());
+const prepareCheck = () => load.SignatureCheck().then((m) => m.prepareCheck());
+const prepareChat = () => load.ChatView().then((m) => m.prepareChat());
+const prepareListen = () => load.ListenView().then((m) => m.prepareListen());
 // The tools with a live preview (StampPreview.tsx).
 const STAMPS: string[] = ["watermark", "pageNumbers", "headerFooter"];
 
@@ -147,11 +163,11 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
     // The views this tool shows load on demand too (the dynamic imports above),
     // so they're fetched with its code, for offline use.
     const views = () => Promise.all([
-      import("./Results"), import("./PrintResults"),
-      tool.mode === "pages" ? import("./PageBoard") : null,
-      tool.mode === "scan" ? import("./Scanner") : null,
-      tool.id === "htmlToPdf" ? import("./PasteHtml") : null,
-      STAMPS.includes(tool.id) ? import("./StampPreview") : null,
+      load.Results(), load.PrintResults(),
+      tool.mode === "pages" ? load.PageBoard() : null,
+      tool.mode === "scan" ? load.Scanner() : null,
+      tool.id === "htmlToPdf" ? load.PasteHtml() : null,
+      STAMPS.includes(tool.id) ? load.StampPreview() : null,
     ]);
     const code = () => Promise.all([engine(), views()]);
     const ai = !!tool.ai && tool.mode !== "chat";
