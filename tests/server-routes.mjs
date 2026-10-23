@@ -1,6 +1,5 @@
-// The server build's API routes, through `next start`: CSRF, brute force,
-// session revocation, body and type limits, blocked addresses and error
-// messages. Needs a server build first (`npm run build`).
+// The server build's API routes, through `next start`: CSRF, body and type
+// limits, blocked addresses and error messages. Needs a server build first (`npm run build`).
 //
 //   npm run test:server-routes
 import { spawn } from "node:child_process";
@@ -21,7 +20,7 @@ const BASE = `http://localhost:${PORT}`;
 const data = mkdtempSync(join(tmpdir(), "server-routes-"));
 const server = spawn(join(root, "node_modules/.bin/next"), ["start", "-p", String(PORT)], {
   cwd: root,
-  env: { ...process.env, DATA_DIR: data, AUTH_SECRET: "test-secret-".padEnd(48, "x"), TRUST_PROXY_HOPS: "1", PORT: String(PORT) },
+  env: { ...process.env, DATA_DIR: data, TRUST_PROXY_HOPS: "1", PORT: String(PORT) },
   stdio: ["ignore", "pipe", "pipe"],
 });
 let log = "";
@@ -74,13 +73,10 @@ const post = (path, body, { headers = site(), cookie, type = "application/json",
     body: typeof body === "string" || body instanceof FormData ? body : body === undefined ? undefined : JSON.stringify(body),
     redirect: "manual",
   });
-const cookieOf = (res) => res.headers.get("set-cookie")?.split(";")[0] ?? "";
-const me = async (cookie) => (await (await fetch(`${BASE}/api/auth/me`, { headers: { cookie } })).json()).user;
-const email = (n) => `user${n}-${Date.now()}@example.com`;
 
 try {
   await test("API responses aren't cached, framed or fingerprinted", async () => {
-    const res = await fetch(`${BASE}/api/auth/me`);
+    const res = await fetch(`${BASE}/api/capabilities`);
     eq(res.headers.get("cache-control"), "no-store", "cache-control");
     eq(res.headers.get("x-frame-options"), "SAMEORIGIN", "x-frame-options");
     ok(/frame-ancestors 'self'/.test(res.headers.get("content-security-policy") ?? ""), "frame-ancestors");
@@ -89,10 +85,10 @@ try {
   });
 
   await test("cross-site requests can't change state", async () => {
-    const body = { email: email("csrf"), password: "correct horse battery" };
-    eq((await post("/api/auth/register", body, { headers: { ...site(), origin: "https://evil.test", "sec-fetch-site": "cross-site" } })).status, 403, "foreign origin");
-    eq((await post("/api/auth/register", body, { headers: { "sec-fetch-site": "same-site", "x-forwarded-for": "198.51.100.1" } })).status, 403, "sibling subdomain");
-    eq((await post("/api/auth/register", JSON.stringify(body), { headers: { "x-forwarded-for": "198.51.100.1" }, type: "text/plain" })).status, 415, "text/plain form post");
+    const body = { email: "csrf@example.com", message: "A message from another site" };
+    eq((await post("/api/contact", body, { headers: { ...site(), origin: "https://evil.test", "sec-fetch-site": "cross-site" } })).status, 403, "foreign origin");
+    eq((await post("/api/contact", body, { headers: { "sec-fetch-site": "same-site", "x-forwarded-for": "198.51.100.1" } })).status, 403, "sibling subdomain");
+    eq((await post("/api/contact", JSON.stringify(body), { headers: { "x-forwarded-for": "198.51.100.1" }, type: "text/plain" })).status, 415, "text/plain form post");
     const fd = new FormData();
     fd.append("url", "https://example.com");
     eq((await post("/api/convert/html", fd, { headers: { ...site(), origin: "https://evil.test", "sec-fetch-site": "cross-site" }, type: null })).status, 403, "conversion from another site");
@@ -101,72 +97,7 @@ try {
   await test("bad input gets a 4xx, not a crash", async () => {
     eq((await post("/api/contact", "{not json")).status, 400, "invalid JSON");
     eq((await post("/api/contact", { email: "a@b.co", message: "x".repeat(200_000) })).status, 413, "huge JSON");
-    eq((await post("/api/auth/login", ["array"])).status, 400, "not an object");
-  });
-
-  await test("sessions: HttpOnly, SameSite, and fresh on every sign-in", async () => {
-    const mail = email("session");
-    const reg = await post("/api/auth/register", { email: mail, password: "first password 1" });
-    eq(reg.status, 200, "register");
-    const setCookie = reg.headers.get("set-cookie") ?? "";
-    ok(/HttpOnly/i.test(setCookie) && /SameSite=lax/i.test(setCookie), `cookie flags: ${setCookie}`);
-    ok(/^__Host-session=/.test(setCookie) && /Secure/i.test(setCookie) && /Path=\//.test(setCookie) && !/Domain=/i.test(setCookie), `__Host- cookie: ${setCookie}`);
-    const a = cookieOf(reg);
-    const b = cookieOf(await post("/api/auth/login", { email: mail, password: "first password 1" }));
-    ok(a && b && a !== b, "a new token on sign-in");
-    const preset = `__Host-session=attacker-chosen`;
-    const c = await post("/api/auth/login", { email: mail, password: "first password 1" }, { cookie: preset });
-    ok(cookieOf(c) !== preset, "a pre-set cookie is replaced, not adopted");
-  });
-
-  await test("changing the password signs out every other session", async () => {
-    const mail = email("revoke");
-    const a = cookieOf(await post("/api/auth/register", { email: mail, password: "first password 1" }));
-    const b = cookieOf(await post("/api/auth/login", { email: mail, password: "first password 1" }));
-    eq((await me(a))?.email, mail, "first session works");
-    const change = await post("/api/auth/password", { current: "first password 1", next: "second password 2" }, { cookie: b });
-    eq(change.status, 200, "password changed");
-    const c = cookieOf(change);
-    eq(await me(a), null, "the other session is revoked");
-    eq(await me(b), null, "the old token of this session is revoked");
-    eq((await me(c))?.email, mail, "this browser stays signed in with a new token");
-  });
-
-  await test("signing out revokes the token, not just the cookie", async () => {
-    const mail = email("logout");
-    const a = cookieOf(await post("/api/auth/register", { email: mail, password: "first password 1" }));
-    eq((await post("/api/auth/logout", undefined, { cookie: a, type: null })).status, 200, "logout");
-    eq(await me(a), null, "a copied token no longer works");
-  });
-
-  await test("one address can't brute-force sign-in, whatever X-Forwarded-For it claims", async () => {
-    const statuses = [];
-    for (let i = 0; i < 22; i++) {
-      const r = await post("/api/auth/login", { email: email(`nobody${i}`), password: "wrong password" }, { headers: site(`10.${i}.0.1, 203.0.113.9`) });
-      statuses.push(r.status);
-    }
-    eq(statuses.at(-1), 429, `limited after 20 (${statuses.join(",")})`);
-  });
-
-  await test("many addresses can't brute-force one account", async () => {
-    const mail = email("target");
-    await post("/api/auth/register", { email: mail, password: "the real password" });
-    const statuses = [];
-    for (let i = 0; i < 11; i++)
-      statuses.push((await post("/api/auth/login", { email: mail, password: `guess ${i}` }, { headers: site(`203.0.113.${100 + i}`) })).status);
-    eq(statuses.at(-1), 429, `account locked after 10 failures (${statuses.join(",")})`);
-    eq((await post("/api/auth/login", { email: mail, password: "the real password" }, { headers: site("203.0.113.200") })).status, 429, "even the right password waits");
-  });
-
-  await test("the current password can't be guessed through a stolen session", async () => {
-    const mail = email("pwguess");
-    const a = cookieOf(await post("/api/auth/register", { email: mail, password: "first password 1" }));
-    const statuses = [];
-    for (let i = 0; i < 11; i++) statuses.push((await post("/api/auth/password", { current: `guess ${i}`, next: "whatever123" }, { cookie: a })).status);
-    eq(statuses.at(-1), 429, `password change limited (${statuses.join(",")})`);
-    const del = [];
-    for (let i = 0; i < 11; i++) del.push((await post("/api/auth/delete", { password: `guess ${i}` }, { cookie: a })).status);
-    eq(del.at(-1), 429, `account deletion limited (${del.join(",")})`);
+    eq((await post("/api/contact", ["array"])).status, 400, "not an object");
   });
 
   await test("uploads: size is checked before parsing, and content must match the extension", async () => {

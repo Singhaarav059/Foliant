@@ -3,15 +3,13 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Globe2, Menu, X, UserRound, LogOut } from "lucide-react";
+import { ChevronDown, Globe2, Menu, X } from "lucide-react";
 import { Logo } from "./Logo";
 import dynamic from "next/dynamic";
 import { useI18n } from "./I18n";
-import { useUser, postJson } from "./User";
 import { CATEGORIES, TOOLS } from "@/lib/tools";
 import { LOCALES, type Locale } from "@/lib/i18n/locales";
 import { switchLanguage } from "@/lib/i18n/slugs";
-import { STATIC } from "@/lib/mode";
 
 // Every tool's icon only shows in the phone menu: loaded when it opens (P3-03).
 const ToolIcon = dynamic(() => import("./ToolIcon").then((m) => m.ToolIcon), { ssr: false });
@@ -34,14 +32,12 @@ function useDismiss(open: boolean, close: () => void) {
 
 export function Header() {
   const { t, href, locale } = useI18n();
-  const { user, ready, setUser } = useUser();
   const pathname = usePathname();
   const router = useRouter();
-  const [menu, setMenu] = useState<null | "tools" | "lang" | "user" | "mobile">(null);
+  const [menu, setMenu] = useState<null | "tools" | "lang" | "mobile">(null);
   const close = () => setMenu(null);
   const toolsRef = useDismiss(menu === "tools", close);
   const langRef = useDismiss(menu === "lang", close);
-  const userRef = useDismiss(menu === "user", close);
 
   // Close any open menu when the route changes.
   const [lastPath, setLastPath] = useState(pathname);
@@ -56,13 +52,6 @@ export function Header() {
   const switchLocale = (code: Locale) => {
     router.push(switchLanguage(pathname, code));
     close();
-  };
-
-  const logout = async () => {
-    await postJson("/api/auth/logout");
-    setUser(null);
-    close();
-    router.push(href("/"));
   };
 
   return (
@@ -146,44 +135,6 @@ export function Header() {
             )}
           </div>
 
-          {!STATIC && ready && !user && (
-            <>
-              <Link href={href("/login")} className="btn btn-sm btn-ghost hidden sm:inline-flex">
-                {t("nav.login")}
-              </Link>
-              <Link href={href("/register")} className="btn btn-sm btn-primary hidden sm:inline-flex">
-                {t("nav.signup")}
-              </Link>
-            </>
-          )}
-          {ready && user && (
-            <div ref={userRef} className="relative hidden sm:block">
-              <button
-                className="flex h-9 items-center gap-2 rounded-lg border border-line bg-surface ps-1 pe-3 text-[13px] transition-colors hover:border-line-strong"
-                aria-expanded={menu === "user"}
-                onClick={() => setMenu(menu === "user" ? null : "user")}
-              >
-                <span className="grid h-7 w-7 place-items-center rounded-md bg-ink text-[12px] font-semibold text-bg">
-                  {(user.name || user.email)[0].toUpperCase()}
-                </span>
-                <span className="max-w-[140px] truncate">{user.name || user.email}</span>
-              </button>
-              {menu === "user" && (
-                <div className="rise absolute end-0 top-11 card w-56 p-1.5 shadow-card">
-                  <Link href={href("/account")} className="flex items-center gap-2.5 rounded-md px-3 py-2 text-[14px] text-ink-2 hover:bg-surface-2 hover:text-ink">
-                    <UserRound size={16} /> {t("nav.account")}
-                  </Link>
-                  <Link href={href("/workflows")} className="flex items-center gap-2.5 rounded-md px-3 py-2 text-[14px] text-ink-2 hover:bg-surface-2 hover:text-ink">
-                    <LayoutGridIcon /> {t("nav.workflows")}
-                  </Link>
-                  <button onClick={logout} className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-start text-[14px] text-ink-2 hover:bg-surface-2 hover:text-ink">
-                    <LogOut size={16} /> {t("nav.logout")}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
           <button className="icon-btn md:hidden" aria-label={t("nav.menu")} onClick={() => setMenu("mobile")}>
             <Menu size={22} />
           </button>
@@ -199,19 +150,6 @@ export function Header() {
             </button>
           </div>
           <div className="flex-1 overflow-auto px-4 pb-10 pt-4">
-            {!STATIC && <div className="mb-5 flex gap-2">
-              {user ? (
-                <>
-                  <Link href={href("/account")} className="btn btn-quiet flex-1">{t("nav.account")}</Link>
-                  <button onClick={logout} className="btn btn-quiet flex-1">{t("nav.logout")}</button>
-                </>
-              ) : (
-                <>
-                  <Link href={href("/login")} className="btn btn-quiet flex-1">{t("nav.login")}</Link>
-                  <Link href={href("/register")} className="btn btn-primary flex-1">{t("nav.signup")}</Link>
-                </>
-              )}
-            </div>}
             <div className="mb-6 flex gap-2">
               <Link href={href("/workflows")} className="btn btn-quiet btn-sm flex-1">{t("nav.workflows")}</Link>
             </div>
@@ -238,13 +176,5 @@ export function Header() {
         </div>
       )}
     </header>
-  );
-}
-
-function LayoutGridIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M4 6h16M4 12h10M4 18h6" strokeLinecap="round" />
-    </svg>
   );
 }

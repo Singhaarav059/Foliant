@@ -9,8 +9,8 @@ export class ProcessFailed extends Error {
   }
 }
 
-// Only what a converter needs; the server's secrets (AUTH_SECRET and the
-// like) stay out of the child's environment.
+// Only what a converter needs; the server's own settings and secrets stay out
+// of the child's environment.
 const PASS_ENV = ["PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TMP", "TEMP", "SystemRoot", "windir", "FONTCONFIG_PATH", "FONTCONFIG_FILE"];
 const cleanEnv = () =>
   Object.fromEntries(PASS_ENV.filter((k) => process.env[k] !== undefined).map((k) => [k, process.env[k]!])) as NodeJS.ProcessEnv;

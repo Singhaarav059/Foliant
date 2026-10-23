@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useI18n } from "./I18n";
-import { postJson } from "./User";
+import { postJson } from "@/lib/post";
 
 export function ContactForm() {
   const { t } = useI18n();
@@ -21,7 +21,7 @@ export function ContactForm() {
       }
     }}>
       <label className="block">
-        <span className="mb-1.5 block text-[13px] font-medium text-ink-2">{t("auth.email")}</span>
+        <span className="mb-1.5 block text-[13px] font-medium text-ink-2">{t("contact.email")}</span>
         <input name="email" type="email" required className="field" autoComplete="email" />
       </label>
       <label className="block">

@@ -5,7 +5,6 @@ import dynamic from "next/dynamic";
 import { AlertTriangle, ArrowRight, Download, Loader2, X } from "lucide-react";
 import { useI18n } from "../I18n";
 import type { Stamp } from "./StampPreview";
-import { useUser, postJson } from "../User";
 import { Dropzone, useFileIntake } from "./Dropzone";
 import { FileBoard, type Item } from "./FileBoard";
 import { Options } from "./Options";
@@ -70,7 +69,6 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
   const tool = toolById(toolId);
   const { t, tOr } = useI18n();
   const problem = useProblem();
-  const { user } = useUser();
   // Files handed over from the previous tool's result, or from the browser
   // add-on, start the workspace pre-filled, when this tool takes them.
   const handed = () => (peekHandoff() ?? []).filter((f) => tool.accept.includes(fileExt(f.name)));
@@ -280,7 +278,6 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
       if (!out.length) throw new Error(t("res.error"));
       setOutputs(out);
       setStage("done");
-      if (user) postJson("/api/history", { tool: tool.id, fileName: files[0]?.name ?? url }).catch(() => {});
     } catch (e) {
       if (ticket === run.current) fail(e);
     } finally {

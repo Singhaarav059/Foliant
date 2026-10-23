@@ -5,10 +5,10 @@
 import { BRAND, OPERATOR } from "./brand";
 import { STATIC } from "./mode";
 
-// The static build has no server, accounts or cookies, so its text says so.
+// The static build has no server or cookies, so its text says so.
 const on = <T,>(when: boolean, items: T[]) => (when ? items : []);
 
-export const LEGAL_UPDATED = "2026-10-17";
+export const LEGAL_UPDATED = "2026-10-23";
 
 // link: a line ending in a link, as [lead-in, text, href]; no href, no link.
 type Section = { id?: string; h: string; p: string[]; list?: string[]; link?: [string, string, string] };
@@ -45,15 +45,6 @@ export const LEGAL: Record<"privacy" | "terms" | "cookies", LegalDoc> = {
             ],
       },
       ...on(!STATIC, [{
-        h: "Account data",
-        p: ["If you create an account we store:"],
-        list: [
-          "your email address and, if you give it, your name",
-          "a bcrypt hash of your password (never the password itself)",
-          "workflows you save (tool names and options, never passwords)",
-          "a list of recent activity: the tool name, the file name and the time, capped at 200 entries",
-        ],
-      }, {
         h: "Messages",
         p: ["If you use the contact form we store your email address and message so we can reply."],
       }]),
@@ -74,7 +65,7 @@ export const LEGAL: Record<"privacy" | "terms" | "cookies", LegalDoc> = {
         p: STATIC
           ? ["We hold no personal data about you. What this site keeps in your browser (workflows, signatures, your language) is removed when you clear your browser data."]
           : [
-              "You can delete your activity history and your whole account at any time from the account page. Deleting your account removes your workflows and activity immediately.",
+              "What this site keeps in your browser (workflows, signatures, your language) is removed when you clear your browser data. To have a message you sent through the contact form deleted, contact us.",
               "Depending on where you live you may have further rights, such as access, correction and objection. Contact us through the contact page to use them.",
             ],
       },
@@ -98,10 +89,6 @@ export const LEGAL: Record<"privacy" | "terms" | "cookies", LegalDoc> = {
         h: "Your content",
         p: ["You keep all rights to your files. We only handle them to perform the task you ask for, as described in the privacy policy."],
       },
-      ...on(!STATIC, [{
-        h: "Accounts",
-        p: ["Keep your password safe. You're responsible for activity under your account. We may close accounts that break these terms."],
-      }]),
       {
         h: "No warranty",
         p: [
@@ -130,18 +117,13 @@ export const LEGAL: Record<"privacy" | "terms" | "cookies", LegalDoc> = {
         ? { h: "Cookies", p: ["This site doesn't set any cookies."] }
         : {
             h: "Cookies",
-            p: ["We set two cookies, both strictly necessary:"],
-            list: [
-              "session: keeps you signed in. HTTP-only, expires after 30 days or when you log out.",
-              "locale: remembers the language you picked. Expires after a year.",
-            ],
+            p: ["We set one cookie, which is strictly necessary:"],
+            list: ["locale: remembers the language you picked. Expires after a year."],
           },
       {
         h: "Local storage",
         p: [
-          STATIC
-            ? "Signatures and workflows you save, and the language you picked, are kept in your browser's local storage on your device only. Clearing your browser data removes them."
-            : "If you save a signature or a workflow without an account, it's kept in your browser's local storage on your device only, as is the language you picked. Clearing your browser data removes them.",
+          "Signatures and workflows you save, and the language you picked, are kept in your browser's local storage on your device only. Clearing your browser data removes them.",
           "The installable app stores the site's code in your browser so the on-device tools work offline.",
         ],
       },

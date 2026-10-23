@@ -34,7 +34,6 @@ LibreOffice downloads about 79 MB the first time (the tool asks once) and needs 
 
 - Office conversion on the server, with LibreOffice if installed (best fidelity) or a built-in converter that prints through Chrome
 - web page capture from a URL (needs Chrome on the server)
-- accounts, with workflows that sync across devices and recent activity
 - a contact form
 
 ## Limitations
@@ -45,7 +44,7 @@ Honest ones, so you can decide whether it fits:
 - **Word, Excel and PowerPoint to PDF** at full fidelity uses LibreOffice in the browser: a 79 MB download the first time and about 1 GB of memory. On phones and small devices the file is laid out in the browser and saved through the print dialog instead, which is less faithful for complex documents. In Safari LibreOffice can stop partway; Automatic then prints instead too.
 - **OCR** reads 26 languages. Accuracy depends on the scan; the high-accuracy engine (PaddleOCR) is a further 36 MB download.
 - **Redaction** rebuilds pages that have redactions as images, so nothing hidden survives; the text outside the redacted areas stays searchable.
-- **Web pages by address**, accounts, synced workflows and the contact form need the server build. The static build converts HTML files, not URLs.
+- **Web pages by address** and the contact form need the server build. The static build converts HTML files, not URLs.
 - **Hosting**: the site must be served from the root of a domain, not a sub-path.
 
 ## Deploy your own on Cloudflare Pages
@@ -119,8 +118,7 @@ The site settings above apply here too, and `NOPLOAD_RELEASE=1` checks them the 
 
 | Variable | What it does |
 |---|---|
-| `AUTH_SECRET` | Signs session cookies. Set a long random value in production. Without it, a secret is generated in `DATA_DIR` on first run. |
-| `DATA_DIR` | Where the SQLite database and generated secret live. Default `./data`. |
+| `DATA_DIR` | Where the SQLite database of contact-form messages lives. Default `./data`. |
 | `CHROME_PATH` | Chrome or Chromium binary for web page and built-in Office conversion. Common install paths are found automatically. |
 | `SOFFICE_PATH` | LibreOffice binary. Common install paths are found automatically. |
 | `MAX_UPLOAD_MB` | Largest Office file the server accepts. Default 200. HTML uploads are capped at 10 MB and JSON requests at 64 KB. |
@@ -134,9 +132,9 @@ For the most faithful Office conversions, install LibreOffice and the fonts your
 ### Deploying it safely
 
 - **Put a reverse proxy in front** (Caddy, nginx, a load balancer) that terminates HTTPS and appends the client's address to `X-Forwarded-For` (nginx: `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`, Caddy does it by default). Don't expose `next start` directly: a client talking to it directly can choose its own `X-Forwarded-For` and dodge the rate limits.
-- **Serve it over HTTPS.** In production the session cookie is `__Host-session` (Secure, HttpOnly, SameSite=Lax), which browsers only store over HTTPS. The app also sends `Strict-Transport-Security`.
-- **Set `AUTH_SECRET`** to a long random value and keep `DATA_DIR` out of the web root.
-- **Run one instance**, or put a shared store behind `src/lib/server/limits.ts`: rate limits and the sign-in lockout live in memory.
+- **Serve it over HTTPS.** The app sends `Strict-Transport-Security`.
+- **Keep `DATA_DIR` out of the web root.**
+- **Run one instance**, or put a shared store behind `src/lib/server/limits.ts`: rate limits live in memory.
 - **Give the container no route to anything private** if you can. The app already blocks it (below); a network policy makes it a second wall.
 
 What the server build does to protect itself:
@@ -144,7 +142,6 @@ What the server build does to protect itself:
 - **Web capture can't reach your network.** Chrome's only way out is a small proxy inside the app (`src/lib/server/egress.ts`). The proxy resolves each host once, refuses private, loopback, link-local, cloud-metadata, NAT64 (`64:ff9b::/96`), 6to4 (`2002::/16`), Teredo, IPv4-mapped and other non-public addresses, then connects to the address it checked, so DNS rebinding can't switch it. Redirects go through the proxy too. Chrome can't resolve names itself or open WebRTC sockets, and only http, https, data and blob URLs load. Ports below 1024 other than 80 and 443 are refused.
 - **Uploads are checked before they're parsed.** Bodies over the limit are refused as soon as the declared or streamed size passes it, and a file's content must match its extension (a .docx must be a zip, a .doc an OLE file, and so on).
 - **LibreOffice runs locked down**: a fresh profile per file with macros, embedded objects and linked content (files, images, URLs, `WEBSERVICE()`) turned off; its own process group, killed with all its children after two minutes or 1 MB of output; and none of the server's environment variables.
-- **Accounts**: 20 sign-in attempts per address and 10 failed attempts per account per 15 minutes; password changes and account deletion are limited per account too. Every sign-in issues a new session token; signing out revokes it and changing the password ends every other session.
 - **Cross-site requests can't change anything**: state-changing routes check `Sec-Fetch-Site` (or `Origin`) and JSON routes accept only `application/json`.
 - **Errors say nothing about the server**: failures are logged on the server and answered with a plain message.
 
@@ -169,7 +166,7 @@ src/components/        UI, including the tool workspace
 src/lib/tools.ts       every tool, its options and accepted files
 src/lib/pdf/           in-browser PDF processing (pdf-lib, PDF.js, qpdf, Tesseract)
 src/lib/office/        Word/Excel/PowerPoint to printable HTML, shared by both builds
-src/lib/server/        accounts, database, Chrome and LibreOffice helpers, egress proxy, limits
+src/lib/server/        database, Chrome and LibreOffice helpers, egress proxy, limits
 src/lib/i18n/dict/     translations; en.ts is the source of truth
 ```
 

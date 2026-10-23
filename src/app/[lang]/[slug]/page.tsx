@@ -213,8 +213,8 @@ function InfoPage({ slug, t, lang }: { slug: Info; t: Dict; lang: Locale }) {
   if (slug === "faq") {
     return wrap(t["faq.title"], (
       <div className="divide-y divide-line border-y border-line">
-        {/* The static build has no server and no accounts (questions 1 and 3). */}
-        {(STATIC ? [1, 2, 4, 5, 6, 7, 8] : [1, 2, 3, 4, 5, 6, 7, 8]).map((n) => (
+        {/* The static build has no server (question 1). */}
+        {(STATIC ? [2, 3, 4, 5, 6, 7, 8] : [1, 2, 3, 4, 5, 6, 7, 8]).map((n) => (
           <details key={n} className="group py-5 [&_summary::-webkit-details-marker]:hidden">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[16px] font-medium tracking-[-0.01em]">
               {k(`faq.q${n}`)}
@@ -229,8 +229,8 @@ function InfoPage({ slug, t, lang }: { slug: Info; t: Dict; lang: Locale }) {
   if (slug === "security") {
     return wrap(t["sec.title"], (
       <div className="space-y-8">
-        {/* Server processing and accounts only exist on a server. */}
-        {(STATIC ? [1, 4] : [1, 2, 3, 4]).map((n) => (
+        {/* Server processing only exists on a server. */}
+        {(STATIC ? [1, 4] : [1, 2, 4]).map((n) => (
           <section key={n}>
             <h2 className="text-[18px] font-medium tracking-[-0.015em]">{k(`sec.h${n}`)}</h2>
             <p className="mt-2 text-[16px] leading-relaxed text-ink-2">{k(`sec.b${n}`)}</p>

@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import { ArrowDown, Download, FolderOpen, Link2, Loader2, Play, Plus, Save, Trash2, Upload, X } from "lucide-react";
 import { useI18n } from "./I18n";
-import { useUser, postJson } from "./User";
 import { ToolIcon } from "./ToolIcon";
 import { Options } from "./workspace/Options";
 import { Dropzone, useFileIntake } from "./workspace/Dropzone";
@@ -16,9 +15,8 @@ import { markUnrestricted, PERMISSIONS, protectProblem } from "@/lib/pdf/passwor
 import { cleanSteps, isRecipe, readRecipe, recipeHash, type Step } from "@/lib/recipe";
 import { canPickFolders, listPdfs, pickFolder, writeUnique } from "@/lib/folder";
 import { BRAND } from "@/lib/brand";
-import { STATIC } from "@/lib/mode";
 
-type Saved = { id: number | string; name: string; steps: Step[] };
+type Saved = { id: string; name: string; steps: Step[] };
 
 const CHAINABLE = TOOLS.filter((t) => t.chainable);
 const LOCAL_KEY = "workflows";
@@ -45,7 +43,6 @@ const withDefaults = (steps: Step[]) =>
 export function Workflows() {
   const { t, tOr } = useI18n();
   const problem = useProblem();
-  const { user, ready } = useUser();
   const [saved, setSaved] = useState<Saved[]>([]);
   const [name, setName] = useState("");
   const [steps, setSteps] = useState<Step[]>([]);
@@ -65,24 +62,15 @@ export function Workflows() {
   // Dropped or pasted anywhere on the page.
   const over = useFileIntake(addFiles);
 
-  const load = useCallback(async () => {
-    if (user) {
-      const d = await fetch("/api/workflows").then((r) => r.json()).catch(() => ({ workflows: [] }));
-      setSaved(d.workflows ?? []);
-    } else setSaved(readLocal());
-  }, [user]);
-
+  // Saved workflows live in this browser only.
+  const load = () => setSaved(readLocal());
   useEffect(() => {
-    if (!ready) return;
     let live = true;
-    const pending = user
-      ? fetch("/api/workflows").then((r) => r.json()).then((d) => (d.workflows ?? []) as Saved[]).catch(() => [] as Saved[])
-      : Promise.resolve(readLocal());
-    pending.then((list) => live && setSaved(list));
+    Promise.resolve().then(() => live && setSaved(readLocal()));
     return () => {
       live = false;
     };
-  }, [ready, user]);
+  }, []);
 
   // A recipe link (#recipe=…) fills in its steps, to run or save.
   const fromLink = useEffectEvent(() => {
@@ -115,16 +103,14 @@ export function Workflows() {
   const save = async () => {
     if (!steps.length) return say(t("wf.needSteps"));
     const wfName = name.trim() || steps.map((s) => t(`tool.${s.tool}.name`)).join(" → ");
-    if (user) await postJson("/api/workflows", { name: wfName, steps: cleanSteps(steps) });
-    else writeLocal([{ id: crypto.randomUUID(), name: wfName, steps: cleanSteps(steps) }, ...readLocal()]);
+    writeLocal([{ id: crypto.randomUUID(), name: wfName, steps: cleanSteps(steps) }, ...readLocal()]);
     setName("");
-    await load();
+    load();
   };
 
-  const remove = async (id: Saved["id"]) => {
-    if (user) await postJson(`/api/workflows/${id}`, undefined, "DELETE");
-    else writeLocal(readLocal().filter((w) => w.id !== id));
-    await load();
+  const remove = (id: Saved["id"]) => {
+    writeLocal(readLocal().filter((w) => w.id !== id));
+    load();
   };
 
   const exportAll = () => {
@@ -148,13 +134,8 @@ export function Workflows() {
       /* not JSON */
     }
     if (!list.length) return say(t("wf.importBad"));
-    try {
-      if (user) for (const w of list) await postJson("/api/workflows", w);
-      else writeLocal([...list.map((w) => ({ id: crypto.randomUUID(), ...w })), ...readLocal()]);
-    } catch (e) {
-      setError(problem(e));
-    }
-    await load();
+    writeLocal([...list.map((w) => ({ id: crypto.randomUUID(), ...w })), ...readLocal()]);
+    load();
   };
 
   // Why the steps can't run as they are set, or null.
@@ -344,7 +325,7 @@ export function Workflows() {
 
         <aside className="card h-max min-w-0 p-5">
           <h2 className="mb-3 text-[16px] font-medium tracking-[-0.01em]">{t("wf.title")}</h2>
-          {!user && <p className="mb-3 text-[13px] text-muted">{STATIC ? t("wf.savedHere") : t("wf.savedLocally")}</p>}
+          <p className="mb-3 text-[13px] text-muted">{t("wf.savedHere")}</p>
           {saved.length === 0 ? <p className="text-[15px] text-muted">{t("wf.empty")}</p> : (
             <ul className="space-y-2">
               {saved.map((w) => (

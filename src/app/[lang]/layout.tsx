@@ -4,7 +4,6 @@ import localFont from "next/font/local";
 import "../globals.css";
 import { I18nProvider } from "@/components/I18n";
 import { clientDict } from "@/lib/i18n/meta";
-import { UserProvider } from "@/components/User";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { ServiceWorker } from "@/components/ServiceWorker";
@@ -54,18 +53,16 @@ export default async function RootLayout({ children, params }: LayoutProps<"/[la
     <html lang={lang} dir={isRtl(lang) ? "rtl" : "ltr"} className={`${sans.variable} ${mono.variable}`}>
       <body className="flex min-h-dvh flex-col">
         <I18nProvider locale={lang} dict={clientDict(dict)}>
-          <UserProvider>
-            <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-lg focus:bg-surface focus:px-3 focus:py-2">
-              {dict["nav.skip"]}
-            </a>
-            <Header />
-            <main id="main" className="flex-1">
-              <ExtensionHandoff />
-              {children}
-            </main>
-            <Footer />
-            <ServiceWorker />
-          </UserProvider>
+          <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-lg focus:bg-surface focus:px-3 focus:py-2">
+            {dict["nav.skip"]}
+          </a>
+          <Header />
+          <main id="main" className="flex-1">
+            <ExtensionHandoff />
+            {children}
+          </main>
+          <Footer />
+          <ServiceWorker />
         </I18nProvider>
       </body>
     </html>

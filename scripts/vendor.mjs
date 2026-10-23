@@ -431,7 +431,7 @@ const licOut = join(licRoot, "staging");
   // dependency except server-only ones, less the packages listed above.
   // Optional dependencies are platform builds (compilers, image tools), not
   // page code.
-  const serverOnly = new Set(["bcryptjs", "jose", "playwright-core", "server-only"]);
+  const serverOnly = new Set(["playwright-core", "server-only"]);
   const libs = new Map();
   const walk = (name, from) => {
     const p = info(name, from);

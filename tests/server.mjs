@@ -371,9 +371,9 @@ if (process.platform !== "win32") {
     });
 
   await test("a subprocess gets a clean environment", async () => {
-    process.env.AUTH_SECRET_TEST_LEAK = "s3cret";
+    process.env.SECRET_TEST_LEAK = "s3cret";
     const { stdout } = await run.runProcess("sh", ["-c", "env"], { timeoutMs: 5000, maxOutputBytes: 1 << 20 });
-    delete process.env.AUTH_SECRET_TEST_LEAK;
+    delete process.env.SECRET_TEST_LEAK;
     ok(!stdout.includes("s3cret"), "server secrets aren't inherited");
   });
 

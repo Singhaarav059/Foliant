@@ -125,7 +125,7 @@ await test("es/unir-pdf: an absolute alternate per language in its own words, x-
 });
 
 await test("slugs: ASCII, unique in each language, never an English slug of another page", () => {
-  const fixed = ["workflows", "404", "account", "contact", "login", "register", "features", "faq", "security", "about", "guide", "privacy", "terms", "cookies", "licenses"];
+  const fixed = ["workflows", "404", "contact", "features", "faq", "security", "about", "guide", "privacy", "terms", "cookies", "licenses"];
   const bad = [];
   const english = [...tools, ...intents];
   for (const l of locales) {
