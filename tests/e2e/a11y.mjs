@@ -23,7 +23,9 @@ const audit = async (page) => {
   if (found.length) throw new Error(found.join("; "));
 };
 
-await suite(async ({ browser, test }) => {
+await suite(async ({ name, browser, test }) => {
+  // WebKit on macOS skips buttons on Tab unless Option is held, as Safari does by default.
+  const TAB = name === "webkit" && process.platform === "darwin" ? "Alt+Tab" : "Tab";
   for (const scheme of ["light", "dark"]) {
     const ctx = await browser.newContext({ locale: "en-US", colorScheme: scheme, viewport: { width: 1280, height: 1000 } });
     const page = await ctx.newPage();
@@ -81,7 +83,7 @@ await suite(async ({ browser, test }) => {
       .catch(async () => { throw new Error(`after adding files, focus is on ${await page.evaluate(() => document.activeElement?.outerHTML.slice(0, 80))}`); });
     // Tab to the action button and press Enter.
     for (let k = 0; k < 60; k++) {
-      await page.keyboard.press("Tab");
+      await page.keyboard.press(TAB);
       if (await page.evaluate(() => document.activeElement?.matches("main aside.card button.btn-primary"))) break;
     }
     await page.keyboard.press("Enter");
