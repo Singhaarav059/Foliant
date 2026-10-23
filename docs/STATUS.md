@@ -1,6 +1,6 @@
 # Nopload: work status
 
-Last updated: 2026-10-21. Backlog details: [backlog.json](backlog.json). Plan and iLovePDF scorecard: [plan.md](plan.md).
+Last updated: 2026-10-23. Backlog details: [backlog.json](backlog.json). Plan and iLovePDF scorecard: [plan.md](plan.md).
 
 ## The short version
 
@@ -75,6 +75,14 @@ Naming note: the exact-size "compress PDF to N KB" pages are now called *landing
 2. Robustness run (`npm run test:robust -- --known`).
 3. Your go-ahead: fast-forward `main` to `combined`, push, confirm GitHub CI is green.
 4. Then the last batch: P2-03, 05, 07, 09, 10, 12, 15, 16 and P3-01, 02, 03, 04, 07. (P3-06 Drive/Dropbox: not doing.)
+
+## 2026-10-23: accounts removed, launch prep
+
+- **Accounts are gone** from both builds: no sign-up, login or account pages, no `/api/auth`, `/api/history` or `/api/workflows`, no `bcryptjs` or `jose`. Saved workflows live in the browser only (export/import and recipe links still move them between devices). The server build keeps Office and web page conversion and the contact form; its database holds only contact messages. A database from an older server build still has `users`, `workflows`, `history` and `revoked_sessions` tables: nothing reads them, delete them if you ran one.
+- Legal pages (English drafts) updated: no account data, one cookie (language) on the server build, no account terms.
+- `@fontsource/noto-sans-bengali`, `-tamil`, `-telugu` installed, so PDFs can draw those scripts; `axe-core` declared as a dev dependency.
+- `npm audit` (shipped code): `node-forge` advisory is about RSA signature verification, which we don't use (it only opens .p12 files; signatures are checked with WebCrypto). `image-size` (inside `pptxgenjs`) can hang on a malformed JXL/HEIF image in your own file; fix needs `pptxgenjs` 4 (major). `uuid` (inside `exceljs`) affects a call we don't make. The other five are build tools only.
+- Still open from the final pass: native-speaker spot checks of the six new languages, the /en/merge-pdf JavaScript budget (197 KiB vs 170), the pdf.js legacy-build question for old Chrome.
 
 ## Owner to-do (only you can do these)
 
