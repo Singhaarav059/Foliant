@@ -297,5 +297,8 @@
     "sharp": "0.35.5",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "allowScripts": {
+    "onnxruntime-node@1.30.0": true
   }
 }
