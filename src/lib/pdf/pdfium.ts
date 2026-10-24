@@ -4,6 +4,7 @@
 // then FPDFPage_GenerateContent writes the page back out.
 
 import { VENDOR } from "../vendor";
+import { renderLimits } from "./common";
 
 type Pdfium = Awaited<ReturnType<typeof import("@embedpdf/pdfium").init>>;
 
@@ -54,6 +55,14 @@ export async function redactInPlace(bytes: Uint8Array, boxes: Map<number, Box[]>
         failed.push(index);
         continue;
       }
+      // PDFium decodes every picture it cuts into, and a decompression bomb
+      // fills its memory, which never shrinks again. Such a page is drawn as
+      // an image instead, where pdf.js leaves the picture out (renderLimits).
+      if (hugeImage(memOf(m), page)) {
+        failed.push(index);
+        m.FPDF_ClosePage(page);
+        continue;
+      }
       // FS_QUADPOINTSF: top-left, top-right, bottom-left, bottom-right as float pairs.
       const quads = malloc(32 * list.length);
       list.forEach((b, i) => {
@@ -73,6 +82,25 @@ export async function redactInPlace(bytes: Uint8Array, boxes: Map<number, Box[]>
     m.FPDF_CloseDocument(doc);
     free(file);
   }
+}
+
+// Whether the page shows a picture over renderLimits.image pixels, itself or
+// in a form XObject. Reads only the sizes, without decoding anything.
+function hugeImage(x: Mem, page: number) {
+  const { m } = x;
+  const IMAGE = 3, FORM = 5;
+  const visit = (count: number, at: (i: number) => number, depth: number): boolean => {
+    for (let i = 0; i < count; i++) {
+      const o = at(i);
+      const type = o ? m.FPDFPageObj_GetType(o) : 0;
+      if (type === IMAGE) {
+        const [w, h] = values(x, 2, "i32", (p) => m.FPDFImageObj_GetImagePixelSize(o, p, p + 4)) ?? [0, 0];
+        if ((w >>> 0) * (h >>> 0) > renderLimits.image) return true;
+      } else if (type === FORM && depth < 12 && visit(m.FPDFFormObj_CountObjects(o), (k) => m.FPDFFormObj_GetObject(o, k), depth + 1)) return true;
+    }
+    return false;
+  };
+  return visit(m.FPDFPage_CountObjects(page), (i) => m.FPDFPage_GetObject(page, i), 0);
 }
 
 // A whole new file of the document. `removeSecurity` writes it unencrypted.

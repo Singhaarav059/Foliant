@@ -8,7 +8,7 @@
 // "exact" puts each page in as a picture.
 
 import type { PDFDocumentProxy } from "pdfjs-dist";
-import { baseName, bytesOf, canvasToBlob, closePdf, openPdf, renderPage, type Output, type Progress } from "./common";
+import { baseName, bytesOf, canvasToBlob, closePdf, fitScale, openPdf, renderPage, type Output, type Progress } from "./common";
 import { blocks, bodySizeOf, dropChars, spans, type Block, type Line, type Span } from "./text";
 import { allLines, type Table } from "./tables";
 import { documentLayout, type Column, type Figure, type PageLayout } from "./layout";
@@ -185,19 +185,25 @@ async function editable(docx: Docx, pdf: PDFDocumentProxy, progress?: Progress) 
   // cut to each rectangle and placed behind the text where it was on the page.
   // Figures lying on a background are drawn into it, text and all, rather than into the flow.
   const BG_SCALE = 1.6;
+  // A page drawn this big is copied twice more (cut out, then checked for
+  // blank), so a huge one is drawn smaller: 16 million pixels is still more
+  // than Word shows on its largest page (22 inches) at BG_SCALE.
+  const BG_PIXELS = 16e6;
   // `rotation` is the view the layout was read in, as for pictures.
   const behind = async (pageNo: number, rects: Figure[], withText: boolean, figures: Figure[] = [], rotation?: number) => {
     const runs: InstanceType<Docx["ImageRun"]>[] = [];
+    let scale = BG_SCALE;
     const box = (f: Figure, canvas: HTMLCanvasElement) => {
-      const x = Math.round(f.x0 * BG_SCALE);
-      const y = Math.round(f.y0 * BG_SCALE);
-      return [x, y, Math.max(1, Math.min(canvas.width - x, Math.round((f.x1 - f.x0) * BG_SCALE))), Math.max(1, Math.min(canvas.height - y, Math.round((f.y1 - f.y0) * BG_SCALE)))];
+      const x = Math.round(f.x0 * scale);
+      const y = Math.round(f.y0 * scale);
+      return [x, y, Math.max(1, Math.min(canvas.width - x, Math.round((f.x1 - f.x0) * scale))), Math.max(1, Math.min(canvas.height - y, Math.round((f.y1 - f.y0) * scale)))];
     };
     try {
       const page = await pdf.getPage(pageNo);
-      const canvas = await renderPage(page, BG_SCALE, "#ffffff", { rotation, withoutText: !withText });
+      scale = fitScale(page, BG_SCALE, rotation, BG_PIXELS);
+      const canvas = await renderPage(page, scale, "#ffffff", { rotation, withoutText: !withText });
       if (!withText && figures.length) {
-        const full = await renderPage(page, BG_SCALE, "#ffffff", { rotation });
+        const full = await renderPage(page, scale, "#ffffff", { rotation });
         for (const f of figures) {
           const [x, y, w, h] = box(f, canvas);
           canvas.getContext("2d")!.drawImage(full, x, y, w, h, x, y, w, h);
