@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Search, Server, X } from "lucide-react";
 import { ToolIcon } from "./ToolIcon";
+import { CATEGORY_DOODLE } from "./Decor";
 import { useI18n } from "./I18n";
 import { CATEGORIES, TOOLS, descKey } from "@/lib/tools";
 
@@ -54,9 +55,11 @@ export function ToolGrid() {
       </div>
 
       {sections.length === 0 ? (
-        <p className="rise py-28 text-center font-display text-[2rem] text-muted">{t("home.noResults")}</p>
+        <p className="rise py-28 text-center text-[1.5rem] font-medium tracking-[-0.02em] text-muted">{t("home.noResults")}</p>
       ) : (
-        sections.map((s) => (
+        sections.map((s) => {
+          const Doodle = CATEGORY_DOODLE[s.id];
+          return (
           <section
             key={s.id}
             aria-labelledby={`cat-${s.id}`}
@@ -64,8 +67,9 @@ export function ToolGrid() {
           >
             <header className="relative flex items-baseline gap-3 lg:sticky lg:top-[150px] lg:h-max lg:flex-col lg:gap-2">
               <span aria-hidden className="reveal-line absolute inset-x-0 -top-10 h-px bg-line lg:-end-12" />
-              <span className="serif text-[1.1rem] leading-none text-accent">{s.index}</span>
-              <h2 id={`cat-${s.id}`} className="display text-[2rem] sm:text-[2.4rem]">{t(`cat.${s.id}`)}</h2>
+              <span className="font-mono text-[0.8rem] leading-none text-accent">{s.index}</span>
+              <h2 id={`cat-${s.id}`} className="display text-[1.6rem] sm:text-[1.9rem]">{t(`cat.${s.id}`)}</h2>
+              <Doodle className="hidden h-12 w-12 -rotate-6 text-accent lg:mt-3 lg:block" />
               <span className="eyebrow ms-auto lg:ms-0">{s.tools.length}</span>
             </header>
             <ul className="grid gap-x-3 gap-y-1 sm:grid-cols-2 xl:grid-cols-3">
@@ -80,7 +84,7 @@ export function ToolGrid() {
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
                         <span className="text-[15px] font-medium tracking-[-0.01em]">{t(`tool.${tool.id}.name`)}</span>
-                        {tool.isNew && <span className="font-display text-[14px] italic text-accent">{t("home.new")}</span>}
+                        {tool.isNew && <span className="eyebrow rounded-[3px] border border-accent/40 px-1 py-px text-[10px] uppercase tracking-[0.08em] text-accent">{t("home.new")}</span>}
                         {tool.runtime === "server" && (
                           <Server size={12} className="text-muted" aria-label={t("home.serverBadge")} />
                         )}
@@ -92,7 +96,8 @@ export function ToolGrid() {
               ))}
             </ul>
           </section>
-        ))
+          );
+        })
       )}
     </section>
   );

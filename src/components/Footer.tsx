@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Download } from "lucide-react";
 import { Logo } from "./Logo";
+import { RegMark, Wash } from "./Decor";
 import { useI18n } from "./I18n";
 import { BRAND, OPERATOR } from "@/lib/brand";
 import { REPO_URL, STATIC } from "@/lib/mode";
@@ -48,11 +49,15 @@ export function Footer() {
   ];
 
   return (
-    <footer className="mt-32 overflow-hidden border-t border-line">
+    <footer className="deckle relative isolate mt-32 bg-surface">
+      <div aria-hidden className="absolute inset-0 -z-10 overflow-hidden">
+        <Wash className="-bottom-40 start-1/4 h-[420px] w-[620px]" />
+        <Wash className="wash-amber -end-20 top-10 h-[300px] w-[300px] [animation-delay:-9s]" />
+      </div>
       <div className="mx-auto grid max-w-[1240px] grid-cols-2 gap-x-6 gap-y-10 px-4 pb-10 pt-16 sm:px-6 md:grid-cols-[1.6fr_repeat(4,1fr)]">
         <div className="col-span-2 md:col-span-1">
           <Link href={href("/")} className="inline-block rounded-md" aria-label={t("nav.home")}><Logo /></Link>
-          <p className="mt-4 max-w-[280px] text-pretty font-display text-[1.35rem] leading-snug text-ink-2">{BRAND.tagline}</p>
+          <p className="mt-4 max-w-[280px] text-pretty text-[1.05rem] font-medium leading-snug tracking-[-0.01em] text-ink-2">{BRAND.tagline}</p>
           <button onClick={doInstall} className="btn btn-quiet btn-sm mt-6">
             <Download size={15} strokeWidth={1.75} /> {t("foot.install")}
           </button>
@@ -77,10 +82,13 @@ export function Footer() {
       </div>
       <div className="mx-auto flex max-w-[1240px] items-end justify-between gap-6 px-4 sm:px-6">
         <p className="eyebrow pb-6">{t("foot.rights", { year: year ?? "", brand: BRAND.name })}</p>
+        <span className="flex items-center gap-2 pb-6 text-line-strong"><RegMark size={14} /><RegMark size={14} /></span>
       </div>
-      <p aria-hidden className="wordmark select-none whitespace-nowrap text-center serif text-[clamp(6rem,24vw,22rem)] leading-[0.72] tracking-[-0.04em] text-ink/[0.07]">
+      <div className="overflow-hidden">
+      <p aria-hidden className="wordmark select-none whitespace-nowrap text-center text-[clamp(5rem,21vw,19rem)] font-bold leading-[0.74] tracking-[-0.07em] text-ink/[0.07]">
         {BRAND.name}
       </p>
+      </div>
     </footer>
   );
 }

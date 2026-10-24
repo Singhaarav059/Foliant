@@ -32,7 +32,7 @@ export function LandingPage({ intent, t, lang }: { intent: Landing; t: Dict; lan
           <span aria-hidden className="text-line-strong">/</span>
           <Link href={pageUrl(lang, `/${tool.slug}`)} className="transition-colors hover:text-ink">{t[`tool.${tool.id}.name` as DictKey]}</Link>
         </nav>
-        <h1 className="mt-5 display text-[2.9rem] sm:text-[4.2rem]">{name}</h1>
+        <h1 className="mt-5 display text-[2.4rem] sm:text-[3.4rem]">{name}</h1>
         <p className="mt-3 max-w-[520px] text-pretty text-[17px] leading-relaxed text-ink-2">{x("desc")}</p>
         <p className="mt-4 flex items-center gap-1.5 text-[13px] text-muted">
           <ShieldCheck size={14} strokeWidth={1.75} className="text-success" />
@@ -44,11 +44,11 @@ export function LandingPage({ intent, t, lang }: { intent: Landing; t: Dict; lan
 
       <section className="mx-auto mt-28 max-w-[960px]">
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: toolJsonLd({ lang, slug: intent.slug, home: t["nav.allTools"], content }) }} />
-        <h2 className="reveal mb-6 display text-[1.9rem] sm:text-[2.2rem]">{content.howTo}</h2>
+        <h2 className="reveal mb-6 display text-[1.4rem] sm:text-[1.6rem]">{content.howTo}</h2>
         <ol className="reveal grid border-y border-line sm:grid-cols-3">
           {steps.map((s, i) => (
             <li key={i} className="flex flex-col gap-2 border-line py-6 not-first:border-t sm:px-6 sm:not-first:border-s sm:not-first:border-t-0 sm:first:ps-0">
-              <span className="serif text-[2.4rem] leading-none text-accent">{String(i + 1).padStart(2, "0")}</span>
+              <span className="font-mono text-[1.6rem] leading-none text-accent">{String(i + 1).padStart(2, "0")}</span>
               <span className="text-pretty text-[15px] leading-relaxed text-ink-2">{s}</span>
             </li>
           ))}
@@ -56,11 +56,12 @@ export function LandingPage({ intent, t, lang }: { intent: Landing; t: Dict; lan
 
         <div className="mt-14 grid gap-10 md:grid-cols-[3fr_2fr]">
           <section>
-            <h2 className="display text-[1.9rem] sm:text-[2.2rem]">{format(t["tp.about"], { name })}</h2>
+            <h2 className="display text-[1.4rem] sm:text-[1.6rem]">{format(t["tp.about"], { name })}</h2>
             <p className="mt-3 max-w-[64ch] text-pretty text-[16px] leading-relaxed text-ink-2">{x("intro")}</p>
             <p className="mt-3 max-w-[64ch] text-pretty text-[16px] leading-relaxed text-ink-2">{x(String(intent.kb))}</p>
           </section>
-          <section className="reveal card self-start p-6 shadow-card">
+          <section className="reveal fold card relative self-start p-6 shadow-card">
+          <span aria-hidden className="tape -top-3 start-6 -rotate-3" />
             <h2 className="flex items-center gap-2 text-[16px] font-medium tracking-[-0.01em]">
               <ShieldCheck size={16} strokeWidth={1.75} className="text-success" aria-hidden />
               {t["tp.private"]}
@@ -70,7 +71,7 @@ export function LandingPage({ intent, t, lang }: { intent: Landing; t: Dict; lan
         </div>
 
         <section className="mt-14">
-          <h2 className="display text-[1.9rem] sm:text-[2.2rem]">{format(t["tp.faq"], { name })}</h2>
+          <h2 className="display text-[1.4rem] sm:text-[1.6rem]">{format(t["tp.faq"], { name })}</h2>
           <dl className="mt-4 divide-y divide-line border-y border-line">
             {faq.map(({ q, a }) => (
               <div key={q} className="reveal py-6">

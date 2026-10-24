@@ -19,7 +19,7 @@ export function Logo() {
   return (
     <span className="group inline-flex items-center gap-2">
       <LogoMark />
-      <span className="serif text-[1.45rem] leading-none tracking-[-0.02em]">{BRAND.name}</span>
+      <span className="text-[1.1rem] font-semibold leading-none tracking-[-0.035em]">{BRAND.name}</span>
     </span>
   );
 }

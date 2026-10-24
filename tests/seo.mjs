@@ -203,7 +203,8 @@ await test("intent pages: own title, every tool linked at its localized address"
     for (const intent of INTENTS) {
       const file = `${l}/${localSlug(intent.slug, l)}.html`;
       const html = read(file);
-      const h1 = html.match(/<h1\b[^>]*>([^<]*)<\/h1>/)?.[1].replaceAll("&#x27;", "'");
+      // The heading's text, without the spans the word-by-word reveal wraps it in.
+      const h1 = html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/)?.[1].replace(/<[^>]+>/g, "").replaceAll("&#x27;", "'");
       if (h1 !== intent.title[l]) bad.push(`${file} h1 ${h1}`);
       for (const id of intent.tools)
         if (!html.includes(`href="/${l}/${localSlug(slugOf[id], l)}"`)) bad.push(`${file} doesn't link ${id}`);

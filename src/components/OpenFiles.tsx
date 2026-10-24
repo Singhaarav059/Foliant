@@ -78,7 +78,7 @@ export function OpenFiles() {
 
   return (
     <div className="mx-auto max-w-[860px] px-4 pb-10 pt-12 sm:px-6 sm:pt-16">
-      <h1 className="display text-[2.9rem] sm:text-[4.2rem]">{t("open.title")}</h1>
+      <h1 className="display text-[2.4rem] sm:text-[3.4rem]">{t("open.title")}</h1>
       <p className="mt-4 max-w-[560px] text-pretty text-[17px] leading-relaxed text-ink-2">{t("open.subtitle")}</p>
 
       <div className="mt-10">

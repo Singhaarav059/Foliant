@@ -13,7 +13,7 @@ export default async function Contact({ params }: { params: Promise<{ lang: stri
   const t = await getDictionary(lang);
   return (
     <div className="mx-auto max-w-[620px] px-4 pb-10 pt-14">
-      <h1 className="display text-[2.9rem] sm:text-[3.6rem]">{t["contact.title"]}</h1>
+      <h1 className="display text-[2.4rem] sm:text-[3rem]">{t["contact.title"]}</h1>
       <p className="mb-8 mt-2 text-[16px] text-muted">{t["contact.body"]}</p>
       <ContactForm />
     </div>

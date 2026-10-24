@@ -5,6 +5,7 @@ import { ArrowRight, Check } from "lucide-react";
 import { ToolGrid } from "@/components/ToolGrid";
 import { Comparison } from "@/components/Comparison";
 import { PaperStack, Words } from "@/components/Motion";
+import { Bolt, Clip, CropMarks, Flourish, Padlock, PenNib, RegMark, Scissors, Squiggle, Stamp, Tape, Tray, Wash } from "@/components/Decor";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { hasLocale } from "@/lib/i18n/locales";
 import { TOOLS } from "@/lib/tools";
@@ -30,7 +31,9 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
 
   return (
     <div className="mx-auto max-w-[1240px] px-4 sm:px-6">
-      <section className="grid items-center gap-12 pb-16 pt-14 sm:pt-20 lg:grid-cols-[1.35fr_1fr] lg:gap-6 lg:pb-24 lg:pt-24">
+      <section className="relative isolate grid items-center gap-12 pb-16 pt-14 sm:pt-20 lg:grid-cols-[1.35fr_1fr] lg:gap-6 lg:pb-24 lg:pt-24">
+        <Wash className="-end-40 -top-24 h-[520px] w-[520px]" />
+        <Wash className="wash-amber -start-48 top-40 h-[420px] w-[420px] [animation-delay:-6s]" />
         <div>
           <p className="fade-up eyebrow flex items-center gap-2" style={{ "--d": "0ms" } as React.CSSProperties}>
             <span className="relative flex h-1.5 w-1.5" aria-hidden>
@@ -41,9 +44,10 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
             <span className="text-line-strong">·</span>
             {t["home.privateBadge"]}
           </p>
-          <h1 className="display mt-6 max-w-[13ch] text-[3.3rem] sm:text-[5rem] lg:text-[6.4rem]">
+          <h1 className="display mt-6 max-w-[14ch] text-[2.9rem] sm:text-[4.2rem] lg:text-[5.2rem]">
             <Words text={t["home.title"]} />
           </h1>
+          <Squiggle className="mt-3 w-[min(260px,60%)]" />
           <p className="fade-up mt-7 max-w-[520px] text-pretty text-[17px] leading-[1.6] text-ink-2 sm:text-[18px]" style={{ "--d": "500ms" } as React.CSSProperties}>
             {t["home.subtitle"]}
           </p>
@@ -62,8 +66,17 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
             </Link>
           </div>
         </div>
-        <div className="fade-up hidden py-10 sm:block" style={{ "--d": "350ms" } as React.CSSProperties}>
-          <PaperStack />
+        <div className="fade-up relative hidden py-10 sm:block" style={{ "--d": "350ms" } as React.CSSProperties}>
+          <div className="relative mx-auto w-max">
+            <CropMarks inset={-28} />
+            <RegMark className="absolute -start-12 top-1/2" />
+            <RegMark size={14} className="absolute -end-10 -top-8 [animation-delay:300ms]" />
+            <PaperStack />
+            <Clip className="absolute -top-7 start-[30%] z-10 h-16 w-7 rotate-[8deg] text-ink-2" style={{ "--d": "900ms" } as React.CSSProperties} />
+            <Scissors className="absolute -bottom-6 -start-16 h-14 w-14 -rotate-12 text-muted" style={{ "--d": "1100ms" } as React.CSSProperties} />
+            <Stamp className="absolute -end-14 bottom-10 h-14 w-14 rotate-12 text-accent" style={{ "--d": "1300ms" } as React.CSSProperties} />
+            <PenNib className="absolute -end-6 -top-14 h-12 w-12 rotate-[24deg] text-muted" style={{ "--d": "1500ms" } as React.CSSProperties} />
+          </div>
         </div>
       </section>
 
@@ -72,7 +85,7 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
           {[0, 1].map((n) => (
             <span key={n} className="flex shrink-0">
               {formats.map((f) => (
-                <span key={f} className="flex items-center gap-8 pe-8 serif text-[1.75rem] leading-none text-ink-2">
+                <span key={f} className="flex items-center gap-8 pe-8 text-[1.4rem] font-medium leading-none tracking-[-0.02em] text-ink-2">
                   {f}
                   <span className="h-1 w-1 rounded-full bg-accent" />
                 </span>
@@ -84,12 +97,14 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
 
       <ToolGrid />
 
-      <section className="relative mt-24 overflow-hidden rounded-[28px] border border-line bg-surface px-6 py-14 sm:px-12 sm:py-20">
+      <section className="ruled relative mt-24 overflow-hidden rounded-[28px] border border-line bg-surface px-6 py-14 sm:px-12 sm:py-20">
         <div aria-hidden className="pointer-events-none absolute -end-24 -top-24 h-72 w-72 rounded-full bg-accent/10 blur-3xl" />
+        <Tape className="-start-5 top-5 -rotate-[32deg]" />
+        <Tape className="-end-5 bottom-6 -rotate-[32deg]" />
         <p className="reveal eyebrow">{t["nav.workflows"]}</p>
         <div className="mt-5 grid gap-10 lg:grid-cols-[1fr_auto] lg:items-end">
           <div className="min-w-0">
-            <h2 className="reveal display max-w-[18ch] text-[2.4rem] sm:text-[3.4rem]">{t["home.workflowsTitle"]}</h2>
+            <h2 className="reveal display max-w-[18ch] text-[2rem] sm:text-[2.75rem]">{t["home.workflowsTitle"]}</h2>
             <p className="reveal mt-5 max-w-[480px] text-pretty text-[16px] leading-relaxed text-muted">{t["home.workflowsBody"]}</p>
             <ol className="mt-10 flex min-w-0 flex-wrap items-center gap-x-0 gap-y-3" aria-label={t["nav.workflows"]}>
               {chain.map((tool, i) => (
@@ -109,22 +124,36 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
         </div>
       </section>
 
-      <section className="mt-24">
+      <Flourish className="mt-24" />
+
+      <section className="mt-16">
         <h2 className="reveal eyebrow">{t["home.whyTitle"]}</h2>
-        <dl className="mt-8 grid gap-px overflow-hidden rounded-[20px] border border-line bg-line md:grid-cols-3">
+        <dl className="mt-10 grid gap-8 md:grid-cols-3 md:gap-6">
           {([
-            ["home.why1Title", STATIC ? "home.why1BodyLocal" : "home.why1Body"],
-            ["home.why2Title", "home.why2Body"],
-            ["home.why3Title", "home.why3Body"],
-          ] as const).map(([title, body], i) => (
-            <div key={title} className="spot reveal bg-surface p-7 sm:p-9">
-              <span className="serif text-[3.5rem] leading-none text-accent">{["i", "ii", "iii"][i]}.</span>
-              <dt className="mt-6 text-[17px] font-medium tracking-[-0.01em]">{t[title]}</dt>
-              <dd className="mt-2 max-w-[38ch] text-pretty text-[15px] leading-relaxed text-muted">{t[body]}</dd>
+            ["home.why1Title", STATIC ? "home.why1BodyLocal" : "home.why1Body", Padlock],
+            ["home.why2Title", "home.why2Body", Bolt],
+            ["home.why3Title", "home.why3Body", Tray],
+          ] as const).map(([title, body, Doodle], i) => (
+            <div
+              key={title}
+              className={`reveal group drop-shadow-[0_10px_18px_rgb(60_44_20_/_0.10)] transition-[rotate,translate] duration-700 ease-(--ease-spring) hover:-translate-y-1 hover:rotate-0 ${["md:-rotate-[1.2deg]", "md:rotate-[0.8deg] md:translate-y-4", "md:-rotate-[0.6deg]"][i]}`}
+            >
+              <div className="perforated bg-surface p-3">
+                <div className="fold spot relative h-full [--fold-bg:var(--surface)] border border-dashed border-line-strong p-6 sm:p-7">
+                  <div className="flex items-start justify-between">
+                    <span className="font-mono text-[2rem] leading-none text-accent">{String(i + 1).padStart(2, "0")}</span>
+                    <Doodle className="h-11 w-11 text-ink-2" style={{ "--d": `${400 + i * 200}ms` } as React.CSSProperties} />
+                  </div>
+                  <dt className="mt-6 text-[17px] font-medium tracking-[-0.01em]">{t[title]}</dt>
+                  <dd className="mt-2 max-w-[38ch] text-pretty text-[15px] leading-relaxed text-muted">{t[body]}</dd>
+                </div>
+              </div>
             </div>
           ))}
         </dl>
       </section>
+
+      <Flourish className="mt-28" />
 
       <Comparison t={t} lang={lang} />
     </div>

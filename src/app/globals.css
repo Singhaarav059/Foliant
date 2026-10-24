@@ -1,42 +1,7 @@
 @import "tailwindcss";
 
-/* Instrument Serif for display type, committed in src/app/fonts (OFL).
-   Scripts it doesn't cover fall back to the sans (see :lang below). */
-@font-face {
-  font-family: "Instrument Serif";
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("./fonts/instrument-serif-latin-400-normal.woff2") format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-@font-face {
-  font-family: "Instrument Serif";
-  font-style: italic;
-  font-weight: 400;
-  font-display: swap;
-  src: url("./fonts/instrument-serif-latin-400-italic.woff2") format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-@font-face {
-  font-family: "Instrument Serif";
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("./fonts/instrument-serif-latin-ext-400-normal.woff2") format("woff2");
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
-}
-@font-face {
-  font-family: "Instrument Serif";
-  font-style: italic;
-  font-weight: 400;
-  font-display: swap;
-  src: url("./fonts/instrument-serif-latin-ext-400-italic.woff2") format("woff2");
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
-}
-
 /* Paper and ink. Warm neutrals from one family; vermilion is the only colour,
-   and it is spent on small things: a folded corner, a dot, an italic word. */
+   and it is spent on small things: a folded corner, a dot, a stamp. */
 :root {
   --bg: #f3f0e8;
   --surface: #fbf9f4;
@@ -59,18 +24,20 @@
   --grain-opacity: 0.05;
   --grain-blend: multiply;
 
-  --display-family: "Instrument Serif", ui-serif, Georgia, serif;
-  --display-weight: 400;
-  --display-track: -0.025em;
-  --display-leading: 0.98;
+  --display-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --display-weight: 600;
+  --display-track: -0.045em;
+  --display-leading: 1.02;
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
 }
 
+/* Dark: when the device asks and no light theme was chosen, or when dark was
+   chosen (data-theme on <html>, set by src/components/ThemeMenu.tsx). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #110f0c;
     --surface: #1a1814;
     --surface-2: #24211b;
@@ -92,12 +59,34 @@
     --grain-blend: screen;
   }
 }
+:root[data-theme="dark"] {
+  --bg: #110f0c;
+  --surface: #1a1814;
+  --surface-2: #24211b;
+  --ink: #efeae0;
+  --ink-2: #c7c0b2;
+  --muted: #9a9384;
+  --line: #2a2721;
+  --line-strong: #3d3930;
+  --brand: #efeae0;
+  --brand-ink: #110f0c;
+  --brand-hover: #ffffff;
+  --accent: #ec6a3f;
+  --danger: #e5584c;
+  --success: #5bb486;
+  --focus: #efeae0;
+  --shadow: 0 1px 1px rgb(0 0 0 / 0.35), 0 16px 40px -12px rgb(0 0 0 / 0.6);
+  --shadow-lift: 0 2px 2px rgb(0 0 0 / 0.3), 0 28px 56px -16px rgb(0 0 0 / 0.75);
+  --grain-opacity: 0.07;
+  --grain-blend: screen;
+}
+:root { color-scheme: light dark; }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 
-/* Scripts without a serif here: display type is the sans, heavier. */
-:root:is(:lang(ja), :lang(ko), :lang(zh-cn), :lang(zh-tw), :lang(ar), :lang(ru), :lang(uk), :lang(bg), :lang(el), :lang(hi), :lang(mr), :lang(bn), :lang(ta), :lang(te), :lang(th), :lang(ur), :lang(fa)) {
-  --display-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --display-weight: 600;
-  --display-track: -0.035em;
+/* Scripts with taller glyphs: looser display lines, less negative tracking. */
+:root:is(:lang(ja), :lang(ko), :lang(zh-cn), :lang(zh-tw), :lang(ar), :lang(hi), :lang(mr), :lang(bn), :lang(ta), :lang(te), :lang(th), :lang(ur), :lang(fa)) {
+  --display-track: -0.02em;
   --display-leading: 1.15;
 }
 
@@ -161,6 +150,14 @@ body::after {
   body::after { display: none; }
 }
 
+/* No italics anywhere on the site, real or synthesized. */
+em, i, cite, dfn, var, address, blockquote {
+  font-style: normal;
+}
+html {
+  font-synthesis-style: none;
+}
+
 :focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
@@ -174,7 +171,7 @@ body::after {
   font-variant-numeric: tabular-nums;
 }
 
-/* Display type: the serif, large, tight. `em` inside turns vermilion italic. */
+/* Display type: large, tight sans. `em` inside turns vermilion. */
 .display {
   font-family: var(--display-family);
   font-weight: var(--display-weight);
@@ -183,14 +180,7 @@ body::after {
   text-wrap: balance;
   font-feature-settings: normal;
 }
-/* Latin-only text (the wordmark, file formats, numerals) keeps the serif in every language. */
-.serif {
-  font-family: "Instrument Serif", ui-serif, Georgia, serif;
-  font-weight: 400;
-}
-
 .display em {
-  font-style: italic;
   color: var(--accent);
 }
 
@@ -435,9 +425,155 @@ select.field {
 .prose-md code { font-family: var(--font-mono); font-size: 0.85em; background: var(--surface-2); padding: 0.1em 0.3em; border-radius: 4px; }
 .prose-md hr { border: 0; border-top: 1px solid var(--line); margin: 1rem 0; }
 
-.legal h2 { font-family: var(--display-family); font-weight: var(--display-weight); font-size: 1.6rem; letter-spacing: var(--display-track); margin: 2.75rem 0 0.6rem; }
+.legal h2 { font-family: var(--display-family); font-weight: var(--display-weight); font-size: 1.25rem; letter-spacing: var(--display-track); margin: 2.75rem 0 0.6rem; }
 .legal p, .legal li { color: var(--ink-2); margin: 0 0 0.75rem; max-width: 68ch; line-height: 1.7; }
 .legal ul { list-style: disc; padding-inline-start: 1.25rem; }
+}
+
+/* ───────────── Decoration ─────────────
+   Paper ornaments, print-proof marks, washes and sketches (src/components/Decor.tsx). */
+
+/* Sketches draw themselves in, then wobble a little under the pointer. */
+@keyframes ink {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+.doodle {
+  overflow: visible;
+  transition: rotate 600ms var(--ease-spring), scale 600ms var(--ease-spring);
+}
+.doodle * {
+  stroke-dasharray: 1;
+  animation: ink 1.6s var(--ease-in-out) both;
+  animation-delay: var(--d, 300ms);
+}
+:is(.group, a, section):hover > .doodle,
+.group:hover .doodle {
+  rotate: -8deg;
+  scale: 1.08;
+}
+
+/* A hand-drawn underline. */
+.squiggle {
+  display: block;
+  height: 0.45em;
+  color: var(--accent);
+}
+.squiggle path {
+  stroke-dasharray: 1;
+  animation: ink 1.2s var(--ease-out) both;
+  animation-delay: var(--d, 900ms);
+}
+
+/* Crop marks at the corners of a proof. */
+.crop > i {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-color: var(--line-strong);
+  border-style: solid;
+  border-width: 0;
+  animation: rise 900ms var(--ease-out) both;
+  animation-delay: 600ms;
+}
+.crop > i:nth-child(1) { top: 0; left: 0; border-top-width: 1px; border-left-width: 1px; }
+.crop > i:nth-child(2) { top: 0; right: 0; border-top-width: 1px; border-right-width: 1px; }
+.crop > i:nth-child(3) { bottom: 0; left: 0; border-bottom-width: 1px; border-left-width: 1px; }
+.crop > i:nth-child(4) { bottom: 0; right: 0; border-bottom-width: 1px; border-right-width: 1px; }
+
+.regmark {
+  color: var(--line-strong);
+  animation: spin-in 1.4s var(--ease-out) both;
+}
+@keyframes spin-in {
+  from { opacity: 0; rotate: -90deg; scale: 0.6; }
+  to { opacity: 1; rotate: 0deg; scale: 1; }
+}
+
+/* A strip of translucent tape. */
+.tape {
+  position: absolute;
+  width: 92px;
+  height: 26px;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 6px, rgb(255 255 255 / 0.18) 6px 7px),
+    color-mix(in oklab, var(--accent) 16%, color-mix(in oklab, var(--surface) 70%, transparent));
+  box-shadow: 0 1px 2px rgb(60 44 20 / 0.12);
+  clip-path: polygon(0 8%, 3% 0, 6% 10%, 4% 30%, 2% 52%, 5% 74%, 2% 100%, 97% 100%, 100% 82%, 96% 60%, 99% 38%, 95% 18%, 98% 0, 0 0);
+  backdrop-filter: blur(1px);
+  pointer-events: none;
+}
+
+/* A folded corner on a card: the top end corner turns down. */
+.fold {
+  position: relative;
+}
+.fold::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  inset-inline-end: -1px;
+  width: 22px;
+  height: 22px;
+  background: linear-gradient(225deg, var(--fold-bg, var(--bg)) 0 50%, var(--surface-2) 50% 100%);
+  border-end-start-radius: 4px;
+  box-shadow: -2px 2px 3px rgb(60 44 20 / 0.08);
+  transition: width 500ms var(--ease-spring), height 500ms var(--ease-spring);
+}
+[dir="rtl"] .fold::after {
+  background: linear-gradient(135deg, var(--fold-bg, var(--bg)) 0 50%, var(--surface-2) 50% 100%);
+  box-shadow: 2px 2px 3px rgb(60 44 20 / 0.08);
+}
+.fold:hover::after {
+  width: 30px;
+  height: 30px;
+}
+
+/* A deckled (torn paper) top edge. */
+.deckle {
+  position: relative;
+}
+.deckle::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: -11px;
+  height: 12px;
+  background: var(--surface);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='12' preserveAspectRatio='none'%3E%3Cpath d='M0 12V7l4-2 5 3 6-4 5 2 4-3 7 4 5-2 6 3 4-4 6 2 5-3 5 4 6-2 4 3 7-4 4 2 6-3 5 4 5-2 4 2 6-3 4 3v5z'/%3E%3C/svg%3E") repeat-x 0 0 / 120px 12px;
+}
+
+/* Soft warm light. */
+.wash {
+  background: radial-gradient(closest-side, color-mix(in oklab, var(--accent) 22%, transparent), transparent);
+  filter: blur(30px);
+  animation: drift 18s var(--ease-in-out) infinite alternate;
+}
+.wash-amber {
+  background: radial-gradient(closest-side, rgb(232 176 92 / 0.28), transparent);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .wash { opacity: 0.55; }
+}
+:root[data-theme="dark"] .wash { opacity: 0.55; }
+@keyframes drift {
+  from { translate: 0 0; scale: 1; }
+  to { translate: 30px -20px; scale: 1.12; }
+}
+
+/* Ruled paper: faint lines behind a section, like a notebook page. */
+.ruled {
+  background-image: repeating-linear-gradient(to bottom, transparent 0 31px, color-mix(in oklab, var(--line) 70%, transparent) 31px 32px);
+}
+
+/* A postage-stamp edge: perforated border. */
+.perforated {
+  --hole: 4px;
+  --pitch: 13px;
+  /* A solid middle, and a band of punched holes around it. */
+  mask:
+    linear-gradient(#000 0 0) center / calc(100% - var(--pitch)) calc(100% - var(--pitch)) no-repeat,
+    radial-gradient(circle, transparent var(--hole), #000 calc(var(--hole) + 0.5px)) calc(var(--pitch) / -2) calc(var(--pitch) / -2) / var(--pitch) var(--pitch) round;
 }
 
 /* ───────────── Motion ─────────────

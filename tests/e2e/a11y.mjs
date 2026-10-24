@@ -27,7 +27,9 @@ await suite(async ({ name, browser, test }) => {
   // WebKit on macOS skips buttons on Tab unless Option is held, as Safari does by default.
   const TAB = name === "webkit" && process.platform === "darwin" ? "Alt+Tab" : "Tab";
   for (const scheme of ["light", "dark"]) {
-    const ctx = await browser.newContext({ locale: "en-US", colorScheme: scheme, viewport: { width: 1280, height: 1000 } });
+    // Reduced motion: contrast is measured on the settled page, not on text
+    // part-way through fading in or waiting below the fold to be revealed.
+    const ctx = await browser.newContext({ locale: "en-US", colorScheme: scheme, reducedMotion: "reduce", viewport: { width: 1280, height: 1000 } });
     const page = await ctx.newPage();
     page.setDefaultTimeout(30000);
     await test(`${scheme}: /en`, async () => {

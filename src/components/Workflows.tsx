@@ -245,7 +245,7 @@ export function Workflows() {
 
   return (
     <div className="mx-auto max-w-[1100px] px-4 pb-10 pt-12 sm:px-6">
-      <h1 className="display text-[2.9rem] sm:text-[4.2rem]">{t("wf.title")}</h1>
+      <h1 className="display text-[2.4rem] sm:text-[3.4rem]">{t("wf.title")}</h1>
       <p className="mt-2 max-w-[620px] text-[16px] text-muted">{t("wf.subtitle")}</p>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_340px]">

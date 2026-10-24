@@ -10,6 +10,7 @@ import { useI18n } from "./I18n";
 import { CATEGORIES, TOOLS } from "@/lib/tools";
 import { LOCALES, type Locale } from "@/lib/i18n/locales";
 import { switchLanguage } from "@/lib/i18n/slugs";
+import { ThemeMenu, ThemeSwitch } from "./ThemeMenu";
 
 // Every tool's icon only shows in the phone menu: loaded when it opens (P3-03).
 const ToolIcon = dynamic(() => import("./ToolIcon").then((m) => m.ToolIcon), { ssr: false });
@@ -55,7 +56,10 @@ export function Header() {
   };
 
   return (
-    <header className="header-scroll sticky top-0 z-40 border-b border-line bg-[color-mix(in_oklab,var(--bg)_82%,transparent)] backdrop-blur-[14px] backdrop-saturate-150">
+    <header className="sticky top-0 z-40 isolate">
+      {/* The frosted bar is its own layer: a backdrop-filter on <header> would
+          make it the containing block of the fixed menus below. */}
+      <div aria-hidden className="header-scroll absolute inset-0 -z-10 border-b border-line bg-[color-mix(in_oklab,var(--bg)_82%,transparent)] backdrop-blur-[14px] backdrop-saturate-150" />
       <div className="mx-auto flex h-16 max-w-[1240px] items-center gap-2 px-4 sm:px-6">
         <Link href={href("/")} className="me-6 rounded-md" aria-label={t("nav.home")}>
           <Logo />
@@ -78,7 +82,7 @@ export function Header() {
                     <div key={c.id} className="stagger">
                       <p className="mb-3 flex items-baseline gap-2" style={{ "--i": ci } as React.CSSProperties}>
                         <span className="eyebrow text-accent">{String(ci + 1).padStart(2, "0")}</span>
-                        <span className="font-display text-[1.3rem] leading-none tracking-[-0.01em]">{t(`cat.${c.id}`)}</span>
+                        <span className="text-[14px] font-semibold leading-none tracking-[-0.01em] text-ink">{t(`cat.${c.id}`)}</span>
                       </p>
                       {TOOLS.filter((x) => x.category === c.id).map((tool, i) => (
                         <Link
@@ -134,6 +138,8 @@ export function Header() {
             )}
           </div>
 
+          <ThemeMenu />
+
           <button className="icon-btn md:hidden" aria-label={t("nav.menu")} onClick={() => setMenu("mobile")}>
             <Menu size={22} />
           </button>
@@ -156,7 +162,7 @@ export function Header() {
               <div key={c.id} className="stagger mb-8" style={{ "--i": ci } as React.CSSProperties}>
                 <p className="mb-1 flex items-baseline gap-2">
                   <span className="eyebrow text-accent">{String(ci + 1).padStart(2, "0")}</span>
-                  <span className="font-display text-[1.6rem] leading-tight">{t(`cat.${c.id}`)}</span>
+                  <span className="text-[1.2rem] font-semibold leading-tight tracking-[-0.02em]">{t(`cat.${c.id}`)}</span>
                 </p>
                 <ul>
                   {TOOLS.filter((x) => x.category === c.id).map((tool) => (
@@ -170,7 +176,9 @@ export function Header() {
                 </ul>
               </div>
             ))}
-            <label className="mt-2 block text-[13px] font-semibold text-muted" htmlFor="m-lang">{t("nav.language")}</label>
+            <p className="mt-2 mb-1.5 text-[13px] font-semibold text-muted">{t("theme.label")}</p>
+            <ThemeSwitch />
+            <label className="mt-6 block text-[13px] font-semibold text-muted" htmlFor="m-lang">{t("nav.language")}</label>
             <select id="m-lang" className="field mt-1.5" value={locale} onChange={(e) => switchLocale(e.target.value as Locale)}>
               {LOCALES.map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}
             </select>

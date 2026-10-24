@@ -34,9 +34,9 @@ export function Comparison({ t, lang }: { t: Dict; lang: string }) {
   const cell = "px-4 py-3.5 align-top";
   const link = "underline decoration-line-strong underline-offset-2 transition-colors hover:text-ink";
   return (
-    <section data-comparison aria-labelledby="comparison" className="mt-24">
+    <section data-comparison aria-labelledby="comparison" className="mt-16">
       <div className="min-w-0">
-        <h2 id="comparison" className="reveal display max-w-[20ch] text-[2.4rem] sm:text-[3.4rem]">{t["vs.title"]}</h2>
+        <h2 id="comparison" className="reveal display max-w-[20ch] text-[2rem] sm:text-[2.75rem]">{t["vs.title"]}</h2>
         <p className="reveal mt-5 max-w-[60ch] text-pretty text-[15px] leading-relaxed text-muted">{t["vs.subtitle"]}</p>
         {/* Wide on phones: the table scrolls inside its own box, not the page. */}
         <div className="reveal mt-8 overflow-x-auto rounded-[20px] border border-line bg-surface/40">

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Plus, Upload } from "lucide-react";
 import { useI18n } from "../I18n";
 import type { Tool } from "@/lib/tools";
+import { Clip, CropMarks } from "../Decor";
 
 export function acceptAttr(tool: Tool) {
   return tool.accept.map((e) => `.${e}`).join(",") + (tool.accept.includes("jpg") ? ",image/*" : "");
@@ -115,6 +116,8 @@ export function Dropzone({ tool, onFiles, compact = false, over = false }: { too
       data-over={over || undefined}
       className="dropzone group/drop relative mx-auto flex max-w-[780px] flex-col items-center rounded-[28px] bg-surface px-4 py-16 text-center shadow-card transition-[background-color,box-shadow,scale] duration-500 ease-(--ease-out) data-[over]:scale-[1.015] data-[over]:shadow-lift sm:px-6 sm:py-24"
     >
+      <CropMarks inset={-14} />
+      <Clip className="absolute -top-8 end-[14%] h-20 w-8 rotate-[10deg] text-ink-2 transition-transform duration-700 ease-(--ease-spring) group-data-[over]/drop:-translate-y-2 group-data-[over]/drop:rotate-[18deg]" />
       <svg aria-hidden className="dropzone-edge pointer-events-none absolute inset-0 h-full w-full overflow-visible">
         <rect width="100%" height="100%" rx="28" fill="none" stroke="var(--line-strong)" strokeWidth="1" />
       </svg>
@@ -132,7 +135,7 @@ export function Dropzone({ tool, onFiles, compact = false, over = false }: { too
         {picker}
         <Upload size={18} strokeWidth={1.75} /> {tool.multiple ? t("ws.select") : t("ws.selectOne")}
       </label>
-      <p className="mt-4 font-display text-[1.35rem] text-muted transition-colors group-data-[over]/drop:text-ink">{over ? t("ws.dropActive") : tool.multiple ? t("ws.drop") : t("ws.dropOne")}</p>
+      <p className="mt-4 text-[15px] text-muted transition-colors group-data-[over]/drop:text-ink">{over ? t("ws.dropActive") : tool.multiple ? t("ws.drop") : t("ws.dropOne")}</p>
       <p className="eyebrow mt-10">
         {t("ws.accepts", { types: tool.accept.filter((e) => e !== "jpeg").map((e) => e.toUpperCase()).join(" · ") })}
       </p>

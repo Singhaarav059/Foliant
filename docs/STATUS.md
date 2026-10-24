@@ -84,6 +84,24 @@ Naming note: the exact-size "compress PDF to N KB" pages are now called *landing
 - `npm audit` (shipped code): `node-forge` advisory is about RSA signature verification, which we don't use (it only opens .p12 files; signatures are checked with WebCrypto). `image-size` (inside `pptxgenjs`) can hang on a malformed JXL/HEIF image in your own file; fix needs `pptxgenjs` 4 (major). `uuid` (inside `exceljs`) affects a call we don't make. The other five are build tools only.
 - Still open from the final pass: native-speaker spot checks of the six new languages, the /en/merge-pdf JavaScript budget (197 KiB vs 170), the pdf.js legacy-build question for old Chrome.
 
+## 2026-10-23/24: redesign, theme switch
+
+- **New look:** warm paper and ink with one vermilion accent, plain Geist headings (no serif, no italics anywhere), paper and print decoration (`src/components/Decor.tsx`: sketched doodles, crop and registration marks, tape, washes, folded corners, a torn footer edge), and CSS-only motion (word-by-word headlines, scroll reveals, page transitions). Content is in the HTML and readable without scripts; reduced motion turns all of it off.
+- **Theme switch** in the header (System, Light, Dark) and in the phone menu; the choice is kept in the browser and applied before the first paint (`src/lib/theme.ts`). New strings `theme.*` in all 32 languages.
+- **Fixed:** the phone menu was squeezed into the 64 px header (the header's blur made it the frame for fixed menus); the blur is now its own layer.
+- `tests/e2e/a11y.mjs` measures contrast with reduced motion, i.e. on the settled page: with motion on, axe read text part-way through fading in as low contrast.
+
+## Deploying to Cloudflare Pages
+
+The static build is the public site. Cloudflare Pages' free plan allows 20,000 files and 25 MiB per file; the build is about 16,300 files with the largest at 20 MiB.
+
+1. Push `main` to GitHub (`combined` merged into it).
+2. Cloudflare dashboard → Workers & Pages → Create → Pages → Connect to Git → pick the repository.
+3. Build settings: framework preset **None**, build command `NOPLOAD_RELEASE=1 npm run build:static`, output directory `out`. Cloudflare reads the Node version from `.node-version`, as CI does.
+4. Environment variables (Production): `NEXT_PUBLIC_SITE_URL` (https://your-domain, no trailing slash), `NEXT_PUBLIC_OPERATOR_NAME`, `NEXT_PUBLIC_OPERATOR_COUNTRY`, `NEXT_PUBLIC_OPERATOR_CONTACT` (an email address or https:// page). The release build stops with a list if any is missing.
+5. Custom domains → add your domain. `out/_headers` already carries the security headers (CSP, cross-origin isolation) and `out/_redirects` the old addresses.
+6. GitHub → Settings → Variables → `SITE_URL` = the same address, for the live check workflow (`.github/workflows/live.yml`).
+
 ## Owner to-do (only you can do these)
 
 1. Buy nopload.com (or .app) after a trademark search (WIPO, USPTO, EUIPO).
