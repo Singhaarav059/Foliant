@@ -61,6 +61,7 @@ function allow(ip: string, chars: number) {
 }
 
 type Message = { role: "user" | "assistant"; content: string };
+// json: the reply is a JSON object with the keys "1" to `count`.
 type Job = { system: string; messages: Message[]; maxTokens: number; json?: boolean; count?: number };
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
@@ -115,10 +116,11 @@ export function jobOf(body: Record<string, unknown>): Job | string {
     const language = languageName(str(body.language, 20) || "en");
     return {
       system:
-        `You are a professional translator into ${language}. The user sends a JSON array of text blocks from one document. ` +
-        `Reply with {"texts": [...]}: the same number of blocks, in the same order, each translated into ${language}. ` +
-        "Keep numbers, codes, names and line breaks; translate nothing else into the reply.",
-      messages: [{ role: "user", content: JSON.stringify(texts) }],
+        `You are a professional translator into ${language}. The user sends a JSON object of numbered text blocks from one document. ` +
+        `Reply with a JSON object with exactly the same keys, "1" to "${texts.length}", each holding that block translated into ${language}. ` +
+        "Never merge or split blocks. Keep numbers, codes, names and line breaks; put nothing else in the reply.",
+      // Numbered, so a model keeps each block on its own (a plain list let blocks run together).
+      messages: [{ role: "user", content: JSON.stringify(Object.fromEntries(texts.map((t, i) => [String(i + 1), t]))) }],
       maxTokens: Math.min(16_000, 400 + Math.ceil(total * 1.5)),
       json: true,
       count: texts.length,
@@ -143,7 +145,7 @@ async function* anthropic(env: Env, job: Job, signal: AbortSignal): Pieces {
       output_config: {
         effort: "low",
         ...(job.json
-          ? { format: { type: "json_schema", schema: { type: "object", properties: { texts: { type: "array", items: { type: "string" } } }, required: ["texts"], additionalProperties: false } } }
+          ? { format: { type: "json_schema", schema: keyedSchema(job.count ?? 0) } }
           : {}),
       },
     },
@@ -286,7 +288,7 @@ export async function onRequestPost({ request, env }: Context) {
   if (job.json) {
     let text = started.first;
     for (let r = await started.it.next(); !r.done; r = await started.it.next()) text += r.value;
-    const texts = parseTexts(text);
+    const texts = parseTexts(text, job.count);
     // The start of the reply comes back too (it's the visitor's own text), to see how a model got the format wrong.
     if (!texts || texts.length !== job.count) return json({ error: "the translation came back incomplete", got: texts?.length ?? null, reply: text.slice(0, 400) }, 502, headers);
     return json({ texts }, 200, headers);
@@ -310,14 +312,23 @@ export async function onRequestPost({ request, env }: Context) {
   return new Response(stream, { headers: { ...headers, "Content-Type": "text/plain; charset=utf-8" } });
 }
 
-// {"texts": [...]}, or a bare array, possibly wrapped in a code fence.
-export function parseTexts(text: string): string[] | null {
+// The keys "1" to n, each a string: Claude's output is held to it.
+const keyedSchema = (n: number) => {
+  const keys = Array.from({ length: n }, (_, i) => String(i + 1));
+  return { type: "object", properties: Object.fromEntries(keys.map((k) => [k, { type: "string" }])), required: keys, additionalProperties: false };
+};
+
+// The blocks of a reply, in order: {"1": ..., "2": ...} with every key from
+// 1 to `count`, or (as some models answer anyway) {"texts": [...]} or a bare
+// array; possibly in a code fence. Null when anything is missing.
+export function parseTexts(text: string, count?: number): string[] | null {
   const raw = text.trim().replace(/^```(?:json)?\s*|\s*```$/g, "");
   const from = raw.search(/[[{]/);
   if (from < 0) return null;
   try {
     const v = JSON.parse(raw.slice(from, Math.max(raw.lastIndexOf("}"), raw.lastIndexOf("]")) + 1));
-    const list = Array.isArray(v) ? v : v?.texts;
+    const keyed = v && !Array.isArray(v) && typeof v === "object" && !Array.isArray(v.texts) && count ? Array.from({ length: count }, (_, i) => v[String(i + 1)]) : null;
+    const list = keyed ?? (Array.isArray(v) ? v : v?.texts);
     return Array.isArray(list) && list.every((t) => typeof t === "string") ? list : null;
   } catch {
     return null;

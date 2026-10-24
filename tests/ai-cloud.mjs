@@ -170,8 +170,22 @@ await test("a visitor's hourly budget runs out", async () => {
   eq(last.status, 429, "status");
 });
 
+await test("translate sends numbered blocks and reads numbered ones back", async () => {
+  mode = { reply: JSON.stringify({ 1: "Hola", 2: "Adiós" }), status: 200 };
+  const res = await post({ task: "translate", texts: ["Hello", "Goodbye"], language: "es" }, claude);
+  eq(await res.json(), { texts: ["Hola", "Adiós"] }, "texts");
+  const sent = seen.at(-1);
+  eq(JSON.parse(sent.messages[0].content), { 1: "Hello", 2: "Goodbye" }, "numbered blocks");
+  eq(sent.output_config.format.schema.required, ["1", "2"], "every key required");
+  // Workers AI merging two blocks into one: incomplete, not a wrong translation.
+  const ai = workersAi(JSON.stringify({ 1: "Hola, Adiós" }));
+  eq((await post({ task: "translate", texts: ["Hello", "Goodbye"], language: "es", provider: "cloudflare" }, { AI: ai })).status, 502, "merged blocks refused");
+});
+
 await test("parseTexts reads JSON in or out of a code fence", async () => {
   eq(parseTexts('```json\n{"texts": ["a", "b"]}\n```'), ["a", "b"], "fenced");
+  eq(parseTexts('{"2": "b", "1": "a"}', 2), ["a", "b"], "numbered, in order");
+  eq(parseTexts('{"1": "a"}', 2), null, "a number missing");
   eq(parseTexts('["a"]'), ["a"], "bare array");
   eq(parseTexts("not json"), null, "garbage");
 });
