@@ -4,8 +4,8 @@
   "description": "Every PDF tool, private by default",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f7f7f5",
-  "theme_color": "#191917",
+  "background_color": "#fbf9f6",
+  "theme_color": "#fbf9f6",
   "file_handlers": [
     {
       "action": "/en/open",

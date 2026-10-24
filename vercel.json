@@ -1,0 +1,6 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "ONNXRUNTIME_NODE_INSTALL_CUDA=skip npm ci",
+  "buildCommand": "NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL:-https://$VERCEL_PROJECT_PRODUCTION_URL} npm run build:static && node scripts/vercel-output.mjs"
+}

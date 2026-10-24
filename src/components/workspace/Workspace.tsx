@@ -639,7 +639,7 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
   })();
   return (
     <>
-      <StepTrail view={view} />
+      <StepTrail view={view} mode={tool.mode} cat={tool.category} />
       {body}
     </>
   );

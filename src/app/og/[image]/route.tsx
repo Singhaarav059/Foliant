@@ -21,11 +21,13 @@ export async function GET(_req: Request, { params }: RouteContext<"/og/[image]">
 
   return new ImageResponse(
     (
-      <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", padding: 72, background: "#f7f7f5", color: "#191917" }}>
+      <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", padding: 72, background: "#fbf9f6", color: "#211d2e" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 40, letterSpacing: "-0.03em" }}>
-          <svg width="48" height="48" viewBox="0 0 24 24">
-            <path d="M5 3.5A1.5 1.5 0 0 1 6.5 2H15l5 5v13.5a1.5 1.5 0 0 1-1.5 1.5h-12A1.5 1.5 0 0 1 5 20.5z" fill="#191917" />
-            <path d="M15 2v3.5A1.5 1.5 0 0 0 16.5 7H20z" fill="#cf4a24" />
+          <svg width="44" height="56" viewBox="5 2 22 28">
+            <path d="M10 4h8l7 7v16.5l-2.75-2-2.75 2-2.75-2-2.75 2-2.75-2L7 27.5V7a3 3 0 0 1 3-3z" fill="#211d2e" />
+            <path d="M18 4v5a2 2 0 0 0 2 2h5z" fill="#ff7a59" />
+            <circle cx="12.5" cy="16" r="1.7" fill="#fbf9f6" />
+            <circle cx="18.5" cy="16" r="1.7" fill="#fbf9f6" />
           </svg>
           {BRAND.name}
         </div>
@@ -34,10 +36,12 @@ export async function GET(_req: Request, { params }: RouteContext<"/og/[image]">
             <div style={{ fontSize: tool ? 96 : 76, lineHeight: 1.04, letterSpacing: "-0.045em" }}>{title}</div>
             <div style={{ marginTop: 28, fontSize: tool ? 34 : 30, lineHeight: 1.4, color: "#4a4a45" }}>{body}</div>
           </div>
-          {/* The logo's folio, large. */}
-          <svg width="230" height="276" viewBox="5 2 15 20">
-            <path d="M5 3.5A1.5 1.5 0 0 1 6.5 2H15l5 5v13.5a1.5 1.5 0 0 1-1.5 1.5h-12A1.5 1.5 0 0 1 5 20.5z" fill="#191917" />
-            <path d="M15 2v3.5A1.5 1.5 0 0 0 16.5 7H20z" fill="#cf4a24" />
+          {/* The logo, large. */}
+          <svg width="220" height="280" viewBox="5 2 22 28">
+            <path d="M10 4h8l7 7v16.5l-2.75-2-2.75 2-2.75-2-2.75 2-2.75-2L7 27.5V7a3 3 0 0 1 3-3z" fill="#211d2e" />
+            <path d="M18 4v5a2 2 0 0 0 2 2h5z" fill="#ff7a59" />
+            <circle cx="12.5" cy="16" r="1.7" fill="#fbf9f6" />
+            <circle cx="18.5" cy="16" r="1.7" fill="#fbf9f6" />
           </svg>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", borderTop: "2px solid #e6e6e1", paddingTop: 28, fontSize: 28, color: "#76766f" }}>

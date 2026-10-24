@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowDown, ArrowRight, Check } from "lucide-react";
+import { ArrowDown, ArrowRight, Check, Download, ShieldCheck, Zap } from "lucide-react";
 import { ToolGrid } from "@/components/ToolGrid";
 import { ToolIcon } from "@/components/ToolIcon";
 import { Words } from "@/components/Motion";
-import { PaperStage } from "@/components/paper/PaperStage";
-import { Explainer } from "@/components/explainer/Explainer";
-import { Bolt, Flourish, Padlock, Squiggle, Tape, Tray, Wash } from "@/components/Decor";
+import { HeroDrop } from "@/components/HeroDrop";
+import { HowGuide } from "@/components/HowGuide";
+import { Friend, HeroScene, SleepyCloud, Sparkle } from "@/components/Studio";
 import { format, getDictionary } from "@/lib/i18n/dictionary";
 import { hasLocale } from "@/lib/i18n/locales";
 import { TOOLS } from "@/lib/tools";
@@ -33,42 +33,26 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
 
   return (
     <div className="mx-auto max-w-[1240px] px-4 sm:px-6">
-      <section className="relative isolate grid items-center gap-12 pb-16 pt-14 sm:pt-20 lg:grid-cols-[1.35fr_1fr] lg:gap-6 lg:pb-24 lg:pt-24">
-        <Wash className="-end-40 -top-24 h-[520px] w-[520px]" />
-        <Wash className="wash-amber -start-48 top-40 h-[420px] w-[420px] [animation-delay:-6s]" />
-        {/* On phones the popular tools come before the promise list, within the first screen. */}
-        <div className="flex flex-col">
-          <p className="fade-up eyebrow flex items-center gap-2" style={{ "--d": "0ms" } as React.CSSProperties}>
-            <span className="relative flex h-1.5 w-1.5" aria-hidden>
-              <span className="absolute inset-0 animate-ping rounded-full bg-accent opacity-60 [animation-duration:2.4s]" />
-              <span className="relative h-1.5 w-1.5 rounded-full bg-accent" />
-            </span>
+      {/* Hero: what this is, a way in for people who don't know which tool
+          they need, and the most used tools. The scene says the rest: the
+          work happens in this window, and the cloud gets nothing. */}
+      <section className="relative grid items-center gap-10 pb-10 pt-10 sm:pt-16 lg:grid-cols-[1.1fr_1fr] lg:gap-8 lg:pb-16 lg:pt-20">
+        <div className="flex min-w-0 flex-col">
+          <p data-cat="organize" className="fade-up pill self-start" style={{ "--d": "0ms" } as React.CSSProperties}>
+            <ShieldCheck size={14} strokeWidth={2} aria-hidden />
             <span className="tabular">{local}/{TOOLS.length}</span>
-            <span className="text-line-strong">·</span>
             {t["home.privateBadge"]}
           </p>
-          <h1 className="display mt-6 max-w-[14ch] text-[2.9rem] sm:text-[4.2rem] lg:text-[5.2rem]">
+          <h1 className="display mt-6 max-w-[15ch] text-[2.75rem] sm:text-[4rem] lg:text-[4.6rem]">
             <Words text={t["home.title"]} />
           </h1>
-          <Squiggle className="mt-3 w-[min(260px,60%)]" />
-          <p className="fade-up mt-7 max-w-[520px] text-pretty text-[17px] leading-[1.6] text-ink-2 sm:text-[18px]" style={{ "--d": "500ms" } as React.CSSProperties}>
+          <p className="fade-up mt-6 max-w-[540px] text-pretty text-[17px] leading-[1.6] text-ink-2 sm:text-[18px]" style={{ "--d": "450ms" } as React.CSSProperties}>
             {t["home.subtitle"]}
           </p>
-          <div data-promise className="fade-up mt-9 max-w-[680px] max-sm:order-last" style={{ "--d": "650ms" } as React.CSSProperties}>
-            <h2 className="sr-only">{t["home.promiseLabel"]}</h2>
-            <ul className="grid gap-x-8 gap-y-2.5 text-[15px] text-ink-2 sm:grid-cols-2">
-              {(["home.promise1", "home.promise2", STATIC ? "home.promise3" : "home.promise3Server", "home.promise4"] as const).map((k) => (
-                <li key={k} className="flex items-start gap-2.5">
-                  <Check size={15} strokeWidth={2.25} className="mt-1 shrink-0 text-accent" aria-hidden />
-                  {t[k]}
-                </li>
-              ))}
-            </ul>
-            <Link href={`/${lang}/security#check`} className="link-u mt-4 inline-block text-[14px] text-muted transition-colors hover:text-ink">
-              {t["home.promiseCheck"]} →
-            </Link>
+          <div className="fade-up mt-8 max-w-[600px]" style={{ "--d": "600ms" } as React.CSSProperties}>
+            <HeroDrop />
           </div>
-          <nav aria-label={t["home.popular"]} className="fade-up mt-8 sm:mt-10" style={{ "--d": "800ms" } as React.CSSProperties}>
+          <nav aria-label={t["home.popular"]} className="fade-up mt-7" style={{ "--d": "750ms" } as React.CSSProperties}>
             <p className="eyebrow mb-3">{t["home.popular"]}</p>
             <ul className="flex flex-wrap gap-2">
               {popular.map((tool) => (
@@ -88,68 +72,114 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
             </a>
           </nav>
         </div>
-        {/* The paper scene: 3D where the device allows, the 2D stack until then. */}
-        <div className="fade-up hidden sm:block" style={{ "--d": "350ms" } as React.CSSProperties}>
-          <PaperStage mode="hero" className="mx-auto aspect-[5/6] w-full max-w-[480px]" />
+        <div className="fade-up hidden sm:block" style={{ "--d": "200ms" } as React.CSSProperties}>
+          <HeroScene badge={t["home.privateBadge"]} />
         </div>
       </section>
 
-      <div className="mb-10" />
-      <ToolGrid />
+      <div className="mt-20 sm:mt-28">
+        <HowGuide />
+      </div>
 
-      <Explainer />
+      <div className="mt-24 sm:mt-32">
+        <ToolGrid />
+      </div>
 
-      <section className="ruled relative mt-24 overflow-hidden rounded-[28px] border border-line bg-surface px-6 py-14 sm:px-12 sm:py-20">
-        <div aria-hidden className="pointer-events-none absolute -end-24 -top-24 h-72 w-72 rounded-full bg-accent/10 blur-3xl" />
-        <Tape className="-start-5 top-5 -rotate-[32deg]" />
-        <Tape className="-end-5 bottom-6 -rotate-[32deg]" />
-        <p className="reveal eyebrow">{t["nav.workflows"]}</p>
-        <div className="mt-5 grid gap-10 lg:grid-cols-[1fr_auto] lg:items-end">
-          <div className="min-w-0">
-            <h2 className="reveal display max-w-[18ch] text-[2rem] sm:text-[2.75rem]">{t["home.workflowsTitle"]}</h2>
-            <p className="reveal mt-5 max-w-[480px] text-pretty text-[16px] leading-relaxed text-muted">{t["home.workflowsBody"]}</p>
-            <ol className="mt-10 flex min-w-0 flex-wrap items-center gap-x-0 gap-y-3" aria-label={t["nav.workflows"]}>
-              {chain.map((tool, i) => (
-                <li key={tool.id} className="reveal flex items-center" style={{ animationRangeEnd: `entry ${55 + i * 12}%` }}>
-                  <span className="flex items-center gap-2.5 rounded-full border border-line bg-bg py-1.5 pe-4 ps-1.5 text-[14px] font-medium shadow-card">
-                    <span className="grid h-7 w-7 place-items-center rounded-full bg-ink font-mono text-[11px] text-bg">{i + 1}</span>
-                    {t[`tool.${tool.id}.name` as keyof typeof t]}
+      {/* Why the files stay put, and the promise with its proof. */}
+      <section aria-labelledby="home-cloud" className="relative mt-28 grid items-center gap-10 overflow-hidden rounded-[36px] bg-surface-2 px-6 py-12 sm:px-12 sm:py-16 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14">
+        <div aria-hidden className="relative mx-auto aspect-[5/4] w-full max-w-[440px]">
+          <div data-cat="organize" className="blob inset-[8%] bg-(--tint)" />
+          <div className="absolute end-[6%] top-[0%] w-[34%]">
+            <SleepyCloud className="bob w-full" />
+          </div>
+          <svg viewBox="0 0 100 80" className="absolute inset-0 h-full w-full overflow-visible rtl:-scale-x-100" fill="none">
+            <path d="M44 40 C 52 28, 58 22, 64 19" stroke="var(--muted)" strokeWidth="0.8" strokeLinecap="round" className="flow" />
+            <g transform="translate(66 17.5)">
+              <circle r="3.6" fill="var(--surface)" stroke="var(--danger)" strokeWidth="0.9" />
+              <path d="M-2.2 -2.2 L2.2 2.2" stroke="var(--danger)" strokeWidth="0.9" strokeLinecap="round" />
+            </g>
+          </svg>
+          {/* A laptop with the friend at home inside. */}
+          <div className="absolute bottom-[8%] start-[6%] w-[62%]">
+            <div className="rounded-t-[18px] border border-line bg-surface p-[6%] shadow-lift">
+              <div data-cat="security" className="mx-auto w-[42%]">
+                <Friend mood="proud" className="w-full" />
+              </div>
+            </div>
+            <div className="mx-[-8%] h-3 rounded-b-[10px] bg-line-strong" />
+          </div>
+          <Sparkle className="absolute start-[8%] top-[14%] w-5 text-coral" delay="-0.6s" />
+        </div>
+        <div className="min-w-0">
+          <h2 id="home-cloud" className="reveal display max-w-[16ch] text-[2rem] sm:text-[2.75rem]">{t["home.cloudTitle"]}</h2>
+          <p className="reveal mt-5 max-w-[520px] text-pretty text-[16px] leading-relaxed text-ink-2">{t["home.cloudBody"]}</p>
+          <div data-promise className="reveal mt-8">
+            <h3 className="sr-only">{t["home.promiseLabel"]}</h3>
+            <ul className="grid gap-3 text-[15px] text-ink-2 sm:grid-cols-2">
+              {(["home.promise1", "home.promise2", STATIC ? "home.promise3" : "home.promise3Server", "home.promise4"] as const).map((k) => (
+                <li key={k} className="flex items-start gap-3 rounded-2xl bg-surface p-3.5 shadow-card">
+                  <span data-cat="organize" className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-(--tint) text-(--tint-ink)">
+                    <Check size={14} strokeWidth={2.75} aria-hidden />
                   </span>
-                  {i < chain.length - 1 && <span aria-hidden className="reveal-line mx-1.5 block h-px w-6 bg-line-strong sm:w-10" />}
+                  <span className="text-pretty leading-snug">{t[k]}</span>
                 </li>
               ))}
-            </ol>
+            </ul>
+            <Link href={`/${lang}/security#check`} className="link-u mt-5 inline-flex items-center gap-1.5 text-[14px] font-medium text-ink-2 transition-colors hover:text-ink">
+              {t["home.promiseCheck"]} <ArrowRight size={14} className="rtl:rotate-180" aria-hidden />
+            </Link>
           </div>
-          <Link href={`/${lang}/workflows`} className="btn btn-primary btn-lg max-w-full justify-self-start whitespace-normal">
-            {t["home.workflowsCta"]} <ArrowRight size={16} className="rtl:rotate-180" />
-          </Link>
         </div>
       </section>
 
-      <Flourish className="mt-24" />
+      {/* Workflows: a few tools in a row, run as one. */}
+      <section aria-labelledby="home-workflows" className="mt-28 grid gap-10 lg:grid-cols-[1fr_auto] lg:items-end">
+        <div className="min-w-0">
+          <p className="reveal eyebrow">{t["nav.workflows"]}</p>
+          <h2 id="home-workflows" className="reveal display mt-3 max-w-[18ch] text-[2rem] sm:text-[2.75rem]">{t["home.workflowsTitle"]}</h2>
+          <p className="reveal mt-5 max-w-[480px] text-pretty text-[16px] leading-relaxed text-muted">{t["home.workflowsBody"]}</p>
+          <ol className="mt-10 flex min-w-0 flex-wrap items-center gap-y-3" aria-label={t["nav.workflows"]}>
+            {chain.map((tool, i) => (
+              <li key={tool.id} className="reveal flex items-center" style={{ animationRangeEnd: `entry ${55 + i * 12}%` }}>
+                <span data-cat={tool.category} className="flex items-center gap-2.5 rounded-full border border-line bg-surface py-1.5 pe-4 ps-1.5 text-[14px] font-medium shadow-card">
+                  <ToolIcon tool={tool} size={30} />
+                  {t[`tool.${tool.id}.name` as keyof typeof t]}
+                </span>
+                {i < chain.length - 1 && (
+                  <svg aria-hidden viewBox="0 0 40 8" className="mx-1 h-2 w-7 sm:w-10 rtl:-scale-x-100" fill="none">
+                    <path d="M2 4h30" stroke="var(--line-strong)" strokeWidth="2" strokeLinecap="round" className="flow" />
+                    <path d="M33 1l4 3-4 3" stroke="var(--line-strong)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </li>
+            ))}
+          </ol>
+        </div>
+        <Link href={`/${lang}/workflows`} className="btn btn-primary btn-lg max-w-full justify-self-start whitespace-normal">
+          {t["home.workflowsCta"]} <ArrowRight size={16} className="rtl:rotate-180" />
+        </Link>
+      </section>
 
-      <section className="mt-16">
-        <h2 className="reveal eyebrow">{t["home.whyTitle"]}</h2>
-        <dl className="mt-10 grid gap-8 md:grid-cols-3 md:gap-6">
+      {/* What makes it different, in three soft cards. */}
+      <section aria-labelledby="home-why" className="mt-28">
+        <h2 id="home-why" className="reveal display text-[2rem] sm:text-[2.75rem]">{t["home.whyTitle"]}</h2>
+        <dl className="mt-10 grid gap-4 md:grid-cols-3">
           {([
-            ["home.why1Title", STATIC ? "home.why1BodyLocal" : "home.why1Body", Padlock],
-            ["home.why2Title", "home.why2Body", Bolt],
-            ["home.why3Title", "home.why3Body", Tray],
-          ] as const).map(([title, body, Doodle], i) => (
+            ["home.why1Title", STATIC ? "home.why1BodyLocal" : "home.why1Body", ShieldCheck, "security"],
+            ["home.why2Title", "home.why2Body", Zap, "optimize"],
+            ["home.why3Title", "home.why3Body", Download, "convertFrom"],
+          ] as const).map(([title, body, Icon, cat], i) => (
             <div
               key={title}
-              className={`reveal group drop-shadow-[0_10px_18px_rgb(60_44_20_/_0.10)] transition-[rotate,translate] duration-700 ease-(--ease-spring) hover:-translate-y-1 hover:rotate-0 ${["md:-rotate-[1.2deg]", "md:rotate-[0.8deg] md:translate-y-4", "md:-rotate-[0.6deg]"][i]}`}
+              data-cat={cat}
+              className="reveal group relative overflow-hidden rounded-[28px] bg-(--tint) p-7 transition-[translate,rotate] duration-700 ease-(--ease-spring) hover:-translate-y-1 hover:-rotate-1"
+              style={{ animationRangeEnd: `entry ${55 + i * 12}%` }}
             >
-              <div className="perforated bg-surface p-3">
-                <div className="fold spot relative h-full [--fold-bg:var(--surface)] border border-dashed border-line-strong p-6 sm:p-7">
-                  <div className="flex items-start justify-between">
-                    <span className="font-mono text-[2rem] leading-none text-accent">{String(i + 1).padStart(2, "0")}</span>
-                    <Doodle className="h-11 w-11 text-ink-2" style={{ "--d": `${400 + i * 200}ms` } as React.CSSProperties} />
-                  </div>
-                  <dt className="mt-6 text-[17px] font-medium tracking-[-0.01em]">{t[title]}</dt>
-                  <dd className="mt-2 max-w-[38ch] text-pretty text-[15px] leading-relaxed text-muted">{t[body]}</dd>
-                </div>
-              </div>
+              <span className="grid h-14 w-14 place-items-center rounded-[20px] bg-surface text-(--tint-ink) shadow-card transition-transform duration-700 ease-(--ease-spring) group-hover:-rotate-12 group-hover:scale-110">
+                <Icon size={24} strokeWidth={1.75} aria-hidden />
+              </span>
+              <dt className="mt-8 text-[18px] font-semibold tracking-[-0.015em]">{t[title]}</dt>
+              <dd className="mt-2 max-w-[38ch] text-pretty text-[15px] leading-relaxed text-ink-2">{t[body]}</dd>
             </div>
           ))}
         </dl>

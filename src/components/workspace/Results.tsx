@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy, Download, FileArchive, RefreshCw, ShieldCheck, Server } from "lucide-react";
+import { Friend, Sparkle } from "../Studio";
 import { useI18n } from "../I18n";
 import { ToolIcon } from "../ToolIcon";
 import { PdfThumb } from "../PdfThumb";
@@ -109,8 +110,14 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
 
   return (
     <div ref={box} className="mx-auto max-w-[760px] text-center" role="status">
-      <span data-badge className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[color-mix(in_oklab,var(--success)_14%,var(--surface))] text-success">
-        <Check size={22} strokeWidth={2.25} className="ink-check" />
+      {/* The friend, pleased, with a tick and a few sparkles. */}
+      <span data-badge data-cat={tool.category} className="relative mx-auto grid h-24 w-24 place-items-center rounded-full bg-(--tint)">
+        <Friend mood="proud" wave className="w-[50%]" />
+        <span className="absolute -end-1 top-0 grid h-9 w-9 place-items-center rounded-full bg-success text-white shadow-card">
+          <Check size={18} strokeWidth={3} className="ink-check" />
+        </span>
+        <Sparkle className="absolute -start-4 top-2 w-5 text-coral" delay="-0.4s" />
+        <Sparkle className="absolute -end-6 bottom-3 w-3.5 text-brand" delay="-1.3s" />
       </span>
       <h2 ref={heading} tabIndex={-1} data-result className="mt-5 text-[1.75rem] font-semibold tracking-[-0.035em] outline-none">
         {summary ? t(outputs.length > 1 ? "res.summaryTitlePlural" : "res.summaryTitle") : outputs.length > 1 ? t("res.doneTitlePlural") : t("res.doneTitle")}

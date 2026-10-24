@@ -4,12 +4,12 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Search, Server, X } from "lucide-react";
 import { ToolIcon } from "./ToolIcon";
-import { CATEGORY_DOODLE } from "./Decor";
+import { CategoryBadge } from "./Studio";
 import { useI18n } from "./I18n";
 import { CATEGORIES, TOOLS, descKey, type CategoryId } from "@/lib/tools";
 
-// The tools as an index: one numbered section per category, with a search
-// field and category chips that stay at the top while the list scrolls.
+// The tools by family, each in its own colour, with a search field and
+// family chips that stay at the top while the list scrolls.
 export function ToolGrid() {
   const { t, href } = useI18n();
   const [q, setQ] = useState("");
@@ -39,9 +39,8 @@ export function ToolGrid() {
   // Recomputed per render; the React Compiler memoizes it.
   const sections = (() => {
     const needle = q.trim().toLowerCase();
-    return CATEGORIES.map((c, i) => ({
+    return CATEGORIES.map((c) => ({
       id: c.id,
-      index: String(i + 1).padStart(2, "0"),
       tools: TOOLS.filter((tool) => {
         if (tool.category !== c.id) return false;
         if (!needle) return true;
@@ -53,21 +52,25 @@ export function ToolGrid() {
   })();
 
   return (
-    <section ref={top} id="tools" aria-label={t("nav.allTools")} className="scroll-mt-16">
-      <div className="sticky top-16 z-20 -mx-4 bg-[color-mix(in_oklab,var(--bg)_82%,transparent)] px-4 py-3 backdrop-blur-[14px] sm:-mx-6 sm:px-6">
+    <section ref={top} id="tools" aria-labelledby="tools-title" className="scroll-mt-20">
+      <div className="max-w-[640px]">
+        <h2 id="tools-title" className="reveal display text-[2rem] sm:text-[2.75rem]">{t("home.toolsTitle")}</h2>
+        <p className="reveal mt-4 text-pretty text-[16px] leading-relaxed text-muted">{t("home.toolsBody")}</p>
+      </div>
+      <div className="sticky top-16 z-20 -mx-4 mt-8 bg-[color-mix(in_oklab,var(--bg)_86%,transparent)] px-4 py-3 backdrop-blur-[14px] sm:-mx-6 sm:px-6">
         <label className="relative block">
           <span className="sr-only">{t("home.searchPlaceholder")}</span>
-          <Search size={17} strokeWidth={1.75} className="pointer-events-none absolute start-4.5 top-1/2 -translate-y-1/2 text-muted" />
+          <Search size={18} strokeWidth={1.75} className="pointer-events-none absolute start-5 top-1/2 -translate-y-1/2 text-muted" />
           <input
             ref={input}
             type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder={t("home.searchPlaceholder")}
-            className="field h-14 rounded-full ps-11 pe-12 text-[16px] shadow-card [&::-webkit-search-cancel-button]:hidden"
+            className="field h-14 rounded-full ps-12 pe-12 text-[16px] shadow-card [&::-webkit-search-cancel-button]:hidden"
           />
           {!q && (
-            <kbd aria-hidden className="pointer-events-none absolute end-4 top-1/2 hidden h-6 min-w-6 -translate-y-1/2 place-items-center rounded-md border border-line bg-surface-2 px-1.5 font-mono text-[12px] text-muted sm:grid">/</kbd>
+            <kbd aria-hidden className="pointer-events-none absolute end-4 top-1/2 hidden h-7 min-w-7 -translate-y-1/2 place-items-center rounded-lg border border-line bg-surface-2 px-1.5 font-mono text-[12px] text-muted sm:grid">/</kbd>
           )}
           {q && (
             <button
@@ -87,9 +90,11 @@ export function ToolGrid() {
               key={id}
               type="button"
               aria-pressed={cat === id}
+              data-cat={id === "all" ? undefined : id}
               onClick={() => choose(id)}
-              className="h-9 shrink-0 rounded-full border border-line bg-surface px-3.5 text-[13px] text-ink-2 transition-[background-color,border-color,color] duration-300 hover:border-line-strong hover:text-ink aria-pressed:border-ink aria-pressed:bg-ink aria-pressed:text-bg"
+              className="flex h-9 shrink-0 items-center gap-2 rounded-full border border-line bg-surface px-3.5 text-[13px] font-medium text-ink-2 transition-[background-color,border-color,color,scale] duration-300 ease-(--ease-spring) hover:border-line-strong hover:text-ink active:scale-95 aria-pressed:border-transparent aria-pressed:bg-(--tint) aria-pressed:text-(--tint-ink) [&:not([data-cat])]:aria-pressed:bg-ink [&:not([data-cat])]:aria-pressed:text-bg"
             >
+              {id !== "all" && <span aria-hidden className="h-2 w-2 rounded-full bg-(--tint-ink)" />}
               {id === "all" ? t("home.filterAll") : t(`cat.${id}`)}
             </button>
           ))}
@@ -97,49 +102,50 @@ export function ToolGrid() {
       </div>
 
       {sections.length === 0 ? (
-        <p className="rise py-28 text-center text-[1.5rem] font-medium tracking-[-0.02em] text-muted">{t("home.noResults")}</p>
+        <div className="rise flex flex-col items-center py-24 text-center">
+          <p className="text-[1.4rem] font-medium tracking-[-0.02em] text-muted">{t("home.noResults")}</p>
+        </div>
       ) : (
-        sections.map((s) => {
-          const Doodle = CATEGORY_DOODLE[s.id];
-          return (
+        sections.map((s) => (
           <section
             key={s.id}
+            data-cat={s.id}
             aria-labelledby={`cat-${s.id}`}
-            className="grid gap-x-12 gap-y-5 pb-14 pt-10 lg:grid-cols-[240px_1fr]"
+            className="pt-12"
           >
-            <header className="relative flex items-baseline gap-3 lg:sticky lg:top-[150px] lg:h-max lg:flex-col lg:gap-2">
-              <span aria-hidden className="reveal-line absolute inset-x-0 -top-10 h-px bg-line lg:-end-12" />
-              <span className="font-mono text-[0.8rem] leading-none text-accent">{s.index}</span>
-              <h2 id={`cat-${s.id}`} className="display text-[1.6rem] sm:text-[1.9rem]">{t(`cat.${s.id}`)}</h2>
-              <Doodle className="hidden h-12 w-12 -rotate-6 text-accent lg:mt-3 lg:block" />
-              <span className="eyebrow ms-auto lg:ms-0">{s.tools.length}</span>
+            <header className="reveal mb-5 flex items-center gap-4">
+              <CategoryBadge id={s.id} size={52} />
+              <div className="min-w-0 flex-1">
+                <h3 id={`cat-${s.id}`} className="display text-[1.5rem] sm:text-[1.75rem]">{t(`cat.${s.id}`)}</h3>
+                <p className="mt-1 text-pretty text-[14.5px] text-muted">{t(`cat.${s.id}.blurb`)}</p>
+              </div>
+              <span className="pill hidden tabular sm:inline-flex">{s.tools.length}</span>
             </header>
-            <ul className="grid gap-x-3 gap-y-1 sm:grid-cols-2 xl:grid-cols-3">
+            <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {s.tools.map((tool) => (
                 <li key={tool.id} className="reveal">
                   <Link
                     href={href(`/${tool.slug}`)}
                     data-tool={tool.id}
-                    className="spot group flex h-full gap-3.5 rounded-2xl border border-transparent px-3.5 py-4 transition-[border-color,box-shadow,translate] duration-500 ease-(--ease-out) hover:-translate-y-0.5 hover:border-line hover:shadow-card"
+                    className="spot group flex h-full items-start gap-3.5 rounded-[22px] border border-line bg-surface p-4 transition-[border-color,box-shadow,translate] duration-500 ease-(--ease-out) hover:-translate-y-1 hover:border-(--tint-ink)/30 hover:shadow-lift"
                   >
-                    <ToolIcon tool={tool} size={40} />
+                    <ToolIcon tool={tool} size={44} />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
-                        <span className="text-[15px] font-medium tracking-[-0.01em]">{t(`tool.${tool.id}.name`)}</span>
-                        {tool.isNew && <span className="eyebrow rounded-[3px] border border-accent/40 px-1 py-px text-[10px] uppercase tracking-[0.08em] text-accent">{t("home.new")}</span>}
+                        <span className="text-[15px] font-semibold tracking-[-0.01em]">{t(`tool.${tool.id}.name`)}</span>
+                        {tool.isNew && <span data-cat="convertTo" className="pill h-5 px-2 text-[11px]">{t("home.new")}</span>}
                         {tool.runtime === "server" && (
                           <Server size={12} className="text-muted" aria-label={t("home.serverBadge")} />
                         )}
                       </span>
-                      <span className="mt-0.5 block text-pretty text-[14px] leading-snug text-muted">{t(descKey(tool))}</span>
+                      <span className="mt-1 block text-pretty text-[14px] leading-snug text-muted">{t(descKey(tool))}</span>
                     </span>
                   </Link>
                 </li>
               ))}
             </ul>
           </section>
-          );
-        })
+        ))
       )}
     </section>
   );

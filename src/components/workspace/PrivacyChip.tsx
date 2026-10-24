@@ -17,7 +17,7 @@ export function PrivacyChip() {
   return (
     <Link href={`${href("/security")}#check`} title={t(e.worker ? "privacy.how" : "privacy.howPage")}
       data-privacy-chip data-sent={e.sent} data-offsite={e.offsite} data-blocked={e.blocked}
-      className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1 text-[13px] text-ink-2 transition-colors hover:border-line-strong hover:text-ink">
+      className="inline-flex h-[1.85rem] items-center gap-1.5 rounded-full border border-line bg-surface px-3 text-[13px] text-ink-2 transition-colors hover:border-line-strong hover:text-ink">
       <Icon size={14} strokeWidth={1.75} className={clean ? "text-success" : ""} aria-hidden />
       <span aria-live="polite">
         {/* Uploads are only measured with the service worker running. */}

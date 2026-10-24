@@ -20,7 +20,8 @@ import { INTENTS, intentBySlug, type Intent } from "@/lib/intents";
 import { LANDINGS, landingBySlug } from "@/lib/landings";
 import { LandingPage, landingText } from "@/components/LandingPage";
 import { Words } from "@/components/Motion";
-import { CATEGORY_DOODLE, Flourish, Squiggle, Wash } from "@/components/Decor";
+import { Wash } from "@/components/Decor";
+import { Sparkle } from "@/components/Studio";
 
 // Tools and intent pages at their slugs in each language; the old English
 // slugs are redirects (scripts/static-extras.mjs, src/proxy.server.ts).
@@ -112,40 +113,46 @@ function ToolPage({ tool, t, lang }: { tool: Tool; t: Dict; lang: Locale }) {
   const k = (s: string) => t[s as DictKey];
   const related = TOOLS.filter((x) => x.category === tool.category && x.id !== tool.id).slice(0, 4);
   const Badge = tool.runtime === "browser" ? ShieldCheck : Server;
-  const Doodle = CATEGORY_DOODLE[tool.category];
   return (
-    <div className="mx-auto max-w-[1240px] px-4 sm:px-6">
-      <header className="relative isolate mx-auto flex max-w-[760px] flex-col items-center pb-7 pt-10 text-center sm:pt-12">
-        <Wash className="inset-x-0 top-0 mx-auto h-[360px] w-[560px] max-w-full" />
-        <Doodle className="absolute -start-4 top-24 hidden h-16 w-16 -rotate-12 text-accent md:block" style={{ "--d": "700ms" } as React.CSSProperties} />
-        <nav aria-label={t["nav.breadcrumb"]} className="eyebrow flex items-center gap-2">
-          <Link href={`/${lang}`} className="transition-colors hover:text-ink">{t["nav.allTools"]}</Link>
+    <div data-cat={tool.category} className="mx-auto max-w-[1240px] px-4 sm:px-6">
+      <header className="relative isolate mx-auto flex max-w-[760px] flex-col items-center pb-5 pt-6 text-center sm:pt-8">
+        <div aria-hidden className="pointer-events-none absolute start-1/2 -top-10 -z-10 h-[360px] w-[min(760px,100%)] -translate-x-1/2 bg-[radial-gradient(closest-side,var(--tint),transparent)] rtl:translate-x-1/2" />
+        <Sparkle className="absolute start-[8%] top-16 hidden w-5 text-coral md:block" delay="-0.5s" />
+        <Sparkle className="absolute end-[10%] top-28 hidden w-3.5 text-(--tint-ink) md:block" delay="-1.4s" />
+        <nav aria-label={t["nav.breadcrumb"]} className="flex items-center gap-1.5 text-[13px]">
+          <Link href={`/${lang}`} className="rounded-full px-2.5 py-1 font-medium text-muted transition-colors hover:bg-surface hover:text-ink">{t["nav.allTools"]}</Link>
           <span aria-hidden className="text-line-strong">/</span>
-          <span>{k(`cat.${tool.category}`)}</span>
+          <span className="pill h-7">{k(`cat.${tool.category}`)}</span>
         </nav>
-        <h1 className="mt-5 display text-[2.4rem] sm:text-[3.4rem]"><Words text={k(`tool.${tool.id}.name`)} /></h1>
-        <Squiggle className="mt-2 w-40" />
-        <p className="fade-up mt-3 max-w-[520px] text-pretty text-[17px] leading-relaxed text-ink-2">{k(descKey(tool))}</p>
-        <p className="fade-up mt-3 flex items-center gap-1.5 text-[13px] text-muted" style={{ "--d": "420ms" } as React.CSSProperties}>
-          <Badge size={14} strokeWidth={1.75} className={tool.runtime === "browser" ? "text-success" : ""} />
-          {tool.runtime === "browser" ? t["home.privateBadge"] : t["home.serverBadge"]}
-        </p>
-        <div className="fade-up mt-3" style={{ "--d": "500ms" } as React.CSSProperties}><PrivacyChip /></div>
+        <div className="mt-4 flex items-center justify-center gap-3 sm:gap-4">
+          <span className="hop shrink-0" style={{ "--d": "100ms" } as React.CSSProperties}>
+            <span className="block rounded-[18px] bg-surface p-1 shadow-lift">
+              <ToolIcon tool={tool} size={44} />
+            </span>
+          </span>
+          <h1 className="display text-start text-[2.1rem] sm:text-[3rem]"><Words text={k(`tool.${tool.id}.name`)} /></h1>
+        </div>
+        <p className="fade-up mt-3 max-w-[540px] text-pretty text-[17px] leading-relaxed text-ink-2">{k(descKey(tool))}</p>
+        <div className="fade-up mt-4 flex flex-wrap items-center justify-center gap-2" style={{ "--d": "420ms" } as React.CSSProperties}>
+          <p data-cat={tool.runtime === "browser" ? "organize" : "optimize"} className="pill">
+            <Badge size={14} strokeWidth={2} aria-hidden />
+            {tool.runtime === "browser" ? t["home.privateBadge"] : t["home.serverBadge"]}
+          </p>
+          <PrivacyChip />
+        </div>
       </header>
 
       <Workspace toolId={tool.id} />
 
-      <Flourish className="mx-auto mt-24 max-w-[960px]" />
-
-      <section className="mx-auto mt-16 max-w-[960px]">
+      <section className="mx-auto mt-28 max-w-[960px]">
         <ToolContent tool={tool} t={t} lang={lang} />
         {related.length > 0 && (
           <div className="mt-14">
-            <h2 className="eyebrow mb-3">{t[`cat.${tool.category}` as DictKey]}</h2>
+            <h2 className="mb-4 text-[1.25rem] font-semibold tracking-[-0.02em]">{t[`cat.${tool.category}` as DictKey]}</h2>
             <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {related.map((r) => (
                 <li key={r.id}>
-                  <Link href={pageUrl(lang, `/${r.slug}`)} className="spot group card flex items-center gap-3 p-3 transition-[border-color,box-shadow,translate] duration-500 ease-(--ease-out) hover:-translate-y-0.5 hover:border-line-strong hover:shadow-card">
+                  <Link href={pageUrl(lang, `/${r.slug}`)} className="spot group card flex items-center gap-3 p-3 transition-[border-color,box-shadow,translate] duration-500 ease-(--ease-out) hover:-translate-y-1 hover:border-line-strong hover:shadow-lift">
                     <ToolIcon tool={r} size={32} />
                     <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{k(`tool.${r.id}.name`)}</span>
                     <ArrowRight size={14} className="text-muted opacity-0 transition-opacity group-hover:opacity-100 rtl:rotate-180" />
@@ -201,7 +208,6 @@ function InfoPage({ slug, t, lang }: { slug: Info; t: Dict; lang: Locale }) {
     <div className="relative isolate mx-auto max-w-[860px] px-4 pb-10 pt-12 sm:px-6 sm:pt-16">
       <Wash className="-end-32 -top-10 h-[340px] w-[340px]" />
       <h1 className="display text-[2.4rem] sm:text-[3.4rem]"><Words text={title} /></h1>
-      <Squiggle className="mt-2 w-40" />
       {subtitle && <p className="fade-up mt-5 max-w-[560px] text-pretty text-[17px] leading-relaxed text-ink-2">{subtitle}</p>}
       <div className="fade-up mt-14" style={{ "--d": "450ms" } as React.CSSProperties}>{body}</div>
     </div>

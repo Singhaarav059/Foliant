@@ -1,88 +1,138 @@
 @import "tailwindcss";
 
-/* Paper and ink. Warm neutrals from one family; vermilion is the only colour,
-   and it is spent on small things: a folded corner, a dot, a stamp. */
+/* Soft studio. A warm white room, one violet for actions, and a pastel per
+   family of tools, so a colour always means the same kind of job:
+   mint organises, butter optimises, peach converts to PDF, sky converts
+   from it, lilac edits, rose protects. */
 :root {
-  --bg: #f3f0e8;
-  --surface: #fbf9f4;
-  --surface-2: #ebe7dd;
-  --ink: #1a1712;
-  --ink-2: #48433a;
-  --muted: #6b6558;
-  --line: #e0dacd;
-  --line-strong: #c9c1b1;
-  --brand: #1a1712;
-  --brand-ink: #f8f5ee;
-  --brand-hover: #35302a;
-  --accent: #b13d1a;
-  --danger: #c4352b;
-  --success: #2f7d55;
-  --focus: #1a1712;
-  --shadow: 0 1px 1px rgb(60 44 20 / 0.05), 0 12px 32px -10px rgb(60 44 20 / 0.18);
-  --shadow-lift: 0 2px 2px rgb(60 44 20 / 0.04), 0 24px 48px -16px rgb(60 44 20 / 0.28);
-  --radius: 14px;
-  --grain-opacity: 0.05;
-  --grain-blend: multiply;
+  --bg: #fbf9f6;
+  --surface: #ffffff;
+  --surface-2: #f4f1ec;
+  --ink: #211d2e;
+  --ink-2: #4b4658;
+  --muted: #6b6577;
+  --line: #ece7e0;
+  --line-strong: #dad3c9;
+  --brand: #5a46e0;
+  --brand-ink: #ffffff;
+  --brand-hover: #4935cf;
+  --accent: #5a46e0;
+  --coral: #ff7a59;
+  --blush: #ffb4a8;
+  --danger: #cf3838;
+  --success: #1d8656;
+  --focus: #5a46e0;
+  --shadow: 0 1px 2px rgb(33 29 46 / 0.04), 0 10px 28px -12px rgb(64 48 140 / 0.16);
+  --shadow-lift: 0 2px 4px rgb(33 29 46 / 0.05), 0 28px 56px -20px rgb(64 48 140 / 0.28);
+  --radius: 20px;
+
+  --organize-tint: #dcf3e6;
+  --organize-ink: #17704a;
+  --optimize-tint: #fff0c2;
+  --optimize-ink: #855600;
+  --convertTo-tint: #ffe3d6;
+  --convertTo-ink: #ad3d14;
+  --convertFrom-tint: #dceafe;
+  --convertFrom-ink: #1f55a6;
+  --edit-tint: #ece5ff;
+  --edit-ink: #5537c9;
+  --security-tint: #ffe0ea;
+  --security-ink: #a92252;
+  --tint: var(--edit-tint);
+  --tint-ink: var(--edit-ink);
 
   --display-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --display-weight: 600;
+  --display-weight: 650;
   --display-track: -0.045em;
   --display-leading: 1.02;
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
-  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 /* Dark: when the device asks and no light theme was chosen, or when dark was
-   chosen (data-theme on <html>, set by src/components/ThemeMenu.tsx). */
+   chosen (data-theme on <html>, set by src/components/ThemeMenu.tsx). The
+   pastels become glows: a faint tint behind a brighter glyph. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #110f0c;
-    --surface: #1a1814;
-    --surface-2: #24211b;
-    --ink: #efeae0;
-    --ink-2: #c7c0b2;
-    --muted: #9a9384;
-    --line: #2a2721;
-    --line-strong: #3d3930;
-    --brand: #efeae0;
-    --brand-ink: #110f0c;
-    --brand-hover: #ffffff;
-    --accent: #ec6a3f;
-    --danger: #e5584c;
-    --success: #5bb486;
-    --focus: #efeae0;
-    --shadow: 0 1px 1px rgb(0 0 0 / 0.35), 0 16px 40px -12px rgb(0 0 0 / 0.6);
-    --shadow-lift: 0 2px 2px rgb(0 0 0 / 0.3), 0 28px 56px -16px rgb(0 0 0 / 0.75);
-    --grain-opacity: 0.07;
-    --grain-blend: screen;
+    --bg: #13111a;
+    --surface: #1c1925;
+    --surface-2: #26222f;
+    --ink: #f2eff8;
+    --ink-2: #cbc5d8;
+    --muted: #9b94aa;
+    --line: #2b2737;
+    --line-strong: #3c364b;
+    --brand: #9c8cff;
+    --brand-ink: #14111d;
+    --brand-hover: #b3a7ff;
+    --accent: #ab9dff;
+    --coral: #ff9677;
+    --blush: #b46a62;
+    --danger: #f27272;
+    --success: #55c891;
+    --focus: #ab9dff;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 14px 36px -14px rgb(0 0 0 / 0.7);
+    --shadow-lift: 0 2px 4px rgb(0 0 0 / 0.35), 0 30px 60px -20px rgb(0 0 0 / 0.8);
+    --organize-tint: rgb(85 200 145 / 0.14);
+    --organize-ink: #7fdcae;
+    --optimize-tint: rgb(242 197 92 / 0.14);
+    --optimize-ink: #f2c55c;
+    --convertTo-tint: rgb(255 150 119 / 0.15);
+    --convertTo-ink: #ffa487;
+    --convertFrom-tint: rgb(127 178 255 / 0.15);
+    --convertFrom-ink: #8dbbff;
+    --edit-tint: rgb(171 157 255 / 0.16);
+    --edit-ink: #bcb0ff;
+    --security-tint: rgb(255 143 179 / 0.15);
+    --security-ink: #ff9cbd;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #110f0c;
-  --surface: #1a1814;
-  --surface-2: #24211b;
-  --ink: #efeae0;
-  --ink-2: #c7c0b2;
-  --muted: #9a9384;
-  --line: #2a2721;
-  --line-strong: #3d3930;
-  --brand: #efeae0;
-  --brand-ink: #110f0c;
-  --brand-hover: #ffffff;
-  --accent: #ec6a3f;
-  --danger: #e5584c;
-  --success: #5bb486;
-  --focus: #efeae0;
-  --shadow: 0 1px 1px rgb(0 0 0 / 0.35), 0 16px 40px -12px rgb(0 0 0 / 0.6);
-  --shadow-lift: 0 2px 2px rgb(0 0 0 / 0.3), 0 28px 56px -16px rgb(0 0 0 / 0.75);
-  --grain-opacity: 0.07;
-  --grain-blend: screen;
+  --bg: #13111a;
+  --surface: #1c1925;
+  --surface-2: #26222f;
+  --ink: #f2eff8;
+  --ink-2: #cbc5d8;
+  --muted: #9b94aa;
+  --line: #2b2737;
+  --line-strong: #3c364b;
+  --brand: #9c8cff;
+  --brand-ink: #14111d;
+  --brand-hover: #b3a7ff;
+  --accent: #ab9dff;
+  --coral: #ff9677;
+  --blush: #b46a62;
+  --danger: #f27272;
+  --success: #55c891;
+  --focus: #ab9dff;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 14px 36px -14px rgb(0 0 0 / 0.7);
+  --shadow-lift: 0 2px 4px rgb(0 0 0 / 0.35), 0 30px 60px -20px rgb(0 0 0 / 0.8);
+  --organize-tint: rgb(85 200 145 / 0.14);
+  --organize-ink: #7fdcae;
+  --optimize-tint: rgb(242 197 92 / 0.14);
+  --optimize-ink: #f2c55c;
+  --convertTo-tint: rgb(255 150 119 / 0.15);
+  --convertTo-ink: #ffa487;
+  --convertFrom-tint: rgb(127 178 255 / 0.15);
+  --convertFrom-ink: #8dbbff;
+  --edit-tint: rgb(171 157 255 / 0.16);
+  --edit-ink: #bcb0ff;
+  --security-tint: rgb(255 143 179 / 0.15);
+  --security-ink: #ff9cbd;
 }
 :root { color-scheme: light dark; }
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
+
+/* A family's colours, for anything inside it: bg-(--tint), text-(--tint-ink). */
+[data-cat="organize"] { --tint: var(--organize-tint); --tint-ink: var(--organize-ink); }
+[data-cat="optimize"] { --tint: var(--optimize-tint); --tint-ink: var(--optimize-ink); }
+[data-cat="convertTo"] { --tint: var(--convertTo-tint); --tint-ink: var(--convertTo-ink); }
+[data-cat="convertFrom"] { --tint: var(--convertFrom-tint); --tint-ink: var(--convertFrom-ink); }
+[data-cat="edit"] { --tint: var(--edit-tint); --tint-ink: var(--edit-ink); }
+[data-cat="security"] { --tint: var(--security-tint); --tint-ink: var(--security-ink); }
 
 /* Scripts with taller glyphs: looser display lines, less negative tracking. */
 :root:is(:lang(ja), :lang(ko), :lang(zh-cn), :lang(zh-tw), :lang(ar), :lang(hi), :lang(mr), :lang(bn), :lang(ta), :lang(te), :lang(th), :lang(ur), :lang(fa)) {
@@ -103,8 +153,11 @@
   --color-brand-ink: var(--brand-ink);
   --color-brand-hover: var(--brand-hover);
   --color-accent: var(--accent);
+  --color-coral: var(--coral);
   --color-danger: var(--danger);
   --color-success: var(--success);
+  --color-tint: var(--tint);
+  --color-tint-ink: var(--tint-ink);
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
   --font-display: var(--display-family);
@@ -135,21 +188,6 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* Paper grain over everything, never in the way. */
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  pointer-events: none;
-  opacity: var(--grain-opacity);
-  mix-blend-mode: var(--grain-blend);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.45 0 0 0 0 0.4 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-}
-@media print {
-  body::after { display: none; }
-}
-
 /* No italics anywhere on the site, real or synthesized. */
 em, i, cite, dfn, var, address, blockquote {
   font-style: normal;
@@ -160,7 +198,7 @@ html {
 
 :focus-visible {
   outline: 2px solid var(--focus);
-  outline-offset: 2px;
+  outline-offset: 3px;
 }
 
 /* Headings that take focus only so screen readers announce them. */
@@ -169,14 +207,14 @@ html {
 }
 
 ::selection {
-  background: color-mix(in oklab, var(--accent) 24%, transparent);
+  background: color-mix(in oklab, var(--brand) 22%, transparent);
 }
 
 .tabular {
   font-variant-numeric: tabular-nums;
 }
 
-/* Display type: large, tight sans. `em` inside turns vermilion. */
+/* Display type: large, tight sans. `em` inside gets a soft highlighter. */
 .display {
   font-family: var(--display-family);
   font-weight: var(--display-weight);
@@ -190,7 +228,7 @@ html {
 }
 
 @layer components {
-/* Buttons */
+/* Buttons: soft pills that squish a little when pressed. */
 .btn {
   position: relative;
   display: inline-flex;
@@ -198,15 +236,15 @@ html {
   justify-content: center;
   gap: 0.5rem;
   height: 2.75rem;
-  padding: 0 1.2rem;
+  padding: 0 1.25rem;
   border-radius: 999px;
-  font-weight: 500;
+  font-weight: 550;
   font-size: 0.9375rem;
   letter-spacing: -0.006em;
   white-space: nowrap;
   isolation: isolate;
   overflow: hidden;
-  transition: background-color 240ms var(--ease-out), color 240ms var(--ease-out), border-color 240ms var(--ease-out), box-shadow 320ms var(--ease-out), transform 320ms var(--ease-spring);
+  transition: background-color 240ms var(--ease-out), color 240ms var(--ease-out), border-color 240ms var(--ease-out), box-shadow 320ms var(--ease-out), transform 360ms var(--ease-spring);
   user-select: none;
 }
 .btn svg {
@@ -219,7 +257,7 @@ html {
   transform: translateX(-3px) rotate(180deg);
 }
 .btn:active:not(:disabled) {
-  transform: scale(0.97);
+  transform: scale(0.96);
   transition-duration: 120ms;
 }
 .btn:disabled {
@@ -229,7 +267,7 @@ html {
 .btn-primary {
   background: var(--brand);
   color: var(--brand-ink);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.14), 0 1px 2px rgb(0 0 0 / 0.14), 0 6px 16px -6px color-mix(in oklab, var(--ink) 45%, transparent);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22), inset 0 -2px 0 rgb(0 0 0 / 0.12), 0 8px 20px -8px color-mix(in oklab, var(--brand) 70%, transparent);
 }
 /* A soft sheen that sweeps across on hover. */
 .btn-primary::before {
@@ -237,7 +275,7 @@ html {
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: linear-gradient(110deg, transparent 30%, rgb(255 255 255 / 0.16) 50%, transparent 70%);
+  background: linear-gradient(110deg, transparent 30%, rgb(255 255 255 / 0.22) 50%, transparent 70%);
   transform: translateX(-120%);
   transition: transform 800ms var(--ease-out);
 }
@@ -246,13 +284,14 @@ html {
 }
 .btn-primary:hover:not(:disabled) {
   background: var(--brand-hover);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.14), 0 1px 2px rgb(0 0 0 / 0.14), 0 12px 24px -8px color-mix(in oklab, var(--ink) 50%, transparent);
-  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22), inset 0 -2px 0 rgb(0 0 0 / 0.12), 0 14px 28px -10px color-mix(in oklab, var(--brand) 75%, transparent);
+  transform: translateY(-2px);
 }
 .btn-quiet {
   background: var(--surface);
   color: var(--ink);
   border: 1px solid var(--line);
+  box-shadow: 0 1px 2px rgb(33 29 46 / 0.04);
 }
 .btn-quiet:hover:not(:disabled) {
   border-color: var(--line-strong);
@@ -292,11 +331,11 @@ html {
   color: var(--ink);
 }
 .icon-btn:active:not(:disabled) {
-  transform: scale(0.92);
+  transform: scale(0.9);
 }
 .icon-btn[aria-pressed="true"] {
-  background: var(--ink);
-  color: var(--bg);
+  background: var(--brand);
+  color: var(--brand-ink);
 }
 .icon-btn:disabled {
   opacity: 0.4;
@@ -305,8 +344,8 @@ html {
 .field {
   width: 100%;
   height: 2.6rem;
-  padding: 0 0.85rem;
-  border-radius: 10px;
+  padding: 0 0.9rem;
+  border-radius: 12px;
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
@@ -318,12 +357,12 @@ html {
 }
 .field:focus {
   outline: none;
-  border-color: var(--ink-2);
-  box-shadow: 0 0 0 4px color-mix(in oklab, var(--ink) 8%, transparent);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--brand) 16%, transparent);
 }
 textarea.field {
   height: auto;
-  padding: 0.6rem 0.85rem;
+  padding: 0.6rem 0.9rem;
 }
 select.field {
   appearance: none;
@@ -333,7 +372,7 @@ select.field {
   background-position: right 0.75rem center;
 }
 [dir="rtl"] select.field {
-  padding-right: 0.85rem;
+  padding-right: 0.9rem;
   padding-left: 2rem;
   background-position: left 0.75rem center;
 }
@@ -344,18 +383,33 @@ select.field {
   border-radius: var(--radius);
 }
 
-/* Small mono label: section indices, counts, meta. */
+/* Small label above a heading: section names, counts, meta. */
 .eyebrow {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.01em;
+  font-size: 0.8125rem;
+  font-weight: 550;
+  letter-spacing: -0.005em;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
+/* A rounded label in a family's colour. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 1.85rem;
+  padding: 0 0.8rem;
+  border-radius: 999px;
+  background: var(--tint);
+  color: var(--tint-ink);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
 /* A link whose underline draws in from the start edge. */
 .link-u {
-  background: linear-gradient(currentColor, currentColor) no-repeat 0 100% / 0 1px;
+  background: linear-gradient(currentColor, currentColor) no-repeat 0 100% / 0 1.5px;
   transition: background-size 420ms var(--ease-out), color 200ms ease;
 }
 [dir="rtl"] .link-u {
@@ -363,7 +417,7 @@ select.field {
 }
 .link-u:hover,
 .link-u[aria-current] {
-  background-size: 100% 1px;
+  background-size: 100% 1.5px;
 }
 
 /* A soft light that follows the pointer (--x/--y from PointerLight). */
@@ -377,7 +431,7 @@ select.field {
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  background: radial-gradient(260px circle at var(--x, 50%) var(--y, 50%), color-mix(in oklab, var(--accent) 9%, var(--surface)), var(--surface) 70%);
+  background: radial-gradient(240px circle at var(--x, 50%) var(--y, 50%), color-mix(in oklab, var(--tint-ink) 10%, var(--surface)), var(--surface) 70%);
   opacity: 0;
   transition: opacity 400ms var(--ease-out);
 }
@@ -385,26 +439,26 @@ select.field {
   opacity: 1;
 }
 
-/* The drop target: a sheet of paper on a dot grid. */
+/* The drop target: a soft tray on a dot grid. */
 .dropzone {
-  background-image: radial-gradient(circle at 1px 1px, color-mix(in oklab, var(--ink) 10%, transparent) 1px, transparent 0);
-  background-size: 18px 18px;
+  background-image: radial-gradient(circle at 1px 1px, color-mix(in oklab, var(--brand) 16%, transparent) 1px, transparent 0);
+  background-size: 20px 20px;
   background-position: center;
 }
 .dropzone[data-over] {
-  background-color: var(--surface-2);
+  background-color: color-mix(in oklab, var(--brand) 6%, var(--surface));
 }
-/* Marching hairline while files hover over the page. */
+/* Marching dashes while files hover over the page. */
 .dropzone-edge rect {
-  stroke-dasharray: 6 6;
+  stroke-dasharray: 8 8;
   transition: stroke 200ms ease;
 }
 .dropzone[data-over] .dropzone-edge rect {
-  stroke: var(--ink);
+  stroke: var(--brand);
   animation: march 700ms linear infinite;
 }
 @keyframes march {
-  to { stroke-dashoffset: -24; }
+  to { stroke-dashoffset: -32; }
 }
 
 /* Checkerboard behind transparent previews */
@@ -435,81 +489,202 @@ select.field {
 .legal ul { list-style: disc; padding-inline-start: 1.25rem; }
 }
 
-/* ───────────── Decoration ─────────────
-   Paper ornaments, print-proof marks, washes and sketches (src/components/Decor.tsx). */
+/* ───────────── Studio illustration ─────────────
+   The file friend, its scenes and the soft shapes around them
+   (src/components/Studio.tsx). Pure CSS motion, off with reduced motion. */
 
-/* Sketches draw themselves in, then wobble a little under the pointer. */
-@keyframes ink {
-  from { stroke-dashoffset: 1; }
-  to { stroke-dashoffset: 0; }
+/* Blinks every few seconds; each friend on its own beat (--blink-delay). */
+.blink {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: blink 5.2s infinite;
+  animation-delay: var(--blink-delay, 0s);
 }
-.doodle {
-  overflow: visible;
-  transition: rotate 600ms var(--ease-spring), scale 600ms var(--ease-spring);
-}
-.doodle * {
-  stroke-dasharray: 1;
-  animation: ink 1.6s var(--ease-in-out) both;
-  animation-delay: var(--d, 300ms);
-}
-:is(.group, a, section):hover > .doodle,
-.group:hover .doodle {
-  rotate: -8deg;
-  scale: 1.08;
+@keyframes blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.1); }
 }
 
-/* A hand-drawn underline. */
-.squiggle {
-  display: block;
-  height: 0.45em;
-  color: var(--accent);
+/* Bobs gently, as if breathing. */
+.bob {
+  animation: bob 4.8s var(--ease-in-out) infinite;
+  animation-delay: var(--bob-delay, 0s);
 }
-.squiggle path {
-  stroke-dasharray: 1;
-  animation: ink 1.2s var(--ease-out) both;
-  animation-delay: var(--d, 900ms);
+@keyframes bob {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -8px; }
 }
 
-/* Crop marks at the corners of a proof. */
-.crop > i {
+/* A friend that hops once when it appears. */
+.hop {
+  animation: hop 900ms var(--ease-spring) both;
+  animation-delay: var(--d, 200ms);
+}
+@keyframes hop {
+  0% { opacity: 0; transform: translateY(18px) scale(0.85); }
+  60% { opacity: 1; transform: translateY(-6px) scale(1.03); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* An arm that waves. */
+.wave {
+  transform-box: fill-box;
+  transform-origin: 10% 90%;
+  animation: wave 2.8s var(--ease-in-out) infinite;
+}
+@keyframes wave {
+  0%, 60%, 100% { rotate: 0deg; }
+  68% { rotate: -22deg; }
+  76% { rotate: 8deg; }
+  84% { rotate: -18deg; }
+  92% { rotate: 4deg; }
+}
+
+/* Sleep letters drift up and fade. */
+.zzz > * {
+  animation: zzz 3.6s var(--ease-out) infinite;
+  opacity: 0;
+}
+.zzz > :nth-child(2) { animation-delay: 1.2s; }
+.zzz > :nth-child(3) { animation-delay: 2.4s; }
+@keyframes zzz {
+  0% { opacity: 0; translate: 0 6px; }
+  25% { opacity: 1; }
+  100% { opacity: 0; translate: 12px -22px; }
+}
+
+/* Little stars that twinkle. */
+.twinkle {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: twinkle 2.6s var(--ease-in-out) infinite;
+  animation-delay: var(--tw, 0s);
+}
+@keyframes twinkle {
+  0%, 100% { scale: 0.6; opacity: 0.35; }
+  50% { scale: 1; opacity: 1; }
+}
+
+/* A soft blob of colour that slowly changes shape. */
+.blob {
   position: absolute;
-  width: 14px;
-  height: 14px;
-  border-color: var(--line-strong);
-  border-style: solid;
-  border-width: 0;
-  animation: rise 900ms var(--ease-out) both;
-  animation-delay: 600ms;
+  pointer-events: none;
+  border-radius: 42% 58% 63% 37% / 41% 44% 56% 59%;
+  filter: blur(2px);
+  animation: blob 16s var(--ease-in-out) infinite alternate;
 }
-.crop > i:nth-child(1) { top: 0; left: 0; border-top-width: 1px; border-left-width: 1px; }
-.crop > i:nth-child(2) { top: 0; right: 0; border-top-width: 1px; border-right-width: 1px; }
-.crop > i:nth-child(3) { bottom: 0; left: 0; border-bottom-width: 1px; border-left-width: 1px; }
-.crop > i:nth-child(4) { bottom: 0; right: 0; border-bottom-width: 1px; border-right-width: 1px; }
-
-.regmark {
-  color: var(--line-strong);
-  animation: spin-in 1.4s var(--ease-out) both;
-}
-@keyframes spin-in {
-  from { opacity: 0; rotate: -90deg; scale: 0.6; }
-  to { opacity: 1; rotate: 0deg; scale: 1; }
+@keyframes blob {
+  0% { border-radius: 42% 58% 63% 37% / 41% 44% 56% 59%; rotate: 0deg; }
+  50% { border-radius: 58% 42% 38% 62% / 55% 38% 62% 45%; }
+  100% { border-radius: 36% 64% 52% 48% / 46% 60% 40% 54%; rotate: 25deg; }
 }
 
-/* A strip of translucent tape. */
+/* Tool bubbles that orbit a scene: each floats on its own beat. */
+.float {
+  animation: float-y 6s var(--ease-in-out) infinite;
+  animation-delay: var(--fd, 0s);
+}
+@keyframes float-y {
+  0%, 100% { translate: 0 0; rotate: var(--r0, -4deg); }
+  50% { translate: 0 -12px; rotate: var(--r1, 4deg); }
+}
+
+/* A dotted path that flows, and one that stops at a "no". */
+.flow {
+  stroke-dasharray: 2 9;
+  animation: flow 1.4s linear infinite;
+}
+@keyframes flow {
+  to { stroke-dashoffset: -22; }
+}
+
+/* The hero's little progress bar fills, holds, and starts again. */
+.hero-progress {
+  transform-origin: left center;
+  animation: hero-progress 4s var(--ease-in-out) infinite;
+}
+[dir="rtl"] .hero-progress { transform-origin: right center; }
+@keyframes hero-progress {
+  0% { scale: 0.08 1; }
+  70%, 88% { scale: 1 1; }
+  100% { scale: 0.08 1; }
+}
+
+/* The home page's three-step guide (src/components/HowGuide.tsx). Each
+   scene plays while it's the one on show. */
+.how-timer {
+  transform-origin: left center;
+  animation: how-timer linear both;
+}
+[dir="rtl"] .how-timer { transform-origin: right center; }
+@keyframes how-timer { from { scale: 0 1; } to { scale: 1 1; } }
+
+.is-on .how-drop { animation: how-drop 3.2s var(--ease-in-out) infinite; }
+@keyframes how-drop {
+  0% { translate: -40% -10%; rotate: -10deg; opacity: 0; }
+  12% { opacity: 1; }
+  45% { translate: 0 0; rotate: -4deg; }
+  62% { translate: 0 118%; rotate: 0deg; }
+  68% { translate: 0 110%; }
+  74%, 90% { translate: 0 118%; opacity: 1; }
+  100% { translate: 0 118%; opacity: 0; }
+}
+
+.is-on .how-switch { animation: how-switch 600ms var(--ease-out) 500ms both; }
+.is-on .how-switch > span { animation: how-knob-x 600ms var(--ease-spring) 500ms both; }
+@keyframes how-switch { to { background: var(--success); } }
+@keyframes how-knob-x { to { translate: 16px 0; } }
+[dir="rtl"] .is-on .how-switch > span { animation-name: how-knob-x-rtl; }
+@keyframes how-knob-x-rtl { to { translate: -16px 0; } }
+.how-slide { width: 12%; }
+.how-knob { inset-inline-start: calc(12% - 8px); }
+.is-on .how-slide { animation: how-slide 1.4s var(--ease-in-out) 900ms both; }
+.is-on .how-knob { animation: how-knob 1.4s var(--ease-in-out) 900ms both; }
+@keyframes how-slide { to { width: 68%; } }
+@keyframes how-knob { to { inset-inline-start: calc(68% - 8px); } }
+.is-on .how-chip { animation: how-chip 500ms var(--ease-out) 2.1s both; }
+@keyframes how-chip { to { background: color-mix(in oklab, var(--brand) 22%, var(--surface)); } }
+
+.is-on .how-press { animation: how-press 700ms var(--ease-spring) 400ms both; }
+@keyframes how-press { 0% { scale: 1; } 30% { scale: 0.92; } 100% { scale: 1; } }
+.is-on .how-land { animation: how-land 900ms var(--ease-spring) 800ms both; }
+@keyframes how-land { 0% { opacity: 0; translate: 0 40%; scale: 0.8; } 100% { opacity: 1; translate: 0 0; scale: 1; } }
+.how-tick { scale: 0; }
+.is-on .how-tick { animation: how-tick 600ms var(--ease-spring) 1.5s both; }
+@keyframes how-tick { from { scale: 0; rotate: -30deg; } to { scale: 1; rotate: 0deg; } }
+
+/* A soft tint wash behind a section. */
+.aura {
+  position: absolute;
+  pointer-events: none;
+  background: radial-gradient(closest-side, color-mix(in oklab, var(--tint-ink) 16%, transparent), transparent);
+  filter: blur(20px);
+}
+
+/* Kept for older pages: soft washes, washi tape and a folded corner. */
+.wash {
+  background: radial-gradient(closest-side, color-mix(in oklab, var(--brand) 16%, transparent), transparent);
+  filter: blur(30px);
+  animation: drift 18s var(--ease-in-out) infinite alternate;
+}
+.wash-amber {
+  background: radial-gradient(closest-side, rgb(255 168 120 / 0.24), transparent);
+}
+@keyframes drift {
+  from { translate: 0 0; scale: 1; }
+  to { translate: 30px -20px; scale: 1.12; }
+}
 .tape {
   position: absolute;
-  width: 92px;
-  height: 26px;
+  width: 84px;
+  height: 24px;
+  border-radius: 3px;
   background:
-    repeating-linear-gradient(90deg, transparent 0 6px, rgb(255 255 255 / 0.18) 6px 7px),
-    color-mix(in oklab, var(--accent) 16%, color-mix(in oklab, var(--surface) 70%, transparent));
-  box-shadow: 0 1px 2px rgb(60 44 20 / 0.12);
-  clip-path: polygon(0 8%, 3% 0, 6% 10%, 4% 30%, 2% 52%, 5% 74%, 2% 100%, 97% 100%, 100% 82%, 96% 60%, 99% 38%, 95% 18%, 98% 0, 0 0);
-  backdrop-filter: blur(1px);
+    repeating-linear-gradient(135deg, transparent 0 7px, rgb(255 255 255 / 0.35) 7px 9px),
+    color-mix(in oklab, var(--coral) 45%, transparent);
+  opacity: 0.8;
   pointer-events: none;
 }
-
-/* A folded corner on a card: the top end corner turns down. */
 .fold {
   position: relative;
 }
@@ -520,65 +695,42 @@ select.field {
   inset-inline-end: -1px;
   width: 22px;
   height: 22px;
-  background: linear-gradient(225deg, var(--fold-bg, var(--bg)) 0 50%, var(--surface-2) 50% 100%);
-  border-end-start-radius: 4px;
-  box-shadow: -2px 2px 3px rgb(60 44 20 / 0.08);
+  background: linear-gradient(225deg, var(--fold-bg, var(--bg)) 0 50%, var(--tint) 50% 100%);
+  border-end-start-radius: 6px;
   transition: width 500ms var(--ease-spring), height 500ms var(--ease-spring);
 }
 [dir="rtl"] .fold::after {
-  background: linear-gradient(135deg, var(--fold-bg, var(--bg)) 0 50%, var(--surface-2) 50% 100%);
-  box-shadow: 2px 2px 3px rgb(60 44 20 / 0.08);
+  background: linear-gradient(135deg, var(--fold-bg, var(--bg)) 0 50%, var(--tint) 50% 100%);
 }
 .fold:hover::after {
   width: 30px;
   height: 30px;
 }
-
-/* A deckled (torn paper) top edge. */
-.deckle {
-  position: relative;
+.crop > i { display: none; }
+.squiggle {
+  display: block;
+  height: 0.45em;
+  color: var(--coral);
 }
-.deckle::before {
-  content: "";
-  position: absolute;
-  inset-inline: 0;
-  top: -11px;
-  height: 12px;
-  background: var(--surface);
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='12' preserveAspectRatio='none'%3E%3Cpath d='M0 12V7l4-2 5 3 6-4 5 2 4-3 7 4 5-2 6 3 4-4 6 2 5-3 5 4 6-2 4 3 7-4 4 2 6-3 5 4 5-2 4 2 6-3 4 3v5z'/%3E%3C/svg%3E") repeat-x 0 0 / 120px 12px;
+.squiggle path {
+  stroke-dasharray: 1;
+  animation: ink 1.2s var(--ease-out) both;
+  animation-delay: var(--d, 900ms);
 }
-
-/* Soft warm light. */
-.wash {
-  background: radial-gradient(closest-side, color-mix(in oklab, var(--accent) 22%, transparent), transparent);
-  filter: blur(30px);
-  animation: drift 18s var(--ease-in-out) infinite alternate;
+@keyframes ink {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
 }
-.wash-amber {
-  background: radial-gradient(closest-side, rgb(232 176 92 / 0.28), transparent);
+.doodle {
+  overflow: visible;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .wash { opacity: 0.55; }
+.doodle * {
+  stroke-dasharray: 1;
+  animation: ink 1.6s var(--ease-in-out) both;
+  animation-delay: var(--d, 300ms);
 }
-:root[data-theme="dark"] .wash { opacity: 0.55; }
-@keyframes drift {
-  from { translate: 0 0; scale: 1; }
-  to { translate: 30px -20px; scale: 1.12; }
-}
-
-/* Ruled paper: faint lines behind a section, like a notebook page. */
-.ruled {
-  background-image: repeating-linear-gradient(to bottom, transparent 0 31px, color-mix(in oklab, var(--line) 70%, transparent) 31px 32px);
-}
-
-/* A postage-stamp edge: perforated border. */
-.perforated {
-  --hole: 4px;
-  --pitch: 13px;
-  /* A solid middle, and a band of punched holes around it. */
-  mask:
-    linear-gradient(#000 0 0) center / calc(100% - var(--pitch)) calc(100% - var(--pitch)) no-repeat,
-    radial-gradient(circle, transparent var(--hole), #000 calc(var(--hole) + 0.5px)) calc(var(--pitch) / -2) calc(var(--pitch) / -2) / var(--pitch) var(--pitch) round;
+.regmark {
+  color: var(--line-strong);
 }
 
 /* ───────────── Paper in 2D ─────────────
@@ -842,11 +994,10 @@ select.field {
   }
 }
 @keyframes header-firm {
-  from { border-color: transparent; background-color: transparent; backdrop-filter: none; }
+  from { box-shadow: none; background-color: color-mix(in oklab, var(--surface) 55%, transparent); }
   to {
-    border-color: var(--line);
-    background-color: color-mix(in oklab, var(--bg) 78%, transparent);
-    backdrop-filter: blur(14px) saturate(1.4);
+    box-shadow: var(--shadow);
+    background-color: color-mix(in oklab, var(--surface) 86%, transparent);
   }
 }
 @keyframes fan {
@@ -864,6 +1015,7 @@ select.field {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .is-on .how-drop { animation-name: none !important; translate: 0 118%; }
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-delay: 0ms !important;

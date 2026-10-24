@@ -7,7 +7,7 @@ export const THEMES: Theme[] = ["system", "light", "dark"];
 export const THEME_KEY = "theme";
 
 // The browser bar colour for each theme, matching --bg.
-export const THEME_COLOR = { light: "#f3f0e8", dark: "#110f0c" } as const;
+export const THEME_COLOR = { light: "#fbf9f6", dark: "#13111a" } as const;
 
 // Runs in <head> before the first paint, so a chosen theme never flashes the
 // other one. Plain ES5, wrapped in try: storage can be blocked.

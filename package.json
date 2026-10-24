@@ -14,6 +14,7 @@
     "dev": "next dev",
     "build": "next build",
     "build:static": "NOPLOAD_STATIC=1 next build && node scripts/static-extras.mjs",
+    "build:vercel": "node scripts/vercel-output.mjs",
     "start": "next start",
     "lint": "eslint",
     "postinstall": "node scripts/vendor.mjs",
