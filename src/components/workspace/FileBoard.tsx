@@ -56,7 +56,7 @@ function Card({ item, onRemove, sortable }: { item: Item; onRemove: () => void; 
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 10 : undefined }}
-      className={`[animation:rise_320ms_var(--ease-out)_backwards] group relative flex w-[164px] flex-col items-center rounded-2xl border bg-surface p-4 shadow-card transition-[border-color,box-shadow,translate] duration-300 ease-(--ease-out) hover:-translate-y-0.5 hover:shadow-lift ${isDragging ? "border-brand shadow-lift" : "border-line"} ${sortable ? "cursor-grab touch-none active:cursor-grabbing" : ""}`}
+      className={`[animation:card-in_700ms_var(--ease-spring)_backwards] group relative flex w-[164px] flex-col items-center rounded-2xl border bg-surface p-4 shadow-card transition-[border-color,box-shadow,translate] duration-300 ease-(--ease-out) hover:-translate-y-0.5 hover:shadow-lift ${isDragging ? "border-brand shadow-lift" : "border-line"} ${sortable ? "cursor-grab touch-none active:cursor-grabbing" : ""}`}
       {...(sortable ? listeners : {})}
     >
       {sortable && (

@@ -11,6 +11,8 @@ import { handOff } from "@/lib/handoff";
 import { humanSize, type Output } from "@/lib/pdf/common";
 import { markdownToText } from "@/lib/ai/extractive";
 import { TOOLS, type Tool, type ToolId } from "@/lib/tools";
+import { reducedMotion } from "@/lib/paper";
+import { gsap } from "gsap";
 
 const NEXT: ToolId[] = ["compress", "merge", "split", "pageNumbers", "watermark", "protect", "sign", "organize", "rotate", "pdfToWord", "ocr", "edit"];
 
@@ -50,6 +52,24 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), []);
 
+  // The result arrives: the tick pops, the finished sheet lifts out of the
+  // page and the rest rises in after it. Styles are cleared afterwards.
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = box.current;
+    if (!el || reducedMotion()) return;
+    const ctx = gsap.context(() => {
+      const tl = gsap.timeline({ defaults: { ease: "power3.out", clearProps: "all" } });
+      tl.from("[data-badge]", { scale: 0, rotate: -40, duration: 0.6, ease: "back.out(2.2)" })
+        .from(el.querySelectorAll(":scope > :not([data-badge]):not([data-sheet])"), { y: 18, autoAlpha: 0, duration: 0.6, stagger: 0.05 }, 0.12)
+        .from("[data-sheet]", { y: 46, rotationX: 55, autoAlpha: 0, transformPerspective: 900, transformOrigin: "50% 100%", duration: 0.9, ease: "expo.out" }, 0.2);
+    }, el);
+    return () => ctx.revert();
+  }, []);
+
+  // The download button's arrow drops into the tray on each click.
+  const [drops, setDrops] = useState(0);
+
   // Single file: start the download right away, like users expect.
   const autoSaved = useRef<Output[] | null>(null);
   useEffect(() => {
@@ -87,9 +107,9 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
     : null;
 
   return (
-    <div className="rise mx-auto max-w-[760px] text-center" role="status">
-      <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-[color-mix(in_oklab,var(--success)_14%,var(--surface))] text-success">
-        <Check size={20} strokeWidth={2.25} />
+    <div ref={box} className="mx-auto max-w-[760px] text-center" role="status">
+      <span data-badge className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[color-mix(in_oklab,var(--success)_14%,var(--surface))] text-success">
+        <Check size={22} strokeWidth={2.25} className="ink-check" />
       </span>
       <h2 ref={heading} tabIndex={-1} data-result className="mt-5 text-[1.75rem] font-semibold tracking-[-0.035em] outline-none">
         {summary ? t(outputs.length > 1 ? "res.summaryTitlePlural" : "res.summaryTitle") : outputs.length > 1 ? t("res.doneTitlePlural") : t("res.doneTitle")}
@@ -161,8 +181,8 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
       </p>
 
       {pdfs.length === 1 && outputs.length === 1 && (
-        <div className="mt-6 flex justify-center">
-          <PdfThumb file={pdfs[0].blob} page={0} width={150} className="rounded-sm" />
+        <div data-sheet className="mt-6 flex justify-center">
+          <PdfThumb file={pdfs[0].blob} page={0} width={150} className="rounded-sm shadow-lift" />
         </div>
       )}
 
@@ -171,19 +191,20 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
 
       <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
         {summary && outputs.length === 1 ? null : outputs.length === 1 ? (
-          <button className="btn btn-primary btn-lg" onClick={() => save(first.blob, first.name)}>
-            <Download size={20} /> {t("res.download")}
+          <button className="btn btn-primary btn-lg" onClick={() => { save(first.blob, first.name); setDrops((n) => n + 1); }}>
+            <Download key={drops} size={20} className={drops ? "dl-drop" : ""} /> {t("res.download")}
           </button>
         ) : (
           <button className="btn btn-primary btn-lg" disabled={zipping} onClick={async () => {
             setZipping(true);
             try {
               save(await zipAll(outputs), `${tool.slug}-${outputs.length}-files.zip`);
+              setDrops((n) => n + 1);
             } finally {
               setZipping(false);
             }
           }}>
-            <FileArchive size={20} /> {t("res.downloadAll")}
+            <FileArchive key={drops} size={20} className={drops ? "dl-drop" : ""} /> {t("res.downloadAll")}
           </button>
         )}
         <button className="btn btn-quiet btn-lg" onClick={onReset}><RefreshCw size={18} /> {t("res.startOver")}</button>

@@ -20,7 +20,7 @@ import { INTENTS, intentBySlug, type Intent } from "@/lib/intents";
 import { LANDINGS, landingBySlug } from "@/lib/landings";
 import { LandingPage, landingText } from "@/components/LandingPage";
 import { Words } from "@/components/Motion";
-import { CATEGORY_DOODLE, Flourish, RegMark, Squiggle, Wash } from "@/components/Decor";
+import { CATEGORY_DOODLE, Flourish, Squiggle, Wash } from "@/components/Decor";
 
 // Tools and intent pages at their slugs in each language; the old English
 // slugs are redirects (scripts/static-extras.mjs, src/proxy.server.ts).
@@ -118,7 +118,6 @@ function ToolPage({ tool, t, lang }: { tool: Tool; t: Dict; lang: Locale }) {
       <header className="relative isolate mx-auto flex max-w-[760px] flex-col items-center pb-7 pt-10 text-center sm:pt-12">
         <Wash className="inset-x-0 top-0 mx-auto h-[360px] w-[560px] max-w-full" />
         <Doodle className="absolute -start-4 top-24 hidden h-16 w-16 -rotate-12 text-accent md:block" style={{ "--d": "700ms" } as React.CSSProperties} />
-        <RegMark className="absolute end-2 top-20 hidden md:block" />
         <nav aria-label={t["nav.breadcrumb"]} className="eyebrow flex items-center gap-2">
           <Link href={`/${lang}`} className="transition-colors hover:text-ink">{t["nav.allTools"]}</Link>
           <span aria-hidden className="text-line-strong">/</span>

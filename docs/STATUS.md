@@ -91,7 +91,14 @@ Naming note: the exact-size "compress PDF to N KB" pages are now called *landing
 - **Fixed:** the phone menu was squeezed into the 64 px header (the header's blur made it the frame for fixed menus); the blur is now its own layer.
 - `tests/e2e/a11y.mjs` measures contrast with reduced motion, i.e. on the settled page: with motion on, axe read text part-way through fading in as low contrast.
 
-## Deploying to Cloudflare Pages
+## 2026-10-24: paper physics (three.js, GSAP, Remotion)
+
+- **3D paper** (`src/components/paper/PaperScene.tsx`, three.js timed by GSAP): sheets that curl, fold, snap together, split, turn, flip and take a seal. The home hero cycles through these; while a tool works, its sheet performs that tool's action (`src/lib/paper.ts` maps tools to actions). It loads after the page is idle, only on screens 768 px and wider with WebGL and motion allowed; phones, reduced motion and data saver get the CSS version (`.p2d-*` in globals.css), which is also what shows before the 3D scene is ready, so nothing shifts. Rendering pauses off screen and in background tabs.
+- **GSAP** also drives the processing counter and bar, and the result screen (the tick pops, the finished page lifts out, the rest rises in); file cards drop onto the board and the download arrow drops into its tray in CSS.
+- **Remotion** plays the home page's ten-second "How it works" film (`src/components/explainer/`) in its Player, loaded when the section comes near the screen, silent, translated into all 32 languages and following the theme. **Licence:** Remotion is free for individuals and companies of up to 3 people; a bigger company running the site needs a Remotion company licence (remotion.dev/license). GSAP is under its free "standard no-charge" licence; three.js is MIT.
+- Removed for a calmer page: the hero's doodles and print marks, the file-format ticker, the tool header's registration mark.
+
+
 
 The static build is the public site. Cloudflare Pages' free plan allows 20,000 files and 25 MiB per file; the build is about 16,300 files with the largest at 20 MiB.
 

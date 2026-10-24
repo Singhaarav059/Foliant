@@ -581,6 +581,140 @@ select.field {
     radial-gradient(circle, transparent var(--hole), #000 calc(var(--hole) + 0.5px)) calc(var(--pitch) / -2) calc(var(--pitch) / -2) / var(--pitch) var(--pitch) round;
 }
 
+/* ───────────── Paper in 2D ─────────────
+   The CSS version of each tool's action (src/components/paper/PaperStage.tsx):
+   phones, reduced motion, no WebGL, and the moment before the 3D scene loads. */
+.p2d {
+  position: relative;
+  width: min(40%, 150px);
+  aspect-ratio: 3 / 4;
+}
+.p2d-sheet {
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow-lift);
+  animation-duration: 2.6s;
+  animation-iteration-count: infinite;
+  animation-timing-function: var(--ease-in-out);
+}
+.p2d-a {
+  padding: 16% 12%;
+  display: flex;
+  flex-direction: column;
+  gap: 7%;
+}
+.p2d-a::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  inset-inline-end: -1px;
+  width: 22%;
+  aspect-ratio: 1;
+  background: linear-gradient(225deg, var(--bg) 0 50%, var(--accent) 50%);
+  border-end-start-radius: 3px;
+}
+.p2d-a > i {
+  display: block;
+  height: 5%;
+  border-radius: 2px;
+  background: var(--line-strong);
+  opacity: 0.7;
+}
+.p2d-a > i:first-child { width: 55%; background: var(--ink); opacity: 0.85; }
+.p2d-a > i:nth-child(2) { width: 92%; }
+.p2d-a > i:nth-child(3) { width: 80%; }
+.p2d-a > i:nth-child(4) { width: 64%; }
+.p2d-b { opacity: 0; }
+.p2d-mark {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* merge: a second sheet slides in and the two snap into one */
+.p2d-merge .p2d-a { animation-name: p2d-merge-a; }
+.p2d-merge .p2d-b { animation-name: p2d-merge-b; }
+@keyframes p2d-merge-a { 0%, 15% { translate: 34% 0; rotate: 6deg; } 50%, 100% { translate: 0 0; rotate: 0deg; } 55% { scale: 1.05; } 65% { scale: 1; } }
+@keyframes p2d-merge-b { 0%, 15% { opacity: 1; translate: -34% 0; rotate: -6deg; } 48% { opacity: 1; translate: 0 0; rotate: 0deg; } 52%, 100% { opacity: 0; } }
+
+/* split: a cut runs across and the sheet comes apart */
+.p2d-split .p2d-mark { inset-inline: -8%; top: 50%; height: 2px; background: var(--accent); transform-origin: left; animation: p2d-cut 2.6s var(--ease-in-out) infinite; }
+.p2d-split .p2d-a { animation-name: p2d-split-a; }
+.p2d-split .p2d-b { animation-name: p2d-split-b; }
+@keyframes p2d-cut { 0%, 10% { opacity: 1; scale: 0 1; } 35% { opacity: 1; scale: 1 1; } 42%, 100% { opacity: 0; } }
+@keyframes p2d-split-a { 0%, 38% { translate: 0 0; rotate: 0deg; } 62%, 80% { translate: 28% -4%; rotate: 7deg; } 100% { translate: 0 0; rotate: 0deg; } }
+@keyframes p2d-split-b { 0%, 37% { opacity: 0; } 38% { opacity: 1; translate: 0 0; rotate: 0deg; } 62%, 80% { opacity: 1; translate: -28% 4%; rotate: -7deg; } 99% { opacity: 1; translate: 0 0; } 100% { opacity: 0; } }
+
+/* compress: folds in half, shrinks, opens back up */
+.p2d-compress .p2d-a { transform-origin: 50% 100%; animation-name: p2d-compress; }
+@keyframes p2d-compress { 0%, 10% { scale: 1 1; } 35% { scale: 1 0.5; } 55% { scale: 0.62 0.32; } 75% { scale: 0.62 0.32; } 100% { scale: 1 1; } }
+
+/* seal: a round stamp comes down and leaves its mark */
+.p2d-seal .p2d-mark { width: 30%; aspect-ratio: 1; border-radius: 50%; background: var(--accent); inset-inline-end: 14%; bottom: 14%; animation: p2d-seal 2.6s var(--ease-out) infinite; }
+.p2d-seal .p2d-a { animation-name: p2d-seal-press; }
+@keyframes p2d-seal { 0%, 10% { opacity: 0; translate: 0 -160%; scale: 1.3; } 35% { opacity: 1; translate: 0 0; scale: 1.15; } 42%, 85% { opacity: 1; translate: 0 0; scale: 1; } 100% { opacity: 0; } }
+@keyframes p2d-seal-press { 0%, 33% { scale: 1; } 38% { scale: 0.97; } 46%, 100% { scale: 1; } }
+
+/* turn: a quarter turn at a time */
+.p2d-turn .p2d-a { animation-name: p2d-turn; animation-timing-function: var(--ease-spring); }
+@keyframes p2d-turn { 0%, 15% { rotate: 0deg; } 40%, 60% { rotate: -90deg; } 85%, 100% { rotate: -180deg; } }
+
+/* convert: flips over */
+.p2d-convert { perspective: 600px; }
+.p2d-convert .p2d-a { animation-name: p2d-flip; }
+@keyframes p2d-flip { 0%, 15% { transform: rotateY(0); } 45%, 65% { transform: rotateY(180deg); } 95%, 100% { transform: rotateY(360deg); } }
+
+/* write: the lines write themselves */
+.p2d-write .p2d-a > i { transform-origin: left; animation: p2d-write 2.6s steps(6) infinite; }
+.p2d-write .p2d-a > i:nth-child(2) { animation-delay: 0.25s; }
+.p2d-write .p2d-a > i:nth-child(3) { animation-delay: 0.5s; }
+.p2d-write .p2d-a > i:nth-child(4) { animation-delay: 0.75s; }
+[dir="rtl"] .p2d-write .p2d-a > i { transform-origin: right; }
+@keyframes p2d-write { 0% { scale: 0 1; } 40%, 100% { scale: 1 1; } }
+
+/* read: a scan line sweeps the page */
+.p2d-read .p2d-mark { inset-inline: -6%; height: 2px; top: 0; background: var(--accent); box-shadow: 0 0 12px var(--accent); animation: p2d-scan 2.6s var(--ease-in-out) infinite; }
+@keyframes p2d-scan { 0% { opacity: 1; top: 4%; } 50% { opacity: 1; top: 94%; } 100% { opacity: 1; top: 4%; } }
+
+/* A file lands on the board: drops in from above with a little spin. */
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(-36px) rotate(-5deg) scale(0.9); }
+  to { opacity: 1; transform: none; }
+}
+
+/* The result's tick draws itself; a download's arrow drops into the tray. */
+.ink-check path {
+  stroke-dasharray: 26;
+  animation: ink-check 600ms var(--ease-out) 250ms both;
+}
+@keyframes ink-check {
+  from { stroke-dashoffset: 26; }
+  to { stroke-dashoffset: 0; }
+}
+.dl-drop {
+  animation: dl-drop 700ms var(--ease-out);
+}
+@keyframes dl-drop {
+  0% { translate: 0 0; opacity: 1; }
+  35% { translate: 0 7px; opacity: 0; }
+  36% { translate: 0 -9px; opacity: 0; }
+  100% { translate: 0 0; opacity: 1; }
+}
+/* A soft sheen runs along the progress bar while work goes on. */
+.progress-fill {
+  background-image: linear-gradient(90deg, transparent, color-mix(in oklab, var(--bg) 35%, transparent), transparent);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: sheen 1.6s linear infinite;
+}
+@keyframes sheen {
+  from { background-position: -60% 0; }
+  to { background-position: 160% 0; }
+}
+
 /* ───────────── Motion ─────────────
    Everything here is CSS: content is in the HTML and readable before any
    script runs, and reduced motion turns it all off. */

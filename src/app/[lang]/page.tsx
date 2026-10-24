@@ -5,8 +5,10 @@ import { ArrowDown, ArrowRight, Check } from "lucide-react";
 import { ToolGrid } from "@/components/ToolGrid";
 import { ToolIcon } from "@/components/ToolIcon";
 import { Comparison } from "@/components/Comparison";
-import { PaperStack, Words } from "@/components/Motion";
-import { Bolt, Clip, CropMarks, Flourish, Padlock, PenNib, RegMark, Scissors, Squiggle, Stamp, Tape, Tray, Wash } from "@/components/Decor";
+import { Words } from "@/components/Motion";
+import { PaperStage } from "@/components/paper/PaperStage";
+import { Explainer } from "@/components/explainer/Explainer";
+import { Bolt, Flourish, Padlock, Squiggle, Tape, Tray, Wash } from "@/components/Decor";
 import { format, getDictionary } from "@/lib/i18n/dictionary";
 import { hasLocale } from "@/lib/i18n/locales";
 import { TOOLS } from "@/lib/tools";
@@ -29,7 +31,6 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
   const chain = ["merge", "compress", "pageNumbers", "protect"].map((id) => TOOLS.find((x) => x.id === id)!);
   const local = TOOLS.filter((x) => x.runtime === "browser").length;
 
-  const formats = [...new Set(TOOLS.flatMap((x) => x.accept).filter((e) => e !== "jpeg"))].map((e) => e.toUpperCase());
 
   return (
     <div className="mx-auto max-w-[1240px] px-4 sm:px-6">
@@ -88,36 +89,16 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
             </a>
           </nav>
         </div>
-        <div className="fade-up relative hidden py-10 sm:block" style={{ "--d": "350ms" } as React.CSSProperties}>
-          <div className="relative mx-auto w-max">
-            <CropMarks inset={-28} />
-            <RegMark className="absolute -start-12 top-1/2" />
-            <RegMark size={14} className="absolute -end-10 -top-8 [animation-delay:300ms]" />
-            <PaperStack />
-            <Clip className="absolute -top-7 start-[30%] z-10 h-16 w-7 rotate-[8deg] text-ink-2" style={{ "--d": "900ms" } as React.CSSProperties} />
-            <Scissors className="absolute -bottom-6 -start-16 h-14 w-14 -rotate-12 text-muted" style={{ "--d": "1100ms" } as React.CSSProperties} />
-            <Stamp className="absolute -end-14 bottom-10 h-14 w-14 rotate-12 text-accent" style={{ "--d": "1300ms" } as React.CSSProperties} />
-            <PenNib className="absolute -end-6 -top-14 h-12 w-12 rotate-[24deg] text-muted" style={{ "--d": "1500ms" } as React.CSSProperties} />
-          </div>
+        {/* The paper scene: 3D where the device allows, the 2D stack until then. */}
+        <div className="fade-up hidden sm:block" style={{ "--d": "350ms" } as React.CSSProperties}>
+          <PaperStage mode="hero" className="mx-auto aspect-[5/6] w-full max-w-[480px]" />
         </div>
       </section>
 
-      <div className="marquee -mx-4 mb-14 overflow-hidden border-y border-line py-4 sm:-mx-6" aria-hidden>
-        <div>
-          {[0, 1].map((n) => (
-            <span key={n} className="flex shrink-0">
-              {formats.map((f) => (
-                <span key={f} className="flex items-center gap-8 pe-8 text-[1.4rem] font-medium leading-none tracking-[-0.02em] text-ink-2">
-                  {f}
-                  <span className="h-1 w-1 rounded-full bg-accent" />
-                </span>
-              ))}
-            </span>
-          ))}
-        </div>
-      </div>
-
+      <div className="mb-10" />
       <ToolGrid />
+
+      <Explainer />
 
       <section className="ruled relative mt-24 overflow-hidden rounded-[28px] border border-line bg-surface px-6 py-14 sm:px-12 sm:py-20">
         <div aria-hidden className="pointer-events-none absolute -end-24 -top-24 h-72 w-72 rounded-full bg-accent/10 blur-3xl" />

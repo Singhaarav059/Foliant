@@ -9,6 +9,7 @@ import { Dropzone, useFileIntake } from "./Dropzone";
 import { FileBoard, type Item } from "./FileBoard";
 import { Options } from "./Options";
 import { StepTrail } from "./StepTrail";
+import { Processing } from "./Processing";
 import { useSplitHints } from "./splitHints";
 import type { PageItem } from "./PageBoard";
 import { AiModels, prepareAi } from "./AiModels";
@@ -446,14 +447,8 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
 
   if (view === "busy") {
     return (
-      <div className="mx-auto flex max-w-[520px] flex-col items-center py-16 text-center" aria-live="polite">
-        <Loader2 size={28} className="animate-spin text-muted" strokeWidth={1.75} />
-        <p className="mt-5 text-[17px] font-medium tracking-[-0.01em]">{t("ws.processing")}</p>
-        {progress.label && <p className="mt-1 text-[14px] text-muted">{progress.label}</p>}
-        <div className="mt-6 h-1 w-full overflow-hidden rounded-full bg-line">
-          <div className="h-full rounded-full bg-ink transition-[width] duration-300" style={{ width: `${Math.max(4, progress.value * 100)}%` }} />
-        </div>
-        <p className="eyebrow mt-2.5">{Math.round(progress.value * 100)}%</p>
+      <div className="mx-auto flex max-w-[520px] flex-col items-center py-8 text-center" aria-live="polite">
+        <Processing tool={tool.id} value={progress.value} label={progress.label} />
         {fileStates.length > 1 && fileStates.some((st) => st !== "wait") && (
           <ul aria-label={t("ws.fileQueue")} className="mt-6 max-h-[40vh] w-full overflow-y-auto rounded-xl border border-line bg-surface text-start text-[14px]">
             {files.map((f, i) => (
