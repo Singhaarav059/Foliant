@@ -20,13 +20,19 @@ function open(): Promise<IDBDatabase> {
   });
 }
 
+// Resolves once the transaction has committed, not when its request succeeds:
+// saveJob is followed at once by location.reload(), and a write whose
+// transaction hasn't committed yet is lost with the page (on a slow CPU the
+// reloaded workspace then found no job and sat at "Add files").
 async function tx<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
   const db = await open();
   try {
     return await new Promise<T>((resolve, reject) => {
-      const req = fn(db.transaction(STORE, mode).objectStore(STORE));
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+      const t = db.transaction(STORE, mode);
+      const req = fn(t.objectStore(STORE));
+      t.oncomplete = () => resolve(req.result);
+      t.onerror = () => reject(t.error ?? req.error);
+      t.onabort = () => reject(t.error ?? new DOMException("Transaction aborted", "AbortError"));
     });
   } finally {
     db.close();
