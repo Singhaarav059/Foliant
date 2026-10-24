@@ -54,6 +54,7 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
 
   // The result arrives: the tick pops, the finished sheet lifts out of the
   // page and the rest rises in after it. Styles are cleared afterwards.
+  // Opacity only, never visibility: a hidden heading would drop its focus.
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = box.current;
@@ -61,8 +62,8 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
     const ctx = gsap.context(() => {
       const tl = gsap.timeline({ defaults: { ease: "power3.out", clearProps: "all" } });
       tl.from("[data-badge]", { scale: 0, rotate: -40, duration: 0.6, ease: "back.out(2.2)" })
-        .from(el.querySelectorAll(":scope > :not([data-badge]):not([data-sheet])"), { y: 18, autoAlpha: 0, duration: 0.6, stagger: 0.05 }, 0.12)
-        .from("[data-sheet]", { y: 46, rotationX: 55, autoAlpha: 0, transformPerspective: 900, transformOrigin: "50% 100%", duration: 0.9, ease: "expo.out" }, 0.2);
+        .from(el.querySelectorAll(":scope > :not([data-badge]):not([data-sheet])"), { y: 18, opacity: 0, duration: 0.6, stagger: 0.05 }, 0.12)
+        .from("[data-sheet]", { y: 46, rotationX: 55, opacity: 0, transformPerspective: 900, transformOrigin: "50% 100%", duration: 0.9, ease: "expo.out" }, 0.2);
     }, el);
     return () => ctx.revert();
   }, []);
