@@ -59,7 +59,9 @@ export function formatDate(d: Date, format: DateFormat, locale: string) {
   if (format === "iso") return `${y}-${m}-${day}`;
   if (format === "dmy") return `${day}/${m}/${y}`;
   if (format === "mdy") return `${m}/${day}/${y}`;
-  return d.toLocaleDateString(locale, format === "long" ? { day: "numeric", month: "long", year: "numeric" } : undefined);
+  // Without the invisible direction marks some locales add (Arabic: "18\u200f/10\u200f/2026"),
+  // which have no glyph: a numeric date stays real text in reading order, not a picture.
+  return d.toLocaleDateString(locale, format === "long" ? { day: "numeric", month: "long", year: "numeric" } : undefined).replace(/[\u200e\u200f\u061c\u2066-\u2069]/g, "");
 }
 
 // The zero-based pages a placement covers, in order; empty when none match.
