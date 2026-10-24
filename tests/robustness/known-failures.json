@@ -1,3 +1,2 @@
 {
-  "word odd-boxes.pdf": {"why": "P0-09 PDF to Word drops pages with little text", "fails": ["missing words [\"OFFSETMEDIA\",\"INHERITROT\",\"CROPSMALL\"]"]}
 }
