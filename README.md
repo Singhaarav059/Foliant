@@ -46,7 +46,7 @@ Honest ones, so you can decide whether it fits:
 - **Redaction** rebuilds pages that have redactions as images, so nothing hidden survives; the text outside the redacted areas stays searchable.
 - **Web pages by address** and the contact form need the server build. The static build converts HTML files, not URLs.
 - **Hosting**: the site must be served from the root of a domain, not a sub-path.
-- **The AI tools** (Chat with PDF, Summarize, Translate) use a cloud AI by default, because it's far better than what a phone or laptop can run: the PDF stays on the device, but the text the tool needs goes to Anthropic's Claude, or to Cloudflare Workers AI when Anthropic can't answer. Each tool says so and offers "On this device" instead, which sends nothing but gives simpler answers (see [Cloud AI](#cloud-ai)).
+- **The AI tools** (Chat with PDF, Summarize, Translate) run on the device when it can run an AI model (a computer with WebGPU and enough memory): a one-time download of 270 to 570 MB, then nothing is sent. Phones and older devices get server AI by default instead: the PDF stays on the device, but the text the tool needs goes to Anthropic's Claude, or to Cloudflare Workers AI when Anthropic can't answer. Each tool says which it uses, and those devices can choose on-device AI, which gives simpler answers (see [Cloud AI](#cloud-ai)).
 
 ## Deploy your own on Cloudflare Pages
 
@@ -62,10 +62,10 @@ Cloudflare Pages reads the `_headers` file the build writes: the Content-Securit
 
 ### Cloud AI
 
-The AI tools' cloud AI is a Cloudflare Pages Function, `functions/api/ai.ts`, deployed with the site from the same repository. It holds one fixed prompt per task and caps every input, so it can't be used as a general chatbot. Set it up in the Pages project's **Settings**:
+Server AI, which phones and older devices use (devices that can run the models use on-device AI only; see `deviceCanRunModels` in `src/lib/ai/engine.ts`), is a Cloudflare Pages Function, `functions/api/ai.ts`, deployed with the site from the same repository. It holds one fixed prompt per task and caps every input, so it can't be used as a general chatbot. Set it up in the Pages project's **Settings**:
 
 - **Variables and Secrets**: add `ANTHROPIC_API_KEY` (type Secret) with a key from the Anthropic Console. Set a monthly spend limit there too: it is the hard cap on cost.
-- **Bindings**: add a **Workers AI** binding named `AI`. It's the backup when Anthropic can't answer (no credit, an outage), and it's covered by Cloudflare's free daily allowance.
+- **Bindings**: add a **Workers AI** binding named `AI`. It's the backup when Anthropic can't answer (no credit, an outage), covered by Cloudflare's free daily allowance of 10,000 neurons (roughly 400 questions). A request with `"provider": "cloudflare"` uses it alone, for testing.
 - Optional: `ALLOWED_ORIGINS`, other copies of the site whose pages may call it (comma-separated; the default is `https://nopload.vercel.app`), and `ANTHROPIC_MODEL` / `FALLBACK_MODEL` to change the models (`claude-haiku-5-5`, `@cf/qwen/qwen3-30b-a3b-fp8`).
 
 With neither set, `/api/ai` answers 503 and the tools quietly use on-device AI. To leave the cloud AI out entirely (a host that can't run Functions), build with `NOPLOAD_AI_CLOUD=0`. The Vercel build forwards `/api/ai` to the Cloudflare copy named by `AI_ORIGIN` (default `https://nopload.pages.dev`; empty turns it off).
@@ -161,7 +161,7 @@ What the server build does to protect itself:
 ## Privacy notes
 
 - On-device tools never send files anywhere. Server tools (server build only) delete files as soon as the result is returned.
-- The AI tools never send the file either, but with the cloud AI (their default) they send the text they need to `/api/ai` on the site's own address, which passes it to Anthropic or Cloudflare Workers AI and stores nothing. The panel next to each tool's options says exactly what is sent, and "On this device" sends nothing. The privacy policy's "The AI tools" section has the details.
+- The AI tools never send the file either. On devices that can run a model they send nothing at all. On phones and older devices, server AI (their default there) sends the text the tool needs to `/api/ai` on the site's own address, which passes it to Anthropic or Cloudflare Workers AI and stores nothing. The panel next to each tool's options says what is sent, and "On this device" sends nothing. The privacy policy's "The AI tools" section names the providers.
 - Everything, including OCR and fonts, is served from your own site. Nothing is loaded from a CDN, and the static build fails if a page or stylesheet loads anything from another site.
 - No analytics, ads or tracking cookies.
 - The browser enforces it: every response carries a Content-Security-Policy (`security-headers.json`) that allows connections, scripts, images, fonts and frames only from the site itself (plus `blob:` and `data:`). The static build also puts a `<meta>` copy in every page for hosts that ignore `_headers`. LibreOffice's worker scripts get the same policy plus `'unsafe-eval'`, which its WebAssembly glue needs; a worker's policy comes from its own response, so pages don't get it. That rule uses Cloudflare's `! Header` syntax to replace the site-wide policy; on hosts without it, LibreOffice fails and Office files fall back to printing.

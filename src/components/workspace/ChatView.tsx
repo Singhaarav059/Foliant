@@ -112,10 +112,16 @@ export function ChatView({ file, models, options, defs, onOption, onError }: {
       if (a) {
         /* answered in the cloud */
       } else if ((aiModel === "small" || aiModel === "large") && s?.stored[aiModel]) {
-        setBusy("loading");
-        await e.loadModel(aiModel);
-        setBusy("answering");
-        a = await c.askModel(ix, question, { generate: e.generator(aiModel), embed, history, signal: ctl.signal, onPartial: (p) => update({ a: p }) });
+        try {
+          setBusy("loading");
+          await e.loadModel(aiModel);
+          setBusy("answering");
+          a = await c.askModel(ix, question, { generate: e.generator(aiModel), embed, history, signal: ctl.signal, onPartial: (p) => update({ a: p }) });
+        } catch (err) {
+          // The model didn't run here: offer server AI from now on.
+          if (!(err instanceof e.Aborted) && !ctl.signal.aborted) e.markDeviceFailed();
+          throw err;
+        }
         by = "model";
       } else {
         setBusy("answering");
@@ -175,7 +181,7 @@ export function ChatView({ file, models, options, defs, onOption, onError }: {
                 ) : (
                   <Loader2 size={16} className="animate-spin text-muted" />
                 )}
-                {x.by && x.a?.parts.length ? <p className="mt-1 text-[12px] text-muted" data-answered-by={x.by}>{x.cloudFailed && <>{t("chat.cloudFailed")} </>}{t(`chat.by.${x.by}`)}</p> : null}
+                {x.by && x.a?.parts.length ? <p className="mt-1 text-[12px] text-muted" data-answered-by={x.by}>{x.cloudFailed && <>{t("chat.cloudFailed")} </>}{t(`chat.by.${x.by === "anthropic" || x.by === "cloudflare" ? "server" : x.by}`)}</p> : null}
               </div>
             </div>
           ))}

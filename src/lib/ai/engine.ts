@@ -48,7 +48,7 @@ function call<T>(type: string, payload: object = {}, onEvent?: (e: never) => voi
   });
 }
 
-export type Status = { stored: Record<ModelId, boolean>; webgpu: boolean; f16: boolean };
+export type Status = { stored: Record<ModelId, boolean>; webgpu: boolean; f16: boolean; software: boolean };
 export const status = () => call<Status>("status");
 
 export const download = (id: ModelId, progress: (done: number, total: number) => void, signal?: AbortSignal) =>
@@ -101,4 +101,39 @@ export function chooseModel(id: Choice) {
   } catch {
     /* private mode: the choice lasts this visit */
   }
+}
+
+// Whether this device can run the language models well: a real graphics
+// chip with WebGPU and 16-bit floats, on a computer rather than a phone or
+// tablet, with enough memory and cores where the browser says (Chrome
+// reports memory up to 8 GB), and no model that failed to run here before.
+// Such devices use on-device AI only; the others are offered server AI.
+const FAILED = "nopload-ai-device-failed";
+export function deviceCanRunModels(s: Status): boolean {
+  try {
+    // Tests pick either answer.
+    const forced = localStorage.getItem("nopload-ai-device");
+    if (forced === "capable" || forced === "weak") return forced === "capable";
+    if (localStorage.getItem(FAILED)) return false;
+  } catch {
+    /* no storage: judge by the device */
+  }
+  const nav = navigator as Navigator & { userAgentData?: { mobile?: boolean }; deviceMemory?: number };
+  const ua = nav.userAgent;
+  // iPads report a Mac user agent, but have touch.
+  const mobile = nav.userAgentData?.mobile ?? (/Android|iPhone|iPad|iPod|Mobile/i.test(ua) || (/Macintosh/.test(ua) && nav.maxTouchPoints > 1));
+  if (mobile || !s.webgpu || !s.f16 || s.software) return false;
+  if (nav.deviceMemory !== undefined && nav.deviceMemory < 8) return false;
+  return !(nav.hardwareConcurrency && nav.hardwareConcurrency < 4);
+}
+
+// A model failed to load or run on a device that seemed able: from now on
+// it's offered server AI. The AI panel listens for the event.
+export function markDeviceFailed() {
+  try {
+    localStorage.setItem(FAILED, "1");
+  } catch {
+    /* the panel still updates for this visit */
+  }
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("nopload:ai-device-failed"));
 }

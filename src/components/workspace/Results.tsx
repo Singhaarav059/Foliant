@@ -93,8 +93,9 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
   const sized = sizes.filter((x): x is [number, number] => !!x);
   const saved = sized.length && sized.some(([a, b]) => b < a)
     ? [0, sized.reduce((n, [a]) => n + a, 0), sized.reduce((n, [, b]) => n + b, 0)] : null;
-  // The cloud AI wrote these (summary:cloud:<provider>, translate:cloud:<provider>):
-  // "cloudflare" when the backup answered any of them.
+  // Server AI wrote these (summary:cloud:<provider>, translate:cloud:<provider>):
+  // "cloudflare" when the backup answered any of them. The page says "server
+  // AI"; the privacy policy names the providers.
   const providers = outputs.flatMap((o) => (/^(summary|translate):cloud:/.test(o.note ?? "") ? [o.note!.split(":")[2]] : []));
   const cloud = providers.includes("cloudflare") ? "cloudflare" : providers.length ? "anthropic" : null;
   const cloudFailed = outputs.some((o) => o.note?.includes(":cloudFailed"));
@@ -172,7 +173,7 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
       {first?.note?.startsWith("translate:") && (
         <p className="mt-2 text-[15px] text-muted">
           {cloudFailed && <>{t("res.cloudFailed")} </>}
-          {t(cloud ? `res.translateCloud.${cloud}` : first.note.startsWith("translate:builtin") ? "res.translateBuiltin" : "res.translateModel")}
+          {t(cloud ? "res.translateServer" : first.note.startsWith("translate:builtin") ? "res.translateBuiltin" : "res.translateModel")}
         </p>
       )}
       {first?.note === "ocrNone" && <p className="mt-2 text-[15px] text-muted">{t("res.ocrNone")}</p>}
@@ -190,13 +191,13 @@ export function Results({ tool, outputs, onReset }: { tool: Tool; outputs: Outpu
       {summary && (
         <p className="mt-2 text-[15px] text-muted">
           {cloudFailed && <>{t("res.cloudFailed")} </>}
-          {t(cloud ? `res.summaryCloud.${cloud}` : outputs.every((o) => o.note?.startsWith("summary:model")) ? "res.summaryModel" : outputs.every((o) => o.note?.startsWith("summary:builtin")) ? "res.summaryBuiltin" : "res.summaryExtractive")}
+          {t(cloud ? "res.summaryServer" : outputs.every((o) => o.note?.startsWith("summary:model")) ? "res.summaryModel" : outputs.every((o) => o.note?.startsWith("summary:builtin")) ? "res.summaryBuiltin" : "res.summaryExtractive")}
           {outputs.some((o) => o.note?.endsWith(":noLang")) && <> {t("res.summaryNoLang")}</>}
         </p>
       )}
       <p className="mt-2 flex items-center justify-center gap-1.5 text-[13px] text-muted">
         {tool.runtime === "browser" && !cloud ? <ShieldCheck size={14} strokeWidth={1.75} /> : <Server size={14} strokeWidth={1.75} />}
-        {cloud ? t(`ws.processedCloud.${cloud}`) : tool.runtime === "browser" ? t("ws.processedLocally") : t("ws.processedServer")}
+        {cloud ? t("ws.processedServerAi") : tool.runtime === "browser" ? t("ws.processedLocally") : t("ws.processedServer")}
       </p>
 
       {pdfs.length === 1 && outputs.length === 1 && (

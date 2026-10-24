@@ -199,7 +199,14 @@ export async function summarizePdf(file: File, o: { summaryLength: string; summa
     progress?.(1, 1);
     if (cloud) return [{ name: `${baseName(file.name)}-summary.md`, blob: new Blob([cloud.md.trim() + "\n"], { type: "text/markdown" }), note: `summary:cloud:${cloud.provider}` }];
   }
-  const model = o.aiModel ? await modelSummary(doc, length, lang, wanted, o.aiModel).catch(() => null) : null;
+  const model = o.aiModel
+    ? await modelSummary(doc, length, lang, wanted, o.aiModel).catch(async (e) => {
+        // The model didn't run here: offer server AI from now on.
+        console.warn("The model didn't run on this device.", e);
+        (await import("./engine")).markDeviceFailed();
+        return null;
+      })
+    : null;
   const builtin = model ?? (await builtinSummary(doc, text, length, lang, wanted));
   let md = builtin?.md ?? summarize(doc, length, lang);
   if (!md.trim()) throw new PdfError("no_text", file.name);

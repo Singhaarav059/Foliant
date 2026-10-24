@@ -114,7 +114,7 @@ function batches(texts: string[]): number[][] {
 export async function translator(from: string | undefined, to: string, aiModel?: string): Promise<Engine | null> {
   if (aiModel === "cloud") return cloudTranslator(to);
   if (aiModel !== "large" && !("Translator" in globalThis)) return null;
-  const { builtinTranslator, status, generator } = await import("./engine");
+  const { builtinTranslator, status, generator, markDeviceFailed } = await import("./engine");
   if (from) {
     const t = await builtinTranslator(from, to);
     if (t) return { translate: (s) => t.translate(s), engine: "builtin", done: () => t.destroy?.() };
@@ -133,7 +133,11 @@ export async function translator(from: string | undefined, to: string, aiModel?:
           { role: "user", content: `Translate into ${name}:\n\n${text}` },
         ],
         { maxNewTokens: Math.min(1024, 40 + text.length) },
-      );
+      ).catch((e) => {
+        // The model didn't run here: offer server AI from now on.
+        markDeviceFailed();
+        throw e;
+      });
       // A label or quotes around the translation, and anything after it when the text was one paragraph.
       let t = out.trim().replace(/^(translation|traducción|traduction|übersetzung)[^:\n]*:\s*/i, "").replace(/^["“«]([\s\S]*)["”»]$/, "$1");
       if (!text.includes("\n")) t = t.split(/\n\s*\n/)[0];

@@ -57,13 +57,16 @@ function transformers() {
 }
 
 // WebGPU with 16-bit floats runs the q4f16 models; the light model runs on the CPU anywhere.
-async function gpu(): Promise<{ webgpu: boolean; f16: boolean }> {
-  const nav = navigator as Navigator & { gpu?: { requestAdapter(): Promise<{ features: Set<string> } | null> } };
+// `software`: the adapter is a CPU fallback (SwiftShader and the like), far too slow for a language model.
+async function gpu(): Promise<{ webgpu: boolean; f16: boolean; software: boolean }> {
+  type Adapter = { features: Set<string>; info?: { isFallbackAdapter?: boolean; vendor?: string; architecture?: string }; isFallbackAdapter?: boolean };
+  const nav = navigator as Navigator & { gpu?: { requestAdapter(): Promise<Adapter | null> } };
   try {
     const adapter = await nav.gpu?.requestAdapter();
-    return { webgpu: !!adapter, f16: !!adapter?.features.has("shader-f16") };
+    const software = !!(adapter?.info?.isFallbackAdapter ?? adapter?.isFallbackAdapter) || /swiftshader|llvmpipe/i.test(`${adapter?.info?.vendor} ${adapter?.info?.architecture}`);
+    return { webgpu: !!adapter, f16: !!adapter?.features.has("shader-f16"), software };
   } catch {
-    return { webgpu: false, f16: false };
+    return { webgpu: false, f16: false, software: false };
   }
 }
 
