@@ -115,7 +115,7 @@ function ToolPage({ tool, t, lang }: { tool: Tool; t: Dict; lang: Locale }) {
   const Doodle = CATEGORY_DOODLE[tool.category];
   return (
     <div className="mx-auto max-w-[1240px] px-4 sm:px-6">
-      <header className="relative isolate mx-auto flex max-w-[760px] flex-col items-center pb-10 pt-12 text-center sm:pt-16">
+      <header className="relative isolate mx-auto flex max-w-[760px] flex-col items-center pb-7 pt-10 text-center sm:pt-12">
         <Wash className="inset-x-0 top-0 mx-auto h-[360px] w-[560px] max-w-full" />
         <Doodle className="absolute -start-4 top-24 hidden h-16 w-16 -rotate-12 text-accent md:block" style={{ "--d": "700ms" } as React.CSSProperties} />
         <RegMark className="absolute end-2 top-20 hidden md:block" />
@@ -126,8 +126,8 @@ function ToolPage({ tool, t, lang }: { tool: Tool; t: Dict; lang: Locale }) {
         </nav>
         <h1 className="mt-5 display text-[2.4rem] sm:text-[3.4rem]"><Words text={k(`tool.${tool.id}.name`)} /></h1>
         <Squiggle className="mt-2 w-40" />
-        <p className="fade-up mt-4 max-w-[520px] text-pretty text-[17px] leading-relaxed text-ink-2">{k(descKey(tool))}</p>
-        <p className="fade-up mt-4 flex items-center gap-1.5 text-[13px] text-muted" style={{ "--d": "420ms" } as React.CSSProperties}>
+        <p className="fade-up mt-3 max-w-[520px] text-pretty text-[17px] leading-relaxed text-ink-2">{k(descKey(tool))}</p>
+        <p className="fade-up mt-3 flex items-center gap-1.5 text-[13px] text-muted" style={{ "--d": "420ms" } as React.CSSProperties}>
           <Badge size={14} strokeWidth={1.75} className={tool.runtime === "browser" ? "text-success" : ""} />
           {tool.runtime === "browser" ? t["home.privateBadge"] : t["home.serverBadge"]}
         </p>

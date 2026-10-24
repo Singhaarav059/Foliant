@@ -26,7 +26,7 @@ export function LandingPage({ intent, t, lang }: { intent: Landing; t: Dict; lan
   const others = LANDINGS.filter((i) => i.slug !== intent.slug);
   return (
     <div className="mx-auto max-w-[1240px] px-4 sm:px-6">
-      <header className="mx-auto flex max-w-[760px] flex-col items-center pb-10 pt-12 text-center sm:pt-16">
+      <header className="mx-auto flex max-w-[760px] flex-col items-center pb-7 pt-10 text-center sm:pt-12">
         <nav aria-label={t["nav.breadcrumb"]} className="eyebrow flex items-center gap-2">
           <Link href={`/${lang}`} className="transition-colors hover:text-ink">{t["nav.allTools"]}</Link>
           <span aria-hidden className="text-line-strong">/</span>

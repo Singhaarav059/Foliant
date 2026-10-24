@@ -12,7 +12,7 @@ export function StepTrail({ view }: { view: "select" | "work" | "busy" | "done" 
   const { t } = useI18n();
   const current = view === "busy" ? 1 : STEPS.indexOf(view);
   return (
-    <ol aria-label={t("ws.steps")} className="mx-auto mb-8 flex max-w-[560px] items-center justify-center gap-2 sm:gap-3">
+    <ol aria-label={t("ws.steps")} className="mx-auto mb-6 flex max-w-[560px] items-center justify-center gap-2 sm:gap-3">
       {LABELS.map((label, i) => {
         const state = i < current ? "done" : i === current ? "now" : "next";
         return (
