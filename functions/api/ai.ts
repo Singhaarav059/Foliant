@@ -155,7 +155,8 @@ async function* anthropic(env: Env, job: Job, signal: AbortSignal): Pieces {
 }
 
 // Workers AI streams server-sent events: {"response": "..."} or, for
-// chat-completion models, {"choices": [{"delta": {"content": "..."}}]}.
+// chat-completion models, {"choices": [{"delta": {"content": "..."}}]};
+// numeric tokens may come as numbers ({"response": 1}).
 async function* cloudflare(env: Env, job: Job): Pieces {
   const out = await env.AI!.run(env.FALLBACK_MODEL || FALLBACK_MODEL, {
     messages: [{ role: "system", content: job.system + (job.json ? " Reply with JSON only." : "") + " /no_think" }, ...job.messages],
@@ -176,8 +177,9 @@ async function* cloudflare(env: Env, job: Job): Pieces {
       if (!data || data === "[DONE]") continue;
       try {
         const e = JSON.parse(data);
+        // A token that is a number ("1", "2026") can arrive as a JSON number.
         const piece = e.response ?? e.choices?.[0]?.delta?.content;
-        if (typeof piece === "string" && piece) yield piece;
+        if ((typeof piece === "string" || typeof piece === "number") && piece !== "") yield String(piece);
       } catch {
         /* a partial or keep-alive line */
       }

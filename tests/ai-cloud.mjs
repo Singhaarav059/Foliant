@@ -45,16 +45,17 @@ const server = createServer(async (req, res) => {
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${server.address().port}`;
 
-// Workers AI: streams its reply as server-sent events, thinking included.
+// Workers AI: streams its reply as server-sent events, thinking included,
+// with number tokens as JSON numbers, as it does.
 const workersAi = (reply) => ({
   calls: 0,
   async run(model, input) {
     this.calls++;
     this.input = input;
-    const parts = reply.match(/.{1,3}/gs);
+    const parts = reply.match(/\d+|\D{1,3}/gs);
     return new ReadableStream({
       start(c) {
-        for (const p of parts) c.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ response: p })}\n\n`));
+        for (const p of parts) c.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ response: /^\d+$/.test(p) && !p.startsWith("0") ? Number(p) : p })}\n\n`));
         c.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
         c.close();
       },
@@ -108,9 +109,9 @@ await test("Workers AI answers when there's no Anthropic key", async () => {
 
 await test("provider: cloudflare uses only Workers AI, even when Claude is set up", async () => {
   const before = seen.length;
-  const ai = workersAi("It ends in May [1].");
+  const ai = workersAi("It ends on 31 May 2027, at $1,234.50 [1].");
   const res = await post({ ...chat, provider: "cloudflare" }, { ...claude, AI: ai });
-  eq([res.headers.get("x-ai-provider"), await res.text()], ["cloudflare", "It ends in May [1]."], "reply");
+  eq([res.headers.get("x-ai-provider"), await res.text()], ["cloudflare", "It ends on 31 May 2027, at $1,234.50 [1]."], "reply, numbers included");
   eq(seen.length, before, "Claude wasn't called");
   if (!ai.input.messages[0].content.includes("numbered sources")) throw new Error("the chat prompt wasn't used");
   // No Workers AI: no answer, rather than sending the text to Anthropic.
