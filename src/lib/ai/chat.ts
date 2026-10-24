@@ -152,18 +152,17 @@ function cited(text: string, sources: ReturnType<typeof numberSources>["sources"
   return answer;
 }
 
-// With the cloud AI: the same, written by Claude (or its backup), or by
-// Workers AI alone with provider "cloudflare", from more
+// With the cloud AI: the same, written by Claude (or its backup) from more
 // passages than a small model can read. Throws CloudUnavailable when it can't.
 export async function askCloud(
   index: DocIndex,
   question: string,
-  o: { embed?: Embed; history?: Message[]; onPartial?: (a: Answer) => void; signal?: AbortSignal; provider?: "cloudflare" },
+  o: { embed?: Embed; history?: Message[]; onPartial?: (a: Answer) => void; signal?: AbortSignal },
 ): Promise<Answer & { provider: Provider }> {
   const hits = await find(index, question, 10, o.embed);
   const { sources, context } = numberSources(hits);
   const { text, provider } = await cloudText(
-    { task: "chat", sources: context, question, history: (o.history ?? []).slice(-4), provider: o.provider },
+    { task: "chat", sources: context, question, history: (o.history ?? []).slice(-4) },
     { signal: o.signal, onText: o.onPartial && ((t) => o.onPartial!(citations(t, sources))) },
   );
   return { ...cited(text, sources), provider };

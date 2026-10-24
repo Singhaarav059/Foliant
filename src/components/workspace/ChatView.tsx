@@ -96,10 +96,10 @@ export function ChatView({ file, models, options, defs, onOption, onError }: {
       let by: Turn["by"];
       let cloudFailed = false;
       const history: Message[] = turns.flatMap((x) => (x.a ? [{ role: "user" as const, content: x.q }, { role: "assistant" as const, content: x.a.parts.map((p) => p.text).join(" ") }] : []));
-      if (aiModel === "cloud" || aiModel === "cloudflare") {
+      if (aiModel === "cloud") {
         setBusy("answering");
         try {
-          const r = await c.askCloud(ix, question, { embed, history, signal: ctl.signal, onPartial: (p) => update({ a: p }), provider: aiModel === "cloudflare" ? "cloudflare" : undefined });
+          const r = await c.askCloud(ix, question, { embed, history, signal: ctl.signal, onPartial: (p) => update({ a: p }) });
           [a, by] = [r, r.provider];
         } catch (err) {
           const { CloudUnavailable } = await import("@/lib/ai/cloud");

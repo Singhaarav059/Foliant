@@ -12,7 +12,7 @@
 // a worker (./worker.ts).
 
 import { AI_MODELS } from "../vendor";
-import { CLOUD, CLOUDFLARE } from "./cloud";
+import { CLOUD } from "./cloud";
 import { MODEL_IDS, sizeOf, type ModelId } from "./store";
 import type { Embed, Generate } from "./chat";
 
@@ -81,17 +81,16 @@ export async function builtinTranslator(from: string, to: string): Promise<Built
   }
 }
 
-// Which model a feature uses: the visitor's choice ("cloud" for Claude,
-// "cloudflare" for Workers AI alone, or a model on
+// Which model a feature uses: the visitor's choice ("cloud" or a model on
 // the device) when it's there, else the cloud AI when this site has it,
 // else the largest model on the device.
 const PICK = "nopload-ai-model";
 // "device": on-device AI, with no model picked.
-export type Choice = ModelId | typeof CLOUD | typeof CLOUDFLARE | "device";
+export type Choice = ModelId | typeof CLOUD | "device";
 export function chosenModel(): Choice | null {
   try {
     const v = localStorage.getItem(PICK);
-    return v === CLOUD || v === CLOUDFLARE || v === "device" ? v : v && (MODEL_IDS as string[]).includes(v) ? (v as ModelId) : null;
+    return v === CLOUD || v === "device" ? v : v && (MODEL_IDS as string[]).includes(v) ? (v as ModelId) : null;
   } catch {
     return null;
   }
