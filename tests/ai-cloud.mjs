@@ -45,21 +45,20 @@ const server = createServer(async (req, res) => {
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${server.address().port}`;
 
-// Workers AI: streams its reply as server-sent events, thinking included,
-// with number tokens as JSON numbers, as it does.
+// Workers AI: the whole reply at once, decoded as it does it: JSON as an
+// object, a number as a number.
 const workersAi = (reply) => ({
   calls: 0,
   async run(model, input) {
     this.calls++;
     this.input = input;
-    const parts = reply.match(/\d+|\D{1,3}/gs);
-    return new ReadableStream({
-      start(c) {
-        for (const p of parts) c.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ response: /^\d+$/.test(p) && !p.startsWith("0") ? Number(p) : p })}\n\n`));
-        c.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
-        c.close();
-      },
-    });
+    let response = reply;
+    try {
+      response = JSON.parse(reply);
+    } catch {
+      /* plain text */
+    }
+    return { response };
   },
 });
 
@@ -177,6 +176,9 @@ await test("translate sends numbered blocks and reads numbered ones back", async
   const sent = seen.at(-1);
   eq(JSON.parse(sent.messages[0].content), { 1: "Hello", 2: "Goodbye" }, "numbered blocks");
   eq(sent.output_config.format.schema.required, ["1", "2"], "every key required");
+  // Workers AI hands JSON back already decoded.
+  const good = workersAi(JSON.stringify({ 1: "Hola", 2: "Adiós 2025" }));
+  eq(await (await post({ task: "translate", texts: ["Hello", "Goodbye 2025"], language: "es", provider: "cloudflare" }, { AI: good })).json(), { texts: ["Hola", "Adiós 2025"] }, "Workers AI's decoded reply");
   // Workers AI merging two blocks into one: incomplete, not a wrong translation.
   const ai = workersAi(JSON.stringify({ 1: "Hola, Adiós" }));
   eq((await post({ task: "translate", texts: ["Hello", "Goodbye"], language: "es", provider: "cloudflare" }, { AI: ai })).status, 502, "merged blocks refused");

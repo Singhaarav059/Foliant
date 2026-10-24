@@ -20,6 +20,7 @@
 // Settings (Cloudflare dashboard → the Pages project → Settings):
 //   ANTHROPIC_API_KEY   secret; without it Workers AI answers every request.
 //   AI                  Workers AI binding; without it there's no fallback.
+//                       (Its replies aren't streamed: see cloudflare() below.)
 //   ALLOWED_ORIGINS     other sites whose pages may call this, comma-separated
 //                       (default: https://nopload.vercel.app).
 //   ANTHROPIC_MODEL, FALLBACK_MODEL, ANTHROPIC_BASE_URL   optional overrides.
@@ -156,37 +157,20 @@ async function* anthropic(env: Env, job: Job, signal: AbortSignal): Pieces {
   if (final.stop_reason === "refusal") throw new Error("refused");
 }
 
-// Workers AI streams server-sent events: {"response": "..."} or, for
-// chat-completion models, {"choices": [{"delta": {"content": "..."}}]};
-// numeric tokens may come as numbers ({"response": 1}).
+// Workers AI, asked for its whole reply rather than a stream: the stream
+// decodes each token that looks like JSON on its own (the token `","`
+// arrives as `,`, `2025` as a number), which can't be undone, and turned
+// JSON replies into garbage. The whole reply is {"response": ...}, itself
+// decoded when it's JSON or a number, or {"choices": [...]} for
+// chat-completion models.
 async function* cloudflare(env: Env, job: Job): Pieces {
-  const out = await env.AI!.run(env.FALLBACK_MODEL || FALLBACK_MODEL, {
+  const out = (await env.AI!.run(env.FALLBACK_MODEL || FALLBACK_MODEL, {
     messages: [{ role: "system", content: job.system + (job.json ? " Reply with JSON only." : "") + " /no_think" }, ...job.messages],
     max_tokens: job.maxTokens,
-    stream: true,
-  });
-  if (!(out instanceof ReadableStream)) throw new Error("Workers AI didn't stream");
-  const reader = out.pipeThrough(new TextDecoderStream()).getReader();
-  let buf = "";
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += value;
-    const lines = buf.split("\n");
-    buf = lines.pop() ?? "";
-    for (const line of lines) {
-      const data = line.startsWith("data:") ? line.slice(5).trim() : "";
-      if (!data || data === "[DONE]") continue;
-      try {
-        const e = JSON.parse(data);
-        // A token that is a number ("1", "2026") can arrive as a JSON number.
-        const piece = e.response ?? e.choices?.[0]?.delta?.content;
-        if ((typeof piece === "string" || typeof piece === "number") && piece !== "") yield String(piece);
-      } catch {
-        /* a partial or keep-alive line */
-      }
-    }
-  }
+  })) as { response?: unknown; choices?: { message?: { content?: unknown } }[] } | null;
+  const reply = out?.response ?? out?.choices?.[0]?.message?.content;
+  if (reply === undefined || reply === null || reply === "") throw new Error("Workers AI gave no reply");
+  yield typeof reply === "string" ? reply : typeof reply === "number" ? String(reply) : JSON.stringify(reply);
 }
 
 // Drops a reasoning model's <think>…</think> as the text streams by.
