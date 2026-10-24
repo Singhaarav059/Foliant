@@ -22,16 +22,30 @@ export function paperAction(tool: ToolId): PaperAction {
   return "convert";
 }
 
-// The 3D scene runs on larger screens with WebGL and motion allowed; phones,
-// reduced motion and data saver get the 2D version.
+// Renderer names of WebGL drawn on the CPU (Chrome, Firefox and Edge without a usable GPU).
+const SOFTWARE = /swiftshader|llvmpipe|softpipe|software|basic render|lavapipe/i;
+
+// The 3D scene runs on larger screens with motion allowed and WebGL drawn
+// by a graphics card. Phones, reduced motion, data saver and software
+// WebGL get the 2D version: drawn on the CPU, the scene takes the same
+// processor the tools need (it slowed LibreOffice conversions to a stop
+// on CI's GPU-less machines).
 export function wants3d() {
   if (typeof window === "undefined") return false;
   if (matchMedia("(prefers-reduced-motion: reduce)").matches || !matchMedia("(min-width: 768px)").matches) return false;
   if ((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData) return false;
   try {
     // Checked on a throwaway canvas, so a failure never reaches three.js (which logs it as an error).
+    // failIfMajorPerformanceCaveat: no context where the browser would fall back to the CPU.
     const c = document.createElement("canvas");
-    return !!(c.getContext("webgl2") || c.getContext("webgl"));
+    const opts = { failIfMajorPerformanceCaveat: true };
+    const gl = (c.getContext("webgl2", opts) || c.getContext("webgl", opts)) as WebGLRenderingContext | null;
+    if (!gl) return false;
+    // Some browsers hand out a software context anyway: the renderer's name tells.
+    const info = gl.getExtension("WEBGL_debug_renderer_info");
+    const renderer = String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER) ?? "");
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
+    return !SOFTWARE.test(renderer);
   } catch {
     return false;
   }
