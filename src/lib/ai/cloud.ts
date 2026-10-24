@@ -1,5 +1,6 @@
 // The cloud AI (functions/api/ai.ts), from the page's side: Claude by
-// Anthropic, with Cloudflare Workers AI as its backup. Only the text a task
+// Anthropic, with Cloudflare Workers AI as its backup ("cloud"), or Workers
+// AI alone when the visitor picks it ("cloudflare"). Only the text a task
 // needs is sent (a question and the passages that answer it, a document's
 // text to summarise, blocks to translate), never the file. Any failure is a
 // CloudUnavailable, and the tools then use on-device AI instead.
@@ -7,22 +8,27 @@
 import { AI_CLOUD } from "../mode";
 
 export const CLOUD = "cloud";
+export const CLOUDFLARE = "cloudflare";
 export type Provider = "anthropic" | "cloudflare";
+// What a request asks for: Workers AI only, or Claude with Workers AI as backup.
+export const providerFor = (aiModel: string) => (aiModel === CLOUDFLARE ? { provider: CLOUDFLARE } : {});
 
 export class CloudUnavailable extends Error {}
 
 const ENDPOINT = "/api/ai";
 
-// Whether this copy of the site has the endpoint with a provider set up
-// (static hosts without it, offline, the extension: no).
-let available: Promise<boolean> | null = null;
-export function cloudAvailable(): Promise<boolean> {
-  if (!AI_CLOUD) return Promise.resolve(false);
-  available ??= fetch(ENDPOINT, { cache: "no-store" })
+// Which providers this copy of the site has set up (none: static hosts
+// without the endpoint, offline, the extension).
+export type CloudStatus = { anthropic: boolean; cloudflare: boolean };
+let status: Promise<CloudStatus> | null = null;
+export function cloudStatus(): Promise<CloudStatus> {
+  const none = { anthropic: false, cloudflare: false };
+  if (!AI_CLOUD) return Promise.resolve(none);
+  status ??= fetch(ENDPOINT, { cache: "no-store" })
     .then((r) => (r.ok ? r.json() : null))
-    .then((s: { anthropic?: boolean; cloudflare?: boolean } | null) => !!(s?.anthropic || s?.cloudflare))
-    .catch(() => false);
-  return available;
+    .then((s: Partial<CloudStatus> | null) => ({ anthropic: !!s?.anthropic, cloudflare: !!s?.cloudflare }))
+    .catch(() => none);
+  return status;
 }
 
 const providerOf = (r: Response): Provider => (r.headers.get("X-AI-Provider") === "cloudflare" ? "cloudflare" : "anthropic");

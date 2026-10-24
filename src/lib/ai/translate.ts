@@ -70,12 +70,12 @@ const BATCH = { chars: 9_000, items: 80 };
 // The cloud translator: batches of blocks, each sent as text only. A batch
 // that comes back incomplete is split and tried again; a block that still
 // fails, or a cloud that doesn't answer, throws CloudUnavailable.
-async function cloudTranslator(to: string): Promise<Engine> {
-  const { cloudJson, CloudUnavailable } = await import("./cloud");
+async function cloudTranslator(to: string, aiModel: string): Promise<Engine> {
+  const { cloudJson, CloudUnavailable, providerFor } = await import("./cloud");
   const engine: Engine = { engine: "cloud", done: () => {}, translate: async (text) => (await batch([text]))[0] };
   const batch = async (texts: string[]): Promise<string[]> => {
     try {
-      const { data, provider } = await cloudJson<{ texts: string[] }>({ task: "translate", texts, language: to });
+      const { data, provider } = await cloudJson<{ texts: string[] }>({ task: "translate", texts, language: to, ...providerFor(aiModel) });
       // The backup answered any part: say so.
       if (engine.provider !== "cloudflare") engine.provider = provider;
       if (data.texts?.length === texts.length) return data.texts;
@@ -112,7 +112,7 @@ function batches(texts: string[]): number[][] {
 // The translator to use, or null: the browser's when it has the pair, else
 // the large model when it's on the device.
 export async function translator(from: string | undefined, to: string, aiModel?: string): Promise<Engine | null> {
-  if (aiModel === "cloud") return cloudTranslator(to);
+  if (aiModel === "cloud" || aiModel === "cloudflare") return cloudTranslator(to, aiModel);
   if (aiModel !== "large" && !("Translator" in globalThis)) return null;
   const { builtinTranslator, status, generator } = await import("./engine");
   if (from) {

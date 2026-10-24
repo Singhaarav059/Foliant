@@ -85,11 +85,28 @@ await suite(async ({ browser, test }) => {
     return `cites p. ${a.pages.join(", ")}, sent ${bytes} bytes`;
   });
 
-  await test("chat: the backup's answers say so", async () => {
+  await test("chat: the backup's answers name it", async () => {
     mode = { status: 200, provider: "cloudflare" };
     const a = await ask(page, "When is the invoice due?");
     if (!a.text.includes(t["chat.by.cloudflare"])) throw new Error(a.text);
     return "Cloudflare named";
+  });
+
+  await test("chat: choosing Cloudflare Workers AI asks for it alone", async () => {
+    mode = { status: 200, provider: "cloudflare" };
+    await page.locator("[data-ai-choice='cloudflare']").click();
+    await page.locator("[data-ai-mode='cloudflare']").waitFor();
+    const disclosure = await page.locator("[data-ai-disclosure]").innerText();
+    if (!disclosure.includes(t["ai.cf.who"])) throw new Error(disclosure);
+    const a = await ask(page, "What is the invoice total?");
+    if (posts.at(-1).body.provider !== "cloudflare") throw new Error(`asked for ${posts.at(-1).body.provider}`);
+    if (a.pages[0] !== 14 || !a.text.includes(t["chat.by.cloudflare"])) throw new Error(a.text);
+    await page.locator("[data-ai-choice='cloud']").click();
+    await page.locator("[data-ai-mode='cloud']").waitFor();
+    await ask(page, "What is the invoice total?");
+    if (posts.at(-1).body.provider) throw new Error("Claude's requests name a provider");
+    mode = { status: 200, provider: "anthropic" };
+    return "provider: cloudflare sent, then Claude again";
   });
 
   await test("chat: when the cloud fails, the device answers and says why", async () => {

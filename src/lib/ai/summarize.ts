@@ -171,10 +171,10 @@ function cloudInput(doc: Doc, text: string, lang: string | undefined) {
 
 // The cloud AI's summary (./cloud.ts), written in the wanted language. Only
 // the document's text is sent, never the file. Null when it can't answer.
-async function cloudSummary(doc: Doc, text: string, length: Length, lang: string | undefined, out: string | undefined) {
-  const { cloudText } = await import("./cloud");
+async function cloudSummary(doc: Doc, text: string, length: Length, lang: string | undefined, out: string | undefined, aiModel: string) {
+  const { cloudText, providerFor } = await import("./cloud");
   try {
-    const { text: reply, provider } = await cloudText({ task: "summarize", text: cloudInput(doc, text, lang), points: POINTS[length], language: out ?? lang ?? "en" });
+    const { text: reply, provider } = await cloudText({ task: "summarize", text: cloudInput(doc, text, lang), points: POINTS[length], language: out ?? lang ?? "en", ...providerFor(aiModel) });
     const points = reply.split("\n").map((l) => l.trim()).filter((l) => /^([-*•]|\d+[.)])\s+\S/.test(l)).map((l) => l.replace(/^([-*•]|\d+[.)])\s+/, "- "));
     return points.length ? { md: points.join("\n"), provider } : null;
   } catch (e) {
@@ -194,8 +194,9 @@ export async function summarizePdf(file: File, o: { summaryLength: string; summa
   const target = o.summaryLang && o.summaryLang !== "same" ? languageTag(o.summaryLang) : undefined;
   const wanted = target && !same(lang, target) ? target : undefined;
 
-  if (o.aiModel === "cloud") {
-    const cloud = await cloudSummary(doc, text, length, lang, wanted);
+  const cloudPicked = o.aiModel === "cloud" || o.aiModel === "cloudflare";
+  if (cloudPicked) {
+    const cloud = await cloudSummary(doc, text, length, lang, wanted, o.aiModel!);
     progress?.(1, 1);
     if (cloud) return [{ name: `${baseName(file.name)}-summary.md`, blob: new Blob([cloud.md.trim() + "\n"], { type: "text/markdown" }), note: `summary:cloud:${cloud.provider}` }];
   }
@@ -203,7 +204,7 @@ export async function summarizePdf(file: File, o: { summaryLength: string; summa
   const builtin = model ?? (await builtinSummary(doc, text, length, lang, wanted));
   let md = builtin?.md ?? summarize(doc, length, lang);
   if (!md.trim()) throw new PdfError("no_text", file.name);
-  let note = `summary:${model ? "model" : builtin ? "builtin" : "extractive"}${o.aiModel === "cloud" ? ":cloudFailed" : ""}`;
+  let note = `summary:${model ? "model" : builtin ? "builtin" : "extractive"}${cloudPicked ? ":cloudFailed" : ""}`;
   if (wanted && !builtin?.inOut) {
     const t = await translate(md, lang, wanted);
     if (t) md = t;

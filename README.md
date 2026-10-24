@@ -65,7 +65,7 @@ Cloudflare Pages reads the `_headers` file the build writes: the Content-Securit
 The AI tools' cloud AI is a Cloudflare Pages Function, `functions/api/ai.ts`, deployed with the site from the same repository. It holds one fixed prompt per task and caps every input, so it can't be used as a general chatbot. Set it up in the Pages project's **Settings**:
 
 - **Variables and Secrets**: add `ANTHROPIC_API_KEY` (type Secret) with a key from the Anthropic Console. Set a monthly spend limit there too: it is the hard cap on cost.
-- **Bindings**: add a **Workers AI** binding named `AI`. It's the backup when Anthropic can't answer (no credit, an outage), and it's covered by Cloudflare's free daily allowance.
+- **Bindings**: add a **Workers AI** binding named `AI`. It's the backup when Anthropic can't answer (no credit, an outage), and the AI panel also offers it as a choice of its own ("Cloudflare Workers AI", which then never sends text to Anthropic). It's covered by Cloudflare's free daily allowance of 10,000 neurons, roughly 400 questions.
 - Optional: `ALLOWED_ORIGINS`, other copies of the site whose pages may call it (comma-separated; the default is `https://nopload.vercel.app`), and `ANTHROPIC_MODEL` / `FALLBACK_MODEL` to change the models (`claude-haiku-5-5`, `@cf/qwen/qwen3-30b-a3b-fp8`).
 
 With neither set, `/api/ai` answers 503 and the tools quietly use on-device AI. To leave the cloud AI out entirely (a host that can't run Functions), build with `NOPLOAD_AI_CLOUD=0`. The Vercel build forwards `/api/ai` to the Cloudflare copy named by `AI_ORIGIN` (default `https://nopload.pages.dev`; empty turns it off).
