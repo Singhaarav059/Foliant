@@ -12,6 +12,9 @@
 //   POST /api/ai { task: "chat", sources, question, history? }      → text, streamed
 //   POST /api/ai { task: "summarize", text, points, language }      → text, streamed
 //   POST /api/ai { task: "translate", texts, language }             → { texts }
+// Any of them may add provider: "cloudflare" to use only Workers AI (the
+// visitor chose it; their text then never goes to Anthropic). Otherwise
+// Claude answers and Workers AI is its backup.
 // The X-AI-Provider response header names who answered.
 //
 // Settings (Cloudflare dashboard → the Pages project → Settings):
@@ -223,9 +226,9 @@ async function* withoutThinking(pieces: Pieces): Pieces {
 }
 
 // Starts the first provider that answers: its name, its first piece and the rest.
-async function start(env: Env, job: Job, signal: AbortSignal) {
+async function start(env: Env, job: Job, signal: AbortSignal, only?: "cloudflare") {
   const tries: [string, () => Pieces][] = [];
-  if (env.ANTHROPIC_API_KEY) tries.push(["anthropic", () => anthropic(env, job, signal)]);
+  if (env.ANTHROPIC_API_KEY && !only) tries.push(["anthropic", () => anthropic(env, job, signal)]);
   if (env.AI) tries.push(["cloudflare", () => withoutThinking(cloudflare(env, job))]);
   for (const [provider, run] of tries) {
     const it = run()[Symbol.asyncIterator]();
@@ -274,7 +277,7 @@ export async function onRequestPost({ request, env }: Context) {
   if (!allow(ip, charsOf(job))) return json({ error: "hourly limit reached" }, 429, { "Retry-After": "3600" });
 
   const signal = request.signal ?? new AbortController().signal;
-  const started = await start(env, job, signal);
+  const started = await start(env, job, signal, body.provider === "cloudflare" ? "cloudflare" : undefined);
   if (!started) return json({ error: "no AI provider answered" }, 503);
   const headers = { "X-AI-Provider": started.provider, "Cache-Control": "no-store" };
 

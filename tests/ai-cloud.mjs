@@ -106,6 +106,18 @@ await test("Workers AI answers when there's no Anthropic key", async () => {
   eq([res.headers.get("x-ai-provider"), await res.text()], ["cloudflare", "May [1]."], "reply");
 });
 
+await test("provider: cloudflare uses only Workers AI, even when Claude is set up", async () => {
+  const before = seen.length;
+  const ai = workersAi("It ends in May [1].");
+  const res = await post({ ...chat, provider: "cloudflare" }, { ...claude, AI: ai });
+  eq([res.headers.get("x-ai-provider"), await res.text()], ["cloudflare", "It ends in May [1]."], "reply");
+  eq(seen.length, before, "Claude wasn't called");
+  if (!ai.input.messages[0].content.includes("numbered sources")) throw new Error("the chat prompt wasn't used");
+  // No Workers AI: no answer, rather than sending the text to Anthropic.
+  eq((await post({ ...chat, provider: "cloudflare" }, claude)).status, 503, "no fallback to Claude");
+  eq(seen.length, before, "still not called");
+});
+
 await test("503 when no provider is set up or none answers", async () => {
   eq((await post(chat, {})).status, 503, "none set up");
   mode = { reply: "", status: 529 };
