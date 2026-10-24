@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# .env holds only the public site settings (src/lib/brand.ts) and is committed;
+# anything secret goes in .env.local.
+!.env
 
 # vercel
 .vercel

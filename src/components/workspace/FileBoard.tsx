@@ -56,7 +56,7 @@ function Card({ item, onRemove, sortable }: { item: Item; onRemove: () => void; 
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 10 : undefined }}
-      className={`group relative flex w-[164px] flex-col items-center rounded-xl border bg-surface p-4 transition-[border-color,box-shadow] ${isDragging ? "border-brand shadow-card" : "border-line"} ${sortable ? "cursor-grab touch-none active:cursor-grabbing" : ""}`}
+      className={`[animation:rise_320ms_var(--ease-out)_backwards] group relative flex w-[164px] flex-col items-center rounded-2xl border bg-surface p-4 shadow-card transition-[border-color,box-shadow,translate] duration-300 ease-(--ease-out) hover:-translate-y-0.5 hover:shadow-lift ${isDragging ? "border-brand shadow-lift" : "border-line"} ${sortable ? "cursor-grab touch-none active:cursor-grabbing" : ""}`}
       {...(sortable ? listeners : {})}
     >
       {sortable && (
@@ -102,9 +102,9 @@ export function FileBoard({
     onChange(arrayMove(items, ids.indexOf(String(e.active.id)), ids.indexOf(String(e.over.id))));
   };
   return (
-    <div>
-      <h2 ref={heading} tabIndex={-1} data-files-heading className="sr-only">{t("ws.filesHeading", { n: items.length })}</h2>
+    <div className="dropzone rounded-[24px] border border-line bg-surface/50 p-4 sm:p-5">
       <div className="mb-4 flex flex-wrap items-center gap-2">
+        <h2 ref={heading} tabIndex={-1} data-files-heading className="me-auto text-[15px] font-medium tracking-[-0.01em]">{t("ws.filesHeading", { n: items.length })}</h2>
         {children}
         {sortable && items.length > 1 && (
           <button

@@ -163,6 +163,11 @@ html {
   outline-offset: 2px;
 }
 
+/* Headings that take focus only so screen readers announce them. */
+[tabindex="-1"]:focus-visible:not(button, a, input, select, textarea) {
+  outline: none;
+}
+
 ::selection {
   background: color-mix(in oklab, var(--accent) 24%, transparent);
 }

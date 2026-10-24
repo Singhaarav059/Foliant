@@ -1,17 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowRight, Check } from "lucide-react";
+import { ArrowDown, ArrowRight, Check } from "lucide-react";
 import { ToolGrid } from "@/components/ToolGrid";
+import { ToolIcon } from "@/components/ToolIcon";
 import { Comparison } from "@/components/Comparison";
 import { PaperStack, Words } from "@/components/Motion";
 import { Bolt, Clip, CropMarks, Flourish, Padlock, PenNib, RegMark, Scissors, Squiggle, Stamp, Tape, Tray, Wash } from "@/components/Decor";
-import { getDictionary } from "@/lib/i18n/dictionary";
+import { format, getDictionary } from "@/lib/i18n/dictionary";
 import { hasLocale } from "@/lib/i18n/locales";
 import { TOOLS } from "@/lib/tools";
 import { STATIC } from "@/lib/mode";
 import { BRAND } from "@/lib/brand";
-import { pageMetadata } from "@/lib/seo";
+import { pageMetadata, pageUrl } from "@/lib/seo";
 
 export async function generateMetadata({ params }: PageProps<"/[lang]">): Promise<Metadata> {
   const { lang } = await params;
@@ -24,6 +25,7 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
   const { lang } = await params;
   if (!hasLocale(lang)) notFound();
   const t = await getDictionary(lang);
+  const popular = ["merge", "compress", "pdfToWord", "jpgToPdf", "edit", "sign", "split"].map((id) => TOOLS.find((x) => x.id === id)!);
   const chain = ["merge", "compress", "pageNumbers", "protect"].map((id) => TOOLS.find((x) => x.id === id)!);
   const local = TOOLS.filter((x) => x.runtime === "browser").length;
 
@@ -34,7 +36,8 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
       <section className="relative isolate grid items-center gap-12 pb-16 pt-14 sm:pt-20 lg:grid-cols-[1.35fr_1fr] lg:gap-6 lg:pb-24 lg:pt-24">
         <Wash className="-end-40 -top-24 h-[520px] w-[520px]" />
         <Wash className="wash-amber -start-48 top-40 h-[420px] w-[420px] [animation-delay:-6s]" />
-        <div>
+        {/* On phones the popular tools come before the promise list, within the first screen. */}
+        <div className="flex flex-col">
           <p className="fade-up eyebrow flex items-center gap-2" style={{ "--d": "0ms" } as React.CSSProperties}>
             <span className="relative flex h-1.5 w-1.5" aria-hidden>
               <span className="absolute inset-0 animate-ping rounded-full bg-accent opacity-60 [animation-duration:2.4s]" />
@@ -51,7 +54,7 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
           <p className="fade-up mt-7 max-w-[520px] text-pretty text-[17px] leading-[1.6] text-ink-2 sm:text-[18px]" style={{ "--d": "500ms" } as React.CSSProperties}>
             {t["home.subtitle"]}
           </p>
-          <div data-promise className="fade-up mt-9 max-w-[680px]" style={{ "--d": "650ms" } as React.CSSProperties}>
+          <div data-promise className="fade-up mt-9 max-w-[680px] max-sm:order-last" style={{ "--d": "650ms" } as React.CSSProperties}>
             <h2 className="sr-only">{t["home.promiseLabel"]}</h2>
             <ul className="grid gap-x-8 gap-y-2.5 text-[15px] text-ink-2 sm:grid-cols-2">
               {(["home.promise1", "home.promise2", STATIC ? "home.promise3" : "home.promise3Server", "home.promise4"] as const).map((k) => (
@@ -65,6 +68,25 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
               {t["home.promiseCheck"]} →
             </Link>
           </div>
+          <nav aria-label={t["home.popular"]} className="fade-up mt-8 sm:mt-10" style={{ "--d": "800ms" } as React.CSSProperties}>
+            <p className="eyebrow mb-3">{t["home.popular"]}</p>
+            <ul className="flex flex-wrap gap-2">
+              {popular.map((tool) => (
+                <li key={tool.id}>
+                  <Link
+                    href={pageUrl(lang, `/${tool.slug}`)}
+                    className="group flex h-11 items-center gap-2 rounded-full border border-line bg-surface ps-1.5 pe-4 text-[14px] font-medium shadow-card transition-[border-color,box-shadow,translate] duration-300 ease-(--ease-out) hover:-translate-y-0.5 hover:border-line-strong hover:shadow-lift"
+                  >
+                    <ToolIcon tool={tool} size={32} />
+                    {t[`tool.${tool.id}.name` as keyof typeof t]}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <a href="#tools" className="link-u mt-5 inline-flex items-center gap-1.5 text-[14px] font-medium text-ink-2 hover:text-ink">
+              {format(t["home.browseAll"], { n: TOOLS.length })} <ArrowDown size={14} aria-hidden />
+            </a>
+          </nav>
         </div>
         <div className="fade-up relative hidden py-10 sm:block" style={{ "--d": "350ms" } as React.CSSProperties}>
           <div className="relative mx-auto w-max">

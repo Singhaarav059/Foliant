@@ -1,19 +1,43 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Search, Server, X } from "lucide-react";
 import { ToolIcon } from "./ToolIcon";
 import { CATEGORY_DOODLE } from "./Decor";
 import { useI18n } from "./I18n";
-import { CATEGORIES, TOOLS, descKey } from "@/lib/tools";
+import { CATEGORIES, TOOLS, descKey, type CategoryId } from "@/lib/tools";
 
-// The tools as an index: one numbered section per category, hairline rows.
+// The tools as an index: one numbered section per category, with a search
+// field and category chips that stay at the top while the list scrolls.
 export function ToolGrid() {
   const { t, href } = useI18n();
   const [q, setQ] = useState("");
+  const [cat, setCat] = useState<CategoryId | "all">("all");
+  const input = useRef<HTMLInputElement>(null);
+  const top = useRef<HTMLElement>(null);
 
-  const sections = useMemo(() => {
+  // "/" jumps to the search field, as on many sites, unless already typing.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey || el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
+      e.preventDefault();
+      input.current?.focus();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  // A chip filters the list and brings its start into view.
+  const choose = (id: CategoryId | "all") => {
+    setCat(id);
+    const y = (top.current?.getBoundingClientRect().top ?? 0) + scrollY - 64;
+    if (scrollY > y) scrollTo({ top: y, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  };
+
+  // Recomputed per render; the React Compiler memoizes it.
+  const sections = (() => {
     const needle = q.trim().toLowerCase();
     return CATEGORIES.map((c, i) => ({
       id: c.id,
@@ -25,22 +49,26 @@ export function ToolGrid() {
           .toLowerCase()
           .includes(needle);
       }),
-    })).filter((s) => s.tools.length);
-  }, [q, t]);
+    })).filter((s) => s.tools.length && (cat === "all" || s.id === cat));
+  })();
 
   return (
-    <section aria-label={t("nav.allTools")}>
+    <section ref={top} id="tools" aria-label={t("nav.allTools")} className="scroll-mt-16">
       <div className="sticky top-16 z-20 -mx-4 bg-[color-mix(in_oklab,var(--bg)_82%,transparent)] px-4 py-3 backdrop-blur-[14px] sm:-mx-6 sm:px-6">
         <label className="relative block">
           <span className="sr-only">{t("home.searchPlaceholder")}</span>
           <Search size={17} strokeWidth={1.75} className="pointer-events-none absolute start-4.5 top-1/2 -translate-y-1/2 text-muted" />
           <input
+            ref={input}
             type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder={t("home.searchPlaceholder")}
             className="field h-14 rounded-full ps-11 pe-12 text-[16px] shadow-card [&::-webkit-search-cancel-button]:hidden"
           />
+          {!q && (
+            <kbd aria-hidden className="pointer-events-none absolute end-4 top-1/2 hidden h-6 min-w-6 -translate-y-1/2 place-items-center rounded-md border border-line bg-surface-2 px-1.5 font-mono text-[12px] text-muted sm:grid">/</kbd>
+          )}
           {q && (
             <button
               type="button"
@@ -52,6 +80,20 @@ export function ToolGrid() {
             </button>
           )}
         </label>
+        {/* Scrolls sideways on narrow screens; the edges fade out. */}
+        <div role="group" aria-label={t("nav.allTools")} className="-mx-4 mt-3 flex gap-1.5 overflow-x-auto px-4 pb-1 [mask-image:linear-gradient(90deg,transparent,#000_16px,#000_calc(100%-16px),transparent)] [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 sm:[mask-image:none]">
+          {(["all", ...CATEGORIES.map((c) => c.id)] as const).map((id) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={cat === id}
+              onClick={() => choose(id)}
+              className="h-9 shrink-0 rounded-full border border-line bg-surface px-3.5 text-[13px] text-ink-2 transition-[background-color,border-color,color] duration-300 hover:border-line-strong hover:text-ink aria-pressed:border-ink aria-pressed:bg-ink aria-pressed:text-bg"
+            >
+              {id === "all" ? t("home.filterAll") : t(`cat.${id}`)}
+            </button>
+          ))}
+        </div>
       </div>
 
       {sections.length === 0 ? (

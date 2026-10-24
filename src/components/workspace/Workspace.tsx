@@ -8,6 +8,7 @@ import type { Stamp } from "./StampPreview";
 import { Dropzone, useFileIntake } from "./Dropzone";
 import { FileBoard, type Item } from "./FileBoard";
 import { Options } from "./Options";
+import { StepTrail } from "./StepTrail";
 import { useSplitHints } from "./splitHints";
 import type { PageItem } from "./PageBoard";
 import { AiModels, prepareAi } from "./AiModels";
@@ -402,6 +403,8 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
   // ── Render
   // Back to the first step once the last file has gone.
   const view = stage === "work" && !items.length && !url ? "select" : stage;
+  // Every stage below returns its own view; the step trail sits above them all.
+  const body = (() => {
   if (view === "done") {
     return outputs[0]?.print
       ? <PrintResults outputs={outputs} onReset={reset} />
@@ -637,5 +640,12 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
         </button>
       </div>
     </div>
+  );
+  })();
+  return (
+    <>
+      <StepTrail view={view} />
+      {body}
+    </>
   );
 }
