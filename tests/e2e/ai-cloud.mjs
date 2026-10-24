@@ -68,7 +68,7 @@ await suite(async ({ browser, test }) => {
     return route.fulfill({ status: 400, json: { error: "unknown task" } });
   });
 
-  await test("chat: the cloud AI is the default, and says what it sends", async () => {
+  await test("chat: on a weak device, server AI is the default, and says what it sends", async () => {
     await open(page, "/en/chat-with-pdf");
     await pick(page, [twenty]);
     const panel = page.locator("[data-ai-models]");
@@ -80,7 +80,7 @@ await suite(async ({ browser, test }) => {
     return "cloud selected, disclosure shown";
   });
 
-  await test("chat: Claude's answer cites page 14; only text was sent", async () => {
+  await test("chat: the server AI answer cites page 14; only text was sent", async () => {
     await page.waitForFunction(() => !document.querySelector("#chat-q")?.disabled, null, { timeout: 30000 });
     const a = await ask(page, "What is the invoice total?");
     if (a.pages[0] !== 14 || !a.text.includes("$1,234.50")) throw new Error(`cited ${a.pages}: ${a.text}`);
@@ -91,14 +91,14 @@ await suite(async ({ browser, test }) => {
     return `cites p. ${a.pages.join(", ")}, sent ${bytes} bytes`;
   });
 
-  await test("chat: the backup's answers say so", async () => {
+  await test("chat: the backup's answers are labelled server AI too", async () => {
     mode = { status: 200, provider: "cloudflare" };
     const a = await ask(page, "When is the invoice due?");
     if (!a.text.includes(t["chat.by.server"])) throw new Error(a.text);
     return "Cloudflare named";
   });
 
-  await test("chat: when the cloud fails, the device answers and says why", async () => {
+  await test("chat: when server AI fails, the device answers and says why", async () => {
     mode = { status: 503 };
     const a = await ask(page, "What is the invoice total?");
     if (a.pages[0] !== 14) throw new Error(`cited ${a.pages}: ${a.text}`);
@@ -124,7 +124,7 @@ await suite(async ({ browser, test }) => {
     return "device answer, choice kept after reload";
   });
 
-  await test("summarize: written by Claude, labelled, text only", async () => {
+  await test("summarize: written by server AI, labelled, text only", async () => {
     await open(page, "/en/summarize-pdf");
     await pick(page, ["report.pdf"]);
     await page.locator("[data-ai-mode='cloud']").waitFor({ timeout: 15000 });

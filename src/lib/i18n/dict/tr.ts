@@ -1499,6 +1499,8 @@ const d: { [K in DictKey]?: string } = {
   "ai.model.large.desc": "Birçok dilde yazar ve çevirir. Yeni bir bilgisayar gerektirir.",
   "ai.remove": "{name} modelini bu cihazdan kaldır",
   "ai.downloadFailed": "İndirme durdu. Yeniden deneyin: kaldığı yerden devam eder.",
+  "ai.device.limitsPhone": "Telefonda cihazda yapay zekâ yalnızca PDF'teki eşleşen cümleleri gösterebilir: yapay zekâ modelleri telefonlara indirilip çalıştırılamayacak kadar büyüktür. Sunucu yapay zekâsı yazılı yanıtlar ve özetler verir.",
+  "ai.device.limitsPhoneTranslate": "Telefonda cihazda çeviri yalnızca tarayıcınızda dilleriniz için yerleşik bir çevirmen varsa çalışır; telefon tarayıcılarında bu nadiren bulunur: yapay zekâ modelleri telefonlar için çok büyüktür. Sunucu yapay zekâsı sitenin dillerinden herhangi birine çevirir.",
   "ai.where": "Yapay zekânın çalıştığı yer",
   "ai.server.sends.chat": "PDF'niz bu cihazda kalır. Yanıt vermek için sorunuz, bu sohbetteki önceki sorular ve PDF'nin soruyla eşleşen bölümleri gönderilir.",
   "ai.server.sends.summarize": "PDF'niz bu cihazda kalır. Özetlemek için metni gönderilir: yaklaşık ilk 15.000 kelime, daha uzunsa ayrıca önemli cümleleri.",

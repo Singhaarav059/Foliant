@@ -1499,6 +1499,8 @@ const d: { [K in DictKey]?: string } = {
   "ai.model.large.desc": "Huandika na kutafsiri kwa lugha nyingi. Inahitaji kompyuta ya kisasa.",
   "ai.remove": "Ondoa {name} kwenye kifaa hiki",
   "ai.downloadFailed": "Upakuaji ulisimama. Jaribu tena: unaendelea ulipoishia.",
+  "ai.device.limitsPhone": "Kwenye simu, AI kwenye kifaa inaweza tu kuonyesha sentensi za PDF zinazolingana: modeli za AI ni kubwa mno kupakuliwa na kuendeshwa kwenye simu. AI ya seva hutoa majibu yaliyoandikwa na muhtasari.",
+  "ai.device.limitsPhoneTranslate": "Kwenye simu, kutafsiri kwenye kifaa hufanya kazi tu ikiwa kivinjari chako kina mtafsiri uliojengewa ndani kwa lugha zako, jambo ambalo vivinjari vya simu huwa nalo mara chache: modeli za AI ni kubwa mno kwa simu. AI ya seva hutafsiri lugha yoyote ya tovuti hii.",
   "ai.where": "Mahali AI inapofanya kazi",
   "ai.server.sends.chat": "PDF yako inabaki kwenye kifaa hiki. Ili kujibu, swali lako, maswali ya awali katika gumzo hili na vifungu vya PDF vinavyolingana nalo hutumwa.",
   "ai.server.sends.summarize": "PDF yako inabaki kwenye kifaa hiki. Ili kuifupisha, maandishi yake hutumwa: takriban maneno 15,000 ya kwanza, pamoja na sentensi zake muhimu ikiwa ni ndefu zaidi.",

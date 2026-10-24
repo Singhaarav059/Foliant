@@ -1499,6 +1499,8 @@ const d: { [K in DictKey]?: string } = {
   "ai.model.large.desc": "Viết và dịch bằng nhiều ngôn ngữ. Cần máy tính đời mới.",
   "ai.remove": "Gỡ {name} khỏi thiết bị này",
   "ai.downloadFailed": "Quá trình tải bị dừng. Hãy thử lại: sẽ tiếp tục từ chỗ đã dừng.",
+  "ai.device.limitsPhone": "Trên điện thoại, AI trên thiết bị chỉ có thể hiển thị các câu khớp trong PDF: các mô hình AI quá lớn để tải xuống và chạy trên điện thoại. AI máy chủ đưa ra câu trả lời bằng văn bản và bản tóm tắt.",
+  "ai.device.limitsPhoneTranslate": "Trên điện thoại, dịch trên thiết bị chỉ hoạt động nếu trình duyệt của bạn có sẵn trình dịch tích hợp cho các ngôn ngữ của bạn, điều mà trình duyệt điện thoại hiếm khi có: các mô hình AI quá lớn đối với điện thoại. AI máy chủ dịch được sang bất kỳ ngôn ngữ nào của trang web.",
   "ai.where": "Nơi AI chạy",
   "ai.server.sends.chat": "PDF của bạn vẫn ở trên thiết bị này. Để trả lời, câu hỏi của bạn, các câu hỏi trước đó trong cuộc trò chuyện này và những đoạn trong PDF khớp với câu hỏi sẽ được gửi đi.",
   "ai.server.sends.summarize": "PDF của bạn vẫn ở trên thiết bị này. Để tóm tắt, văn bản của nó được gửi đi: khoảng 15.000 từ đầu tiên, cùng các câu then chốt khi tài liệu dài hơn.",
