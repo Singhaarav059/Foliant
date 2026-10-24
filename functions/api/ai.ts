@@ -287,7 +287,8 @@ export async function onRequestPost({ request, env }: Context) {
     let text = started.first;
     for (let r = await started.it.next(); !r.done; r = await started.it.next()) text += r.value;
     const texts = parseTexts(text);
-    if (!texts || texts.length !== job.count) return json({ error: "the translation came back incomplete" }, 502, headers);
+    // The start of the reply comes back too (it's the visitor's own text), to see how a model got the format wrong.
+    if (!texts || texts.length !== job.count) return json({ error: "the translation came back incomplete", got: texts?.length ?? null, reply: text.slice(0, 400) }, 502, headers);
     return json({ texts }, 200, headers);
   }
 
