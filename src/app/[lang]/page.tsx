@@ -4,7 +4,6 @@ import { notFound } from "next/navigation";
 import { ArrowDown, ArrowRight, Check } from "lucide-react";
 import { ToolGrid } from "@/components/ToolGrid";
 import { ToolIcon } from "@/components/ToolIcon";
-import { Comparison } from "@/components/Comparison";
 import { Words } from "@/components/Motion";
 import { PaperStage } from "@/components/paper/PaperStage";
 import { Explainer } from "@/components/explainer/Explainer";
@@ -155,10 +154,6 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
           ))}
         </dl>
       </section>
-
-      <Flourish className="mt-28" />
-
-      <Comparison t={t} lang={lang} />
     </div>
   );
 }

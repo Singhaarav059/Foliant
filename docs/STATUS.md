@@ -97,6 +97,7 @@ Naming note: the exact-size "compress PDF to N KB" pages are now called *landing
 - **GSAP** also drives the processing counter and bar, and the result screen (the tick pops, the finished page lifts out, the rest rises in); file cards drop onto the board and the download arrow drops into its tray in CSS.
 - **Remotion** plays the home page's ten-second "How it works" film (`src/components/explainer/`) in its Player, loaded when the section comes near the screen, silent, translated into all 32 languages and following the theme. **Licence:** Remotion is free for individuals and companies of up to 3 people; a bigger company running the site needs a Remotion company licence (remotion.dev/license). GSAP is under its free "standard no-charge" licence; three.js is MIT.
 - Removed for a calmer page: the hero's doodles and print marks, the file-format ticker, the tool header's registration mark.
+- **Comparison table removed** (owner's decision, 2026-10-24): the home page no longer compares free limits with iLovePDF, Sejda, Smallpdf and PDF24. Its figures needed re-checking every month or two, and naming competitors was one more item for the legal review. The privacy promise at the top of the home page still makes the point. `src/components/Comparison.tsx`, `src/lib/comparison.ts` and the `vs.*` strings are gone; git history has them if it comes back as a separate page.
 
 
 
