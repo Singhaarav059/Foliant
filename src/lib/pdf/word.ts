@@ -310,12 +310,14 @@ async function editable(docx: Docx, pdf: PDFDocumentProxy, progress?: Progress) 
     // A label up the margin may have turned the layout's view of a page that is
     // otherwise a scan. Such a page is kept as the picture it is, the way the
     // page is shown, with its own size and margins rather than the layout's.
+    // Without a scan behind it, a page of a few words turned with Rotate (its
+    // own or one it inherits) is text all the same, read the way it runs.
     const shown = p.rotation === undefined || (await pdf.getPage(i + 1).then((page) => {
       const same = p.rotation === page.rotate;
       page.cleanup();
       return same;
     }));
-    const turnedScan = !shown && textChars < 20;
+    const turnedScan = !shown && textChars < 20 && p.backgrounds.length > 0;
     if (!textChars || !p.sections.length || turnedScan) {
       // A scan, a picture page, or one with nothing but its running header and
       // footer: the page goes in as a picture, without the text the header and
