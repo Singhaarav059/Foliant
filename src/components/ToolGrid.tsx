@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Search, Server, X } from "lucide-react";
+import { Cloud, Search, Server, X } from "lucide-react";
 import { ToolIcon } from "./ToolIcon";
 import { CategoryBadge } from "./Studio";
 import { useI18n } from "./I18n";
 import { CATEGORIES, TOOLS, descKey, type CategoryId } from "@/lib/tools";
+import { AI_CLOUD } from "@/lib/mode";
 
 // The tools by family, each in its own colour, with a search field and
 // family chips that stay at the top while the list scrolls.
@@ -137,6 +138,7 @@ export function ToolGrid() {
                         {tool.runtime === "server" && (
                           <Server size={12} className="text-muted" aria-label={t("home.serverBadge")} />
                         )}
+                        {AI_CLOUD && tool.ai && <Cloud size={12} className="text-muted" aria-label={t("home.aiBadge")} />}
                       </span>
                       <span className="mt-1 block text-pretty text-[14px] leading-snug text-muted">{t(descKey(tool))}</span>
                     </span>

@@ -1,6 +1,7 @@
 "use client";
 
-// The on-device AI, from the page's side. Engines, best first:
+// The on-device AI, from the page's side. (The cloud AI, the default where
+// this site has it, is ./cloud.ts.) Engines on the device, best first:
 //  1. the browser's built-in AI (Chrome's Translator and Summarizer), when
 //     its model is already on the device;
 //  2. a language model from this site, run with WebGPU (CPU otherwise):
@@ -11,6 +12,7 @@
 // a worker (./worker.ts).
 
 import { AI_MODELS } from "../vendor";
+import { CLOUD } from "./cloud";
 import { MODEL_IDS, sizeOf, type ModelId } from "./store";
 import type { Embed, Generate } from "./chat";
 
@@ -79,18 +81,21 @@ export async function builtinTranslator(from: string, to: string): Promise<Built
   }
 }
 
-// Which model a feature uses, from those on the device: the visitor's
-// choice when it's there, else the largest.
+// Which model a feature uses: the visitor's choice ("cloud" or a model on
+// the device) when it's there, else the cloud AI when this site has it,
+// else the largest model on the device.
 const PICK = "nopload-ai-model";
-export function chosenModel(): ModelId | null {
+// "device": on-device AI, with no model picked.
+export type Choice = ModelId | typeof CLOUD | "device";
+export function chosenModel(): Choice | null {
   try {
     const v = localStorage.getItem(PICK);
-    return v && (MODEL_IDS as string[]).includes(v) ? (v as ModelId) : null;
+    return v === CLOUD || v === "device" ? v : v && (MODEL_IDS as string[]).includes(v) ? (v as ModelId) : null;
   } catch {
     return null;
   }
 }
-export function chooseModel(id: ModelId) {
+export function chooseModel(id: Choice) {
   try {
     localStorage.setItem(PICK, id);
   } catch {

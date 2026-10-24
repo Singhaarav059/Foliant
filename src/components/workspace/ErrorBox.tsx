@@ -28,6 +28,7 @@ const MESSAGES: Record<ErrorCode, [key: string, fix?: Fix]> = {
   out_of_memory: ["err.outOfMemory"],
   no_text: ["err.noText", "ocr"],
   no_translator: ["err.noTranslator"],
+  cloud_failed: ["err.cloudFailed"],
   no_images: ["err.noImages"],
   bad_ranges: ["err.badRanges"],
   bad_sheets: ["err.badSheets"],

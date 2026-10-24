@@ -105,12 +105,15 @@
     "test:e2e:csp": "node tests/e2e/csp.mjs",
     "test:e2e:promise": "node tests/e2e/promise.mjs",
     "test:ai": "node tests/ai.mjs",
+    "test:ai-cloud": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/ai-cloud.mjs",
     "test:e2e:ai": "node tests/e2e/ai.mjs",
+    "test:e2e:ai-cloud": "node tests/e2e/ai-cloud.mjs",
     "test:e2e:exactsize": "node tests/e2e/exactsize.mjs chromium",
     "test:scanner": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/scanner-quad.mjs",
     "test:e2e:scanner": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/e2e/scanner.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",

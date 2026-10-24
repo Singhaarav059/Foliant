@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
-import { ShieldCheck, Server, ArrowRight } from "lucide-react";
+import { ShieldCheck, Server, ArrowRight, Cloud } from "lucide-react";
 import { Workspace } from "@/components/workspace/LazyWorkspace";
 import { PrivacyChip } from "@/components/workspace/PrivacyChip";
 import { ToolIcon } from "@/components/ToolIcon";
@@ -13,7 +13,7 @@ import { CATEGORIES, LIMITS, TOOLS, descKey, toolById, toolBySlug, type Tool } f
 import { LEGAL, LEGAL_UPDATED } from "@/lib/legal";
 import { BRAND, OPERATOR } from "@/lib/brand";
 import { readLicenses, LICENSES_URL } from "@/lib/licenses";
-import { REPO_URL, STATIC } from "@/lib/mode";
+import { AI_CLOUD, REPO_URL, STATIC } from "@/lib/mode";
 import { INFO, pageMetadata, pageUrl, type Info } from "@/lib/seo";
 import { englishSlug, localSlug, movedTo } from "@/lib/i18n/slugs";
 import { INTENTS, intentBySlug, type Intent } from "@/lib/intents";
@@ -112,7 +112,9 @@ async function SlugContent({ params }: { params: PageProps<"/[lang]/[slug]">["pa
 function ToolPage({ tool, t, lang }: { tool: Tool; t: Dict; lang: Locale }) {
   const k = (s: string) => t[s as DictKey];
   const related = TOOLS.filter((x) => x.category === tool.category && x.id !== tool.id).slice(0, 4);
-  const Badge = tool.runtime === "browser" ? ShieldCheck : Server;
+  // AI tools default to the cloud AI: they say so instead of "Runs on your device".
+  const cloudAi = AI_CLOUD && !!tool.ai;
+  const Badge = cloudAi ? Cloud : tool.runtime === "browser" ? ShieldCheck : Server;
   return (
     <div data-cat={tool.category} className="mx-auto max-w-[1240px] px-4 sm:px-6">
       <header className="relative isolate mx-auto flex max-w-[760px] flex-col items-center pb-5 pt-6 text-center sm:pt-8">
@@ -134,9 +136,9 @@ function ToolPage({ tool, t, lang }: { tool: Tool; t: Dict; lang: Locale }) {
         </div>
         <p className="fade-up mt-3 max-w-[540px] text-pretty text-[17px] leading-relaxed text-ink-2">{k(descKey(tool))}</p>
         <div className="fade-up mt-4 flex flex-wrap items-center justify-center gap-2" style={{ "--d": "420ms" } as React.CSSProperties}>
-          <p data-cat={tool.runtime === "browser" ? "organize" : "optimize"} className="pill">
+          <p data-cat={tool.runtime === "browser" && !cloudAi ? "organize" : "optimize"} className="pill">
             <Badge size={14} strokeWidth={2} aria-hidden />
-            {tool.runtime === "browser" ? t["home.privateBadge"] : t["home.serverBadge"]}
+            {cloudAi ? t["home.aiBadge"] : tool.runtime === "browser" ? t["home.privateBadge"] : t["home.serverBadge"]}
           </p>
           <PrivacyChip />
         </div>

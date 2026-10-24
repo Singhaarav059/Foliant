@@ -10,6 +10,11 @@ import { releaseGaps } from "./src/lib/brand";
 // 404s) are only built here.
 const STATIC = process.env.NOPLOAD_STATIC === "1";
 
+// The cloud AI (functions/api/ai.ts, a Cloudflare Pages Function) is the AI
+// tools' default in the static build; NOPLOAD_AI_CLOUD=0 leaves it out, for
+// hosts that can't run it. The page still checks it's there before using it.
+const AI_CLOUD = (process.env.NOPLOAD_AI_CLOUD ?? (STATIC ? "1" : "0")) === "1";
+
 // NOPLOAD_RELEASE=1 marks a build that goes live: it stops while any site
 // setting in src/lib/brand.ts is still a placeholder. Other builds, CI's
 // included, run with the placeholders.
@@ -48,7 +53,7 @@ const nextConfig: NextConfig = {
   // out/404.html is src/app/global-not-found.static.tsx, the language picker.
   experimental: { globalNotFound: STATIC },
   pageExtensions: STATIC ? ["tsx", "ts", "static.tsx"] : ["tsx", "ts", "server.ts", "server.tsx"],
-  env: { NEXT_PUBLIC_STATIC: STATIC ? "1" : "", NEXT_PUBLIC_REPO_URL: REPO_URL },
+  env: { NEXT_PUBLIC_STATIC: STATIC ? "1" : "", NEXT_PUBLIC_AI_CLOUD: AI_CLOUD ? "1" : "", NEXT_PUBLIC_REPO_URL: REPO_URL },
   // Server-side conversion libraries stay as plain Node requires.
   serverExternalPackages: ["playwright-core", "mammoth", "exceljs", "jszip"],
   turbopack: {

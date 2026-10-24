@@ -622,7 +622,7 @@ export function Workspace({ toolId, preset }: { toolId: ToolId; preset?: Record<
         <aside className="card h-max p-5 lg:sticky lg:top-[88px]">
           <p className="mb-5 text-[14px] font-medium">{t("ws.options")}</p>
           <Options restore defs={tool.options} values={options} notes={notes} onChange={(k, v) => setOptions((o) => ({ ...o, [k]: v }))} />
-          {tool.ai && <AiModels models={tool.ai} value={String(options.aiModel ?? "")} onChange={(v) => setOptions((o) => ({ ...o, aiModel: v }))} />}
+          {tool.ai && <AiModels task={tool.id} models={tool.ai} value={String(options.aiModel ?? "")} onChange={(v) => setOptions((o) => ({ ...o, aiModel: v }))} />}
           <button className="btn btn-primary btn-lg mt-6 hidden w-full lg:inline-flex" onClick={start}>
             {t(`tool.${tool.id}.action`)} <ArrowRight size={18} className="rtl:rotate-180" />
           </button>

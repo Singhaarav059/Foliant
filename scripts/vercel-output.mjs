@@ -2,7 +2,8 @@
 // Output API layout, so a Vercel deployment serves exactly what Cloudflare
 // Pages or Netlify serve from the same folder:
 // - .vercel/output/static: the files (out is moved, not copied: it's ~2 GB).
-// - .vercel/output/config.json: the routes. Headers and redirects are read
+// - .vercel/output/config.json: the routes. /api/ai goes to the Cloudflare
+//   copy, where the cloud AI runs. Headers and redirects are read
 //   from out/_headers and out/_redirects (scripts/static-extras.mjs writes
 //   them), so there is one source for every host. Pages are served without
 //   .html (/en → en.html), and a missing page gets its language's 404.
@@ -43,7 +44,15 @@ const redirects = existsSync(redirectFile)
     })
   : [];
 
+// The cloud AI runs as a Cloudflare Pages Function (functions/api/ai.ts):
+// /api/ai is forwarded there, so the page still calls its own origin.
+// AI_ORIGIN names the Cloudflare copy of the site; without it, /api/ai is
+// a 404 and the AI tools work on the device only.
+const aiOrigin = (process.env.AI_ORIGIN ?? "https://nopload.pages.dev").replace(/\/$/, "");
+const aiRoutes = aiOrigin ? [{ src: "^/api/ai$", dest: `${aiOrigin}/api/ai` }] : [];
+
 const routes = [
+  ...aiRoutes,
   ...redirects,
   ...headerRoutes,
   { handle: "filesystem" },

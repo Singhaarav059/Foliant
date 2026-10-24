@@ -9,7 +9,7 @@ import { Options } from "./Options";
 import type { Answer, DocIndex, Message } from "@/lib/ai/chat";
 import type { OptionDef } from "@/lib/tools";
 
-type Turn = { q: string; a?: Answer; text?: string; by?: "light" | "keywords" | "model"; failed?: boolean };
+type Turn = { q: string; a?: Answer; text?: string; by?: "light" | "keywords" | "model" | "anthropic" | "cloudflare"; cloudFailed?: boolean; failed?: boolean };
 
 // Loads the chat code and the AI worker ahead of use (src/lib/offline.ts).
 export const prepareChat = () => Promise.all([import("@/lib/ai/chat"), prepareAi()]);
@@ -92,13 +92,29 @@ export function ChatView({ file, models, options, defs, onOption, onError }: {
           embed = undefined;
         }
       }
-      let a: Answer;
+      let a: Answer | undefined;
       let by: Turn["by"];
-      if ((aiModel === "small" || aiModel === "large") && s?.stored[aiModel]) {
+      let cloudFailed = false;
+      const history: Message[] = turns.flatMap((x) => (x.a ? [{ role: "user" as const, content: x.q }, { role: "assistant" as const, content: x.a.parts.map((p) => p.text).join(" ") }] : []));
+      if (aiModel === "cloud") {
+        setBusy("answering");
+        try {
+          const r = await c.askCloud(ix, question, { embed, history, signal: ctl.signal, onPartial: (p) => update({ a: p }) });
+          [a, by] = [r, r.provider];
+        } catch (err) {
+          const { CloudUnavailable } = await import("@/lib/ai/cloud");
+          if (!(err instanceof CloudUnavailable)) throw err;
+          console.warn("The cloud AI didn't answer; answering on this device.", err);
+          cloudFailed = true;
+          update({ a: undefined });
+        }
+      }
+      if (a) {
+        /* answered in the cloud */
+      } else if ((aiModel === "small" || aiModel === "large") && s?.stored[aiModel]) {
         setBusy("loading");
         await e.loadModel(aiModel);
         setBusy("answering");
-        const history: Message[] = turns.flatMap((x) => (x.a ? [{ role: "user" as const, content: x.q }, { role: "assistant" as const, content: x.a.parts.map((p) => p.text).join(" ") }] : []));
         a = await c.askModel(ix, question, { generate: e.generator(aiModel), embed, history, signal: ctl.signal, onPartial: (p) => update({ a: p }) });
         by = "model";
       } else {
@@ -106,11 +122,12 @@ export function ChatView({ file, models, options, defs, onOption, onError }: {
         a = await c.askLight(ix, question, embed);
         by = embed ? "light" : "keywords";
       }
-      update({ a, by });
+      update({ a, by, cloudFailed });
       if (a.pages[0]) setPage(a.pages[0]);
     } catch (err) {
       const { Aborted } = await import("@/lib/ai/engine");
-      if (!(err instanceof Aborted)) {
+      // Stopped by the visitor: the model's Aborted, or the cloud request's AbortError.
+      if (!(err instanceof Aborted) && !ctl.signal.aborted) {
         console.warn("Answering failed.", err);
         update({ failed: true });
       }
@@ -158,7 +175,7 @@ export function ChatView({ file, models, options, defs, onOption, onError }: {
                 ) : (
                   <Loader2 size={16} className="animate-spin text-muted" />
                 )}
-                {x.by && x.a?.parts.length ? <p className="mt-1 text-[12px] text-muted">{t(`chat.by.${x.by}`)}</p> : null}
+                {x.by && x.a?.parts.length ? <p className="mt-1 text-[12px] text-muted" data-answered-by={x.by}>{x.cloudFailed && <>{t("chat.cloudFailed")} </>}{t(`chat.by.${x.by}`)}</p> : null}
               </div>
             </div>
           ))}
@@ -187,7 +204,7 @@ export function ChatView({ file, models, options, defs, onOption, onError }: {
         </div>
         <div className="card p-5">
           <Options defs={defs} values={options} onChange={onOption} />
-          <AiModels models={models} value={aiModel} onChange={(v) => onOption("aiModel", v)} />
+          <AiModels task="chat" models={models} value={aiModel} onChange={(v) => onOption("aiModel", v)} />
         </div>
       </aside>
     </div>

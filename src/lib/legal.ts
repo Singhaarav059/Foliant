@@ -3,12 +3,12 @@
 // release build refuses the placeholders), and the text should be reviewed by
 // a lawyer before going live.
 import { BRAND, OPERATOR } from "./brand";
-import { STATIC } from "./mode";
+import { AI_CLOUD, STATIC } from "./mode";
 
 // The static build has no server or cookies, so its text says so.
 const on = <T,>(when: boolean, items: T[]) => (when ? items : []);
 
-export const LEGAL_UPDATED = "2026-10-23";
+export const LEGAL_UPDATED = "2026-10-24";
 
 // link: a line ending in a link, as [lead-in, text, href]; no href, no link.
 type Section = { id?: string; h: string; p: string[]; list?: string[]; link?: [string, string, string] };
@@ -32,10 +32,12 @@ export const LEGAL: Record<"privacy" | "terms" | "cookies", LegalDoc> = {
         h: "Files you process",
         p: STATIC
           ? [
-              "Every tool runs entirely in your browser. Your files are never sent to us or to anyone else.",
+              AI_CLOUD
+                ? "Every tool works on your files inside your browser. Your files are never sent to us or to anyone else. The AI tools are the one exception to keeping their contents on your device: see “The AI tools” below."
+                : "Every tool runs entirely in your browser. Your files are never sent to us or to anyone else.",
               "Office and HTML files are laid out in your browser and saved through its own print dialog.",
               "High-fidelity Office conversion and high-accuracy OCR download their engines (LibreOffice, and PaddleOCR with ONNX Runtime) from this same site the first time you use them. They run on your device too, so your files still stay there.",
-              "The AI tools (Chat with PDF, Summarize, Translate) download a model from this same site only when you choose one, and keep it on your device for next time. Models run on your device, as does your browser's built-in AI, which they use when it's already there. Your files and questions stay on your device.",
+              ...on(!AI_CLOUD, ["The AI tools (Chat with PDF, Summarize, Translate) download a model from this same site only when you choose one, and keep it on your device for next time. Models run on your device, as does your browser's built-in AI, which they use when it's already there. Your files and questions stay on your device."]),
             ]
           : [
               "Tools marked “Runs on your device” process files entirely in your browser. Those files are never sent to us.",
@@ -44,6 +46,17 @@ export const LEGAL: Record<"privacy" | "terms" | "cookies", LegalDoc> = {
               "Office conversions and web page conversion send the file to our server over HTTPS. We process it in memory or a temporary folder and delete it as soon as the result is returned. We don't keep copies or look at the contents.",
             ],
       },
+      ...on(AI_CLOUD, [{
+        id: "ai",
+        h: "The AI tools",
+        p: [
+          "Chat with PDF, Summarize PDF and Translate PDF use a cloud AI by default, because it gives much better results than the AI a phone or laptop can run. The tool says so next to its options, and you can switch to on-device AI there at any time.",
+          "With the cloud AI, your file stays on your device, but some of its text is sent: for Chat with PDF, your question, the earlier questions and answers in that chat, and the passages of the PDF that best match the question; for Summarize PDF, the document's text (about the first 15,000 words, plus its key sentences when it's longer); for Translate PDF, the document's text, a few blocks at a time.",
+          "That text goes over HTTPS to a small function of ours on Cloudflare, which passes it to Claude, an AI model made by Anthropic. When Anthropic can't answer (for example during an outage), it goes to Cloudflare Workers AI instead. The result says which one answered.",
+          "We don't store or log the text or the answers. To stop one visitor using up the service, the function counts how much text each IP address sent in the last hour, in memory only, for up to an hour. Anthropic and Cloudflare process the text under their own commercial terms and privacy policies; under those terms neither uses it to train AI models. Anthropic may keep it for a limited time to detect misuse.",
+          "With on-device AI, nothing is sent: the AI tools download a model from this same site only when you choose one and keep it on your device for next time, or use your browser's built-in AI when it's already there. Without a model they pick sentences from the document itself. The answers are simpler, and large models need a recent computer.",
+        ],
+      }]),
       ...on(!STATIC, [{
         h: "Messages",
         p: ["If you use the contact form we store your email address and message so we can reply."],
@@ -52,7 +65,9 @@ export const LEGAL: Record<"privacy" | "terms" | "cookies", LegalDoc> = {
         h: "Technical data",
         p: [
           STATIC
-            ? "This site is served as plain files by a hosting provider, which may log requests (IP address, time, page requested) under its own privacy policy. We don't run a server of our own."
+            ? AI_CLOUD
+              ? "This site is served as plain files by a hosting provider, which may log requests (IP address, time, page requested) under its own privacy policy. Apart from the AI function described above, we don't run a server of our own."
+              : "This site is served as plain files by a hosting provider, which may log requests (IP address, time, page requested) under its own privacy policy. We don't run a server of our own."
             : "Our server logs requests (IP address, time, page requested) for security and rate limiting. Logs are kept for a short period and then deleted.",
         ],
       },
@@ -63,7 +78,9 @@ export const LEGAL: Record<"privacy" | "terms" | "cookies", LegalDoc> = {
       {
         h: "Your rights",
         p: STATIC
-          ? ["We hold no personal data about you. What this site keeps in your browser (workflows, signatures, your language) is removed when you clear your browser data."]
+          ? [
+              `We hold no personal data about you${AI_CLOUD ? ", apart from the hour-long, in-memory count of AI text per IP address described above" : ""}. What this site keeps in your browser (workflows, signatures, your language, your AI choice) is removed when you clear your browser data.`,
+            ]
           : [
               "What this site keeps in your browser (workflows, signatures, your language) is removed when you clear your browser data. To have a message you sent through the contact form deleted, contact us.",
               "Depending on where you live you may have further rights, such as access, correction and objection. Contact us through the contact page to use them.",
@@ -123,7 +140,7 @@ export const LEGAL: Record<"privacy" | "terms" | "cookies", LegalDoc> = {
       {
         h: "Local storage",
         p: [
-          "Signatures and workflows you save, and the language you picked, are kept in your browser's local storage on your device only. Clearing your browser data removes them.",
+          "Signatures and workflows you save, the language you picked and where the AI tools run, are kept in your browser's local storage on your device only. Clearing your browser data removes them.",
           "The installable app stores the site's code in your browser so the on-device tools work offline.",
         ],
       },

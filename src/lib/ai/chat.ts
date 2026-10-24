@@ -4,13 +4,16 @@
 //  - light: the sentences that answer it best are shown, each with its page, or
 //  - a language model on this device writes the answer from those chunks,
 //    citing them, and the citations become pages (./cite.ts).
-// Nothing leaves the device: the models run here (./engine.ts).
+//  - the cloud AI writes it (./cloud.ts): only the question, the passages
+//    found for it and the earlier turns are sent, never the file.
+// Otherwise nothing leaves the device: the models run here (./engine.ts).
 
 import { closePdf, openPdf, type Progress } from "../pdf/common";
 import { documentLayout, type PageLayout } from "../pdf/layout";
 import { blocks, bodySizeOf, type Line } from "../pdf/text";
 import { chunkPages, type Chunk, type PageText } from "./chunk";
 import { answerSentences, attribute, citations, extractiveAnswer, numberSources, type Answer } from "./cite";
+import { cloudText, type Provider } from "./cloud";
 import { cosine, search, type Hit } from "./retrieve";
 
 export type { Answer, Part } from "./cite";
@@ -136,6 +139,10 @@ export async function askModel(
     signal: o.signal,
     onText: o.onPartial && ((t) => o.onPartial!(citations(t, sources))),
   });
+  return cited(text, sources);
+}
+
+function cited(text: string, sources: ReturnType<typeof numberSources>["sources"]): Answer {
   const answer = citations(text, sources);
   // No markers: cite the sources the answer's words come from.
   if (!answer.pages.length && answer.parts.length) {
@@ -143,4 +150,20 @@ export async function askModel(
     if (pages.length) return { parts: [{ text: answer.parts.map((p) => p.text).join(" "), pages }], pages };
   }
   return answer;
+}
+
+// With the cloud AI: the same, written by Claude (or its backup) from more
+// passages than a small model can read. Throws CloudUnavailable when it can't.
+export async function askCloud(
+  index: DocIndex,
+  question: string,
+  o: { embed?: Embed; history?: Message[]; onPartial?: (a: Answer) => void; signal?: AbortSignal },
+): Promise<Answer & { provider: Provider }> {
+  const hits = await find(index, question, 10, o.embed);
+  const { sources, context } = numberSources(hits);
+  const { text, provider } = await cloudText(
+    { task: "chat", sources: context, question, history: (o.history ?? []).slice(-4) },
+    { signal: o.signal, onText: o.onPartial && ((t) => o.onPartial!(citations(t, sources))) },
+  );
+  return { ...cited(text, sources), provider };
 }

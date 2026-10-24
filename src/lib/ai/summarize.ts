@@ -5,8 +5,11 @@
 // browser's built-in Summarizer does when its model is already on the device
 // (desktop Chrome); otherwise the document's own key sentences are picked
 // (./extractive.ts). Another output language uses the browser's built-in
-// Translator the same way. Nothing is sent anywhere, and the browser's own
-// models are never downloaded: one that is "downloadable" is left alone.
+// Translator the same way. The browser's own models are never downloaded:
+// one that is "downloadable" is left alone. With the cloud AI picked (the
+// default where the site has it), Claude writes the summary from the
+// document's text (./cloud.ts), and the steps above are the fallback;
+// otherwise nothing is sent anywhere.
 
 import { baseName, closePdf, openPdf, pdfjs, type Output, type Progress } from "../pdf/common";
 import { PdfError } from "../pdf/errors";
@@ -156,6 +159,30 @@ async function modelSummary(doc: Doc, length: Length, lang: string | undefined, 
   return points.length ? { md: points.join("\n"), inOut: inOut && !!out } : null;
 }
 
+// How much of the document the cloud AI reads (functions/api/ai.ts takes up
+// to 60,000 characters): all of it when it fits, else its key sentences and
+// as much of its opening as fits beside them.
+const CLOUD_CHARS = 58_000;
+function cloudInput(doc: Doc, text: string, lang: string | undefined) {
+  if (text.length <= CLOUD_CHARS) return text;
+  const key = summarize(doc, "long", lang).replace(/^- /gm, "").trim();
+  return `${text.slice(0, Math.max(0, CLOUD_CHARS - key.length - 40))}\n\n[…]\n\nKey sentences from the rest:\n${key}`.slice(0, CLOUD_CHARS);
+}
+
+// The cloud AI's summary (./cloud.ts), written in the wanted language. Only
+// the document's text is sent, never the file. Null when it can't answer.
+async function cloudSummary(doc: Doc, text: string, length: Length, lang: string | undefined, out: string | undefined) {
+  const { cloudText } = await import("./cloud");
+  try {
+    const { text: reply, provider } = await cloudText({ task: "summarize", text: cloudInput(doc, text, lang), points: POINTS[length], language: out ?? lang ?? "en" });
+    const points = reply.split("\n").map((l) => l.trim()).filter((l) => /^([-*•]|\d+[.)])\s+\S/.test(l)).map((l) => l.replace(/^([-*•]|\d+[.)])\s+/, "- "));
+    return points.length ? { md: points.join("\n"), provider } : null;
+  } catch (e) {
+    console.warn("The cloud AI didn't answer; summarising on this device.", e);
+    return null;
+  }
+}
+
 const same = (a: string | undefined, b: string) => !!a && a.split("-")[0].toLowerCase() === b.split("-")[0].toLowerCase() && !(b === "zh-Hant" && a === "zh");
 
 export async function summarizePdf(file: File, o: { summaryLength: string; summaryLang: string; aiModel?: string }, progress?: Progress): Promise<Output[]> {
@@ -167,11 +194,16 @@ export async function summarizePdf(file: File, o: { summaryLength: string; summa
   const target = o.summaryLang && o.summaryLang !== "same" ? languageTag(o.summaryLang) : undefined;
   const wanted = target && !same(lang, target) ? target : undefined;
 
+  if (o.aiModel === "cloud") {
+    const cloud = await cloudSummary(doc, text, length, lang, wanted);
+    progress?.(1, 1);
+    if (cloud) return [{ name: `${baseName(file.name)}-summary.md`, blob: new Blob([cloud.md.trim() + "\n"], { type: "text/markdown" }), note: `summary:cloud:${cloud.provider}` }];
+  }
   const model = o.aiModel ? await modelSummary(doc, length, lang, wanted, o.aiModel).catch(() => null) : null;
   const builtin = model ?? (await builtinSummary(doc, text, length, lang, wanted));
   let md = builtin?.md ?? summarize(doc, length, lang);
   if (!md.trim()) throw new PdfError("no_text", file.name);
-  let note = `summary:${model ? "model" : builtin ? "builtin" : "extractive"}`;
+  let note = `summary:${model ? "model" : builtin ? "builtin" : "extractive"}${o.aiModel === "cloud" ? ":cloudFailed" : ""}`;
   if (wanted && !builtin?.inOut) {
     const t = await translate(md, lang, wanted);
     if (t) md = t;
