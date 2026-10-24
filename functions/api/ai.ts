@@ -45,20 +45,54 @@ const DEFAULT_ORIGINS = ["https://nopload.vercel.app"];
 // Input caps, in characters.
 const MAX = { sources: 24_000, question: 2_000, history: 4, turn: 2_000, text: 60_000, texts: 12_000, items: 200 };
 
-// Best effort, per visitor and per Worker instance (instances don't share
-// memory): characters sent in the last hour. The hard cap on spending is the
-// Anthropic account's own limit.
+// Best effort, per visitor (the address Cloudflare saw, which the sender
+// can't choose) and per Worker instance (instances don't share memory):
+// characters and requests in the last hour, and requests in the last
+// minute, so neither big requests nor floods of small ones run up the bill.
+// A 100-page translation is about 35 requests and 300,000 characters. The
+// hard cap on spending is the Anthropic account's own limit.
 const HOUR = 3_600_000;
-const BUDGET = 600_000;
-const spent = new Map<string, { at: number; chars: number }>();
+const MINUTE = 60_000;
+const LIMIT = { chars: 600_000, hour: 200, minute: 40 };
+type Use = { at: number; chars: number; requests: number; minuteAt: number; minute: number };
+const spent = new Map<string, Use>();
 function allow(ip: string, chars: number) {
   const now = Date.now();
   if (spent.size > 10_000) for (const [k, v] of spent) if (now - v.at > HOUR) spent.delete(k);
-  const s = spent.get(ip);
-  const cur = s && now - s.at < HOUR ? s : { at: now, chars: 0 };
-  if (cur.chars + chars > BUDGET) return false;
-  spent.set(ip, { at: cur.at, chars: cur.chars + chars });
+  const prev = spent.get(ip);
+  const use: Use = prev && now - prev.at < HOUR ? { ...prev } : { at: now, chars: 0, requests: 0, minuteAt: now, minute: 0 };
+  if (now - use.minuteAt >= MINUTE) [use.minuteAt, use.minute] = [now, 0];
+  if (use.chars + chars > LIMIT.chars || use.requests >= LIMIT.hour || use.minute >= LIMIT.minute) return false;
+  spent.set(ip, { ...use, chars: use.chars + chars, requests: use.requests + 1, minute: use.minute + 1 });
   return true;
+}
+
+// The largest request a page sends is a summary: 60,000 characters, up to
+// three bytes each, escaped in JSON. Anything bigger is refused unread.
+const MAX_BODY = 400_000;
+async function readBody(request: Request): Promise<string | null> {
+  if (Number(request.headers.get("Content-Length") ?? 0) > MAX_BODY) return null;
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const parts: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_BODY) {
+      void reader.cancel();
+      return null;
+    }
+    parts.push(value);
+  }
+  const all = new Uint8Array(size);
+  let at = 0;
+  for (const p of parts) {
+    all.set(p, at);
+    at += p.byteLength;
+  }
+  return new TextDecoder().decode(all);
 }
 
 type Message = { role: "user" | "assistant"; content: string };
@@ -111,9 +145,10 @@ export function jobOf(body: Record<string, unknown>): Job | string {
   }
   if (body.task === "translate") {
     const list: unknown[] = Array.isArray(body.texts) ? body.texts : [];
-    const texts = list.map((t) => (typeof t === "string" ? t : ""));
+    if (!list.every((t) => typeof t === "string") || !list.some((t) => (t as string).trim())) return "texts: strings, not all empty";
+    const texts = list as string[];
     const total = texts.reduce((n, t) => n + t.length, 0);
-    if (!texts.length || texts.length > MAX.items || total > MAX.texts) return `texts: 1 to ${MAX.items} strings, ${MAX.texts} characters in all`;
+    if (texts.length > MAX.items || total > MAX.texts) return `texts: 1 to ${MAX.items} strings, ${MAX.texts} characters in all`;
     const language = languageName(str(body.language, 20) || "en");
     return {
       system:
@@ -233,8 +268,10 @@ async function start(env: Env, job: Job, signal: AbortSignal, only?: "cloudflare
   return null;
 }
 
+// Replies are data, never a page: no sniffing, nothing a browser would run or frame.
+const SAFE = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'" };
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
-  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...headers } });
+  new Response(JSON.stringify(body), { status, headers: { ...SAFE, "Content-Type": "application/json", ...headers } });
 
 function originAllowed(request: Request, env: Env) {
   const origin = request.headers.get("Origin");
@@ -250,24 +287,25 @@ export async function onRequestGet({ env }: Context) {
 export async function onRequestPost({ request, env }: Context) {
   if (!originAllowed(request, env)) return json({ error: "origin not allowed" }, 403);
   if (!env.ANTHROPIC_API_KEY && !env.AI) return json({ error: "no AI provider is set up" }, 503);
+  const raw = await readBody(request);
+  if (raw === null) return json({ error: "request too large" }, 413);
   let body: Record<string, unknown>;
   try {
-    body = await request.json();
+    const parsed = JSON.parse(raw);
+    body = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
   } catch {
     return json({ error: "send JSON" }, 400);
   }
-  const job = jobOf(body ?? {});
+  const job = jobOf(body);
   if (typeof job === "string") return json({ error: job }, 400);
-  // Requests forwarded by another copy (Vercel) come from its servers; the
-  // visitor is the first address it forwarded for.
-  const forwarded = request.headers.get("Origin") && request.headers.get("Origin") !== new URL(request.url).origin;
-  const ip = (forwarded && request.headers.get("X-Forwarded-For")?.split(",")[0].trim()) || request.headers.get("CF-Connecting-IP") || "?";
+  // Only the address Cloudflare saw: headers like X-Forwarded-For are the sender's to write.
+  const ip = request.headers.get("CF-Connecting-IP") || "?";
   if (!allow(ip, charsOf(job))) return json({ error: "hourly limit reached" }, 429, { "Retry-After": "3600" });
 
   const signal = request.signal ?? new AbortController().signal;
   const started = await start(env, job, signal, body.provider === "cloudflare" ? "cloudflare" : undefined);
   if (!started) return json({ error: "no AI provider answered" }, 503);
-  const headers = { "X-AI-Provider": started.provider, "Cache-Control": "no-store" };
+  const headers = { ...SAFE, "X-AI-Provider": started.provider };
 
   if (job.json) {
     let text = started.first;

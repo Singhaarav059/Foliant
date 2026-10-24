@@ -184,6 +184,32 @@ await test("translate sends numbered blocks and reads numbered ones back", async
   eq((await post({ task: "translate", texts: ["Hello", "Goodbye"], language: "es", provider: "cloudflare" }, { AI: ai })).status, 502, "merged blocks refused");
 });
 
+await test("a flood of small requests is stopped, whatever X-Forwarded-For says", async () => {
+  mode = { reply: "ok", status: 200 };
+  const statuses = [];
+  for (let i = 0; i < 45; i++) statuses.push((await post(chat, claude, { "cf-connecting-ip": "10.7.7.7", "x-forwarded-for": `1.2.3.${i}`, origin: "https://nopload.vercel.app" })).status);
+  eq(statuses.slice(0, 40).every((x) => x === 200), true, "the first 40 a minute");
+  eq(statuses.slice(40), [429, 429, 429, 429, 429], "then 429");
+});
+
+await test("oversized, empty and mistyped requests are refused before any model runs", async () => {
+  const before = seen.length;
+  const big = JSON.stringify({ task: "chat", question: "q", sources: "s".repeat(500_000) });
+  eq((await post(JSON.parse(big), claude)).status, 413, "a 500 KB body");
+  eq((await post({ task: "translate", texts: ["", "  "], language: "es" }, claude)).status, 400, "only empty blocks");
+  eq((await post({ task: "translate", texts: ["Hello", 1], language: "es" }, claude)).status, 400, "a block that isn't text");
+  eq(seen.length, before, "Claude wasn't called");
+});
+
+await test("replies can't be sniffed or framed as a page", async () => {
+  mode = { reply: "<script>alert(1)</script>", status: 200 };
+  const res = await post(chat, claude);
+  eq(res.headers.get("x-content-type-options"), "nosniff", "nosniff");
+  eq(res.headers.get("content-security-policy"), "default-src 'none'; frame-ancestors 'none'", "CSP");
+  eq(res.headers.get("content-type"), "text/plain; charset=utf-8", "plain text");
+  eq((await post({ task: "poem" }, claude)).headers.get("x-content-type-options"), "nosniff", "errors too");
+});
+
 await test("parseTexts reads JSON in or out of a code fence", async () => {
   eq(parseTexts('```json\n{"texts": ["a", "b"]}\n```'), ["a", "b"], "fenced");
   eq(parseTexts('{"2": "b", "1": "a"}', 2), ["a", "b"], "numbered, in order");
