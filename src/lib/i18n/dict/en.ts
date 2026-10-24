@@ -1846,6 +1846,8 @@ const en = {
   "ai.model.large.desc": "Writes and translates in many languages. Needs a recent computer.",
   "ai.remove": "Remove {name} from this device",
   "ai.downloadFailed": "The download stopped. Try again: it picks up where it stopped.",
+  "ai.device.limitsPhone": "On a phone, on-device AI can only show the sentences from the PDF that match: the AI models are too large to download and run on phones. Server AI gives written answers and summaries.",
+  "ai.device.limitsPhoneTranslate": "On a phone, translating on the device only works if your browser has a built-in translator for your languages, which phone browsers rarely do: the AI models are too large for phones. Server AI translates any of the site's languages.",
   "ai.server": "Server AI",
   "ai.server.desc": "Recommended for this device. Written answers, summaries and translations, with nothing to download.",
   "ai.server.who": "It goes over an encrypted connection to the AI services we use. We don't store it, and they don't use it to train AI.",

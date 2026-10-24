@@ -21,7 +21,7 @@ export const prepareAi = () =>
 // Other devices, where this copy of the site has it, get server AI
 // (src/lib/ai/cloud.ts) by default: the panel says what it sends, with the
 // providers named in the privacy policy, and "On this device" says what it
-// gives up. The model list shows what each model does, its download size
+// gives up. Phones and tablets are never offered model downloads. The model list shows what each model does, its download size
 // and whether it's on this device. Nothing downloads until the visitor
 // presses Download; after that it works offline. `value` is what's in use
 // ("cloud" for server AI, a model, or "" for no model), which the tool's run
@@ -37,6 +37,8 @@ export function AiModels({ models, value, onChange, task }: { models: string[]; 
   const [capable, setCapable] = useState<boolean | null>(null);
   // A model just failed to run here: server AI is offered instead.
   const [fellBack, setFellBack] = useState(false);
+  // Phones get no model downloads.
+  const [phone, setPhone] = useState(false);
   // On this device, though no model is in use (or none is downloaded).
   const [device, setDevice] = useState(false);
   const [busy, setBusy] = useState<{ id: ModelId; done: number; total: number } | null>(null);
@@ -53,6 +55,8 @@ export function AiModels({ models, value, onChange, task }: { models: string[]; 
       setIds(served);
       setSizes(Object.fromEntries(served.map((m) => [m, e.sizeOf(m)])));
       const able = !!s && e.deviceCanRunModels(s);
+      const onPhone = e.isPhone();
+      setPhone(onPhone);
       setCloud(hasCloud);
       setCapable(able);
       if (s) setStatus(s);
@@ -62,10 +66,10 @@ export function AiModels({ models, value, onChange, task }: { models: string[]; 
       const chosen = e.chosenModel();
       const best = s ? [...served].reverse().find((m) => s.stored[m]) : undefined;
       if (!able && hasCloud && (chosen === c.CLOUD || !chosen)) onChange(c.CLOUD);
-      else if (chosen && chosen !== c.CLOUD && chosen !== "device" && served.includes(chosen) && s?.stored[chosen]) onChange(chosen);
+      else if (!onPhone && chosen && chosen !== c.CLOUD && chosen !== "device" && served.includes(chosen) && s?.stored[chosen]) onChange(chosen);
       else {
         setDevice(true);
-        onChange(best ?? "");
+        onChange(onPhone ? "" : (best ?? ""));
       }
     });
     const failed = () => {
@@ -86,7 +90,8 @@ export function AiModels({ models, value, onChange, task }: { models: string[]; 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [models]);
 
-  if (capable === null || (!ids.length && !cloud)) return null;
+  // A phone with no server AI here has nothing to choose.
+  if (capable === null || (!ids.length && !cloud) || (phone && !cloud)) return null;
   // Server AI is offered only to devices that can't run the models.
   const server = cloud && !capable;
 
@@ -97,9 +102,9 @@ export function AiModels({ models, value, onChange, task }: { models: string[]; 
     onChange(id === "device" ? "" : id);
   };
 
-  // On this device: the most capable model downloaded, else none yet.
+  // On this device: the most capable model downloaded, else none yet (always none on a phone).
   const toDevice = () => {
-    const best = status ? [...ids].reverse().find((m) => status.stored[m]) : undefined;
+    const best = status && !phone ? [...ids].reverse().find((m) => status.stored[m]) : undefined;
     void choose(best ?? "device");
   };
 
@@ -222,8 +227,14 @@ export function AiModels({ models, value, onChange, task }: { models: string[]; 
       </div>
       {onDevice && (
         <div className="mt-3" data-ai-device>
-          <p className="text-[13px] leading-relaxed text-ink-2">{t("ai.device.limits")}{task === "translate" && <> {t("ai.device.limitsTranslate")}</>}</p>
-          {list}
+          {phone ? (
+            <p className="text-[13px] leading-relaxed text-ink-2" data-ai-phone>{t(task === "translate" ? "ai.device.limitsPhoneTranslate" : "ai.device.limitsPhone")}</p>
+          ) : (
+            <>
+              <p className="text-[13px] leading-relaxed text-ink-2">{t("ai.device.limits")}{task === "translate" && <> {t("ai.device.limitsTranslate")}</>}</p>
+              {list}
+            </>
+          )}
         </div>
       )}
     </section>

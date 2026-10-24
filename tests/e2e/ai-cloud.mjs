@@ -187,6 +187,25 @@ await suite(async ({ browser, test }) => {
     return t["ai.deviceFailed"];
   });
 
+  await test("a phone: server AI by default, no model downloads", async () => {
+    const phone = await browser.newContext({ serviceWorkers: "block", viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1" }).catch(() => null);
+    if (!phone) return "skipped: this browser can't emulate a phone";
+    try {
+      await phone.route("**/api/ai", (r) => (r.request().method() === "GET" ? r.fulfill({ json: { anthropic: true, cloudflare: true } }) : r.fulfill({ contentType: "text/plain", body: "The invoice total is $1,234.50 [1]." })));
+      const p = await phone.newPage();
+      await open(p, "/en/chat-with-pdf");
+      await pick(p, [twenty]);
+      await p.locator("[data-ai-mode='cloud']").waitFor({ timeout: 15000 });
+      await p.locator("[data-ai-choice='device']").click();
+      await p.locator("[data-ai-phone]").waitFor();
+      const downloads = await p.locator("[data-ai-models] li").count();
+      if (downloads) throw new Error(`${downloads} models offered`);
+      return "server AI selected; on-device shows no downloads";
+    } finally {
+      await phone.close();
+    }
+  });
+
   await test("the AI tools' pages say AI on device or server, not 'Runs on your device'", async () => {
     await open(page, "/en/chat-with-pdf");
     const pill = await page.locator("header .pill").filter({ hasText: t["home.aiBadge"] }).count();

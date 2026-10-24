@@ -103,6 +103,14 @@ export function chooseModel(id: Choice) {
   }
 }
 
+// Phones and tablets: they get server AI and are never offered model
+// downloads, which are too large for them. iPads report a Mac user agent,
+// but have touch.
+export function isPhone(): boolean {
+  const nav = navigator as Navigator & { userAgentData?: { mobile?: boolean } };
+  return !!nav.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(nav.userAgent) || (/Macintosh/.test(nav.userAgent) && nav.maxTouchPoints > 1);
+}
+
 // Whether this device can run the language models well: a real graphics
 // chip with WebGPU and 16-bit floats, on a computer rather than a phone or
 // tablet, with enough memory and cores where the browser says (Chrome
@@ -118,11 +126,8 @@ export function deviceCanRunModels(s: Status): boolean {
   } catch {
     /* no storage: judge by the device */
   }
-  const nav = navigator as Navigator & { userAgentData?: { mobile?: boolean }; deviceMemory?: number };
-  const ua = nav.userAgent;
-  // iPads report a Mac user agent, but have touch.
-  const mobile = nav.userAgentData?.mobile ?? (/Android|iPhone|iPad|iPod|Mobile/i.test(ua) || (/Macintosh/.test(ua) && nav.maxTouchPoints > 1));
-  if (mobile || !s.webgpu || !s.f16 || s.software) return false;
+  const nav = navigator as Navigator & { deviceMemory?: number };
+  if (isPhone() || !s.webgpu || !s.f16 || s.software) return false;
   if (nav.deviceMemory !== undefined && nav.deviceMemory < 8) return false;
   return !(nav.hardwareConcurrency && nav.hardwareConcurrency < 4);
 }
